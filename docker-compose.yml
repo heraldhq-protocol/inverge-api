@@ -1,0 +1,38 @@
+# Local dev dependencies for inverge-api (Phase 0).
+# Usage: docker compose up -d   then   pnpm prisma:migrate
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: inverge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inverge
+      POSTGRES_PASSWORD: inverge
+      POSTGRES_DB: inverge
+    ports:
+      - "5432:5432"
+    volumes:
+      - inverge_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inverge -d inverge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: inverge-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - inverge_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  inverge_pg:
+  inverge_redis:
