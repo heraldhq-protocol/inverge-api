@@ -1,0 +1,384 @@
+// Inverge — Prisma v7 schema
+// Phase 0 (idea validation) tables are LIVE. Campaign / escrow / milestone tables
+// are present but INERT — schema now, logic in Phase 1/2 (see docs/phase0-refined-plan.md §1).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URLs live in prisma.config.ts (Prisma v7 driver-adapter model).
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum IdeaStatus {
+  DRAFT
+  VALIDATING
+  THRESHOLD_MET
+  CONVERTED
+  ARCHIVED
+}
+
+enum SignalType {
+  SUPPORT
+  PRE_PLEDGE
+}
+
+enum BoostTier {
+  BASIC
+  FEATURED
+}
+
+enum KycStatus {
+  NOT_REQUIRED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum WalletRole {
+  FUNDING
+  PAYOUT
+}
+
+enum FlatFeeChargePurpose {
+  BOOST
+  APPLICATION_FEE
+}
+
+enum FlatFeeStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum CreatorTier {
+  STARTER
+  TRUSTED
+  ESTABLISHED
+}
+
+enum CampaignType {
+  ALL_OR_NOTHING
+  FLEXIBLE_FUNDING
+}
+
+enum CampaignStatus {
+  DRAFT
+  IN_REVIEW
+  ACTIVE
+  FUNDED
+  FAILED
+  COMPLETED
+}
+
+enum ClaimStatus {
+  UNDER_REVIEW
+  APPROVED
+  FAILED
+  DISPUTED
+}
+
+enum TokenType {
+  USDC
+  CNGN
+}
+
+enum OnChainEventType {
+  FUNDED
+  TRANCHE_RELEASED
+  REFUND_CLAIMED
+  MILESTONE_FAILED
+}
+
+// ─────────────────────────── Identity ───────────────────────────
+
+model User {
+  id             String    @id @default(cuid())
+  privyDid       String    @unique
+  email          String?   @unique
+  kycStatus      KycStatus @default(NOT_REQUIRED) // FR-103 / FR-104
+  kycProviderRef String? // NFR-12: reference only, never raw documents
+
+  wallets         WalletAccount[]
+  creatorProfile  CreatorProfile?
+  ideas           Idea[]               @relation("IdeaCreator")
+  signals         IdeaSignal[]
+  feedback        IdeaFeedback[]
+  boostsPurchased IdeaBoost[]
+  kycEvents       KycStatusEvent[]
+  flatFeeCharges  FlatFeeCharge[]
+  campaigns       Campaign[]           @relation("CampaignCreator")
+  contributions   Contribution[]
+  objections      MilestoneObjection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WalletAccount {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address    String
+  provider   String // "privy" (embedded) | "external"
+  isEmbedded Boolean    @default(false)
+  role       WalletRole @default(FUNDING) // FR-102: funding / payout destination
+  createdAt  DateTime   @default(now())
+
+  @@unique([userId, address])
+  @@index([address])
+}
+
+model KycStatusEvent {
+  id          String    @id @default(cuid()) // FR-105 audit trail
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromStatus  KycStatus
+  toStatus    KycStatus
+  providerRef String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// FR-306 family — Phase 3 logic, schema present now.
+model CreatorProfile {
+  userId             String      @id
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier               CreatorTier @default(STARTER)
+  activeStrikes      Int         @default(0)
+  completedCampaigns Int         @default(0)
+  lifetimeRaised     Decimal     @default(0) @db.Decimal(14, 2)
+  tenureStartedAt    DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+// ─────────────────────────── Idea validation (Phase 0, live) ───────────────────────────
+
+model Idea {
+  id        String     @id @default(cuid())
+  creatorId String
+  creator   User       @relation("IdeaCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  title     String
+  slug      String     @unique
+  problem   String
+  solution  String
+  roadmap   String
+  askAmount Decimal    @db.Decimal(14, 2)
+  status    IdeaStatus @default(DRAFT)
+
+  // FR-203 public validation metrics — behavioural & unpurchasable.
+  // INVARIANT (FR-206a): no boost write path may ever touch these columns.
+  supporterCount Int     @default(0)
+  prePledgeTotal Decimal @default(0) @db.Decimal(14, 2)
+  feedbackScore  Decimal @default(0) @db.Decimal(5, 2)
+  feedbackCount  Int     @default(0)
+
+  signals  IdeaSignal[]
+  feedback IdeaFeedback[]
+  boosts   IdeaBoost[]
+  campaign Campaign?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+// FR-202: support or pre-pledge intent; NO funds move.
+model IdeaSignal {
+  id        String     @id @default(cuid())
+  ideaId    String
+  idea      Idea       @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      SignalType
+  amount    Decimal?   @db.Decimal(14, 2) // set only for PRE_PLEDGE
+  createdAt DateTime   @default(now())
+
+  @@unique([ideaId, userId, type])
+  @@index([ideaId])
+}
+
+// FR-202 / FR-203: structured feedback, feeds feedbackScore.
+model IdeaFeedback {
+  id        String   @id @default(cuid())
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1..5
+  body      String?
+  createdAt DateTime @default(now())
+
+  @@unique([ideaId, userId])
+  @@index([ideaId])
+}
+
+// FR-206 / FR-206a: paid placement. Separate table from signals/feedback by design —
+// this is how "boosts never touch validation metrics" is enforced structurally.
+model IdeaBoost {
+  id                String        @id @default(cuid())
+  ideaId            String
+  idea              Idea          @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  purchasedByUserId String
+  purchasedBy       User          @relation(fields: [purchasedByUserId], references: [id], onDelete: Cascade)
+  tier              BoostTier
+  flatFeeChargeId   String        @unique
+  flatFeeCharge     FlatFeeCharge @relation(fields: [flatFeeChargeId], references: [id])
+  startsAt          DateTime
+  endsAt            DateTime?
+  createdAt         DateTime      @default(now())
+
+  @@index([ideaId])
+}
+
+// FR-406: flat-fee rail, separate from the on/off-ramp escrow flow.
+model FlatFeeCharge {
+  id           String               @id @default(cuid())
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose      FlatFeeChargePurpose
+  amount       Decimal              @db.Decimal(10, 2)
+  currency     String               @default("NGN")
+  processorRef String               @unique
+  status       FlatFeeStatus        @default(PENDING)
+  metadata     Json? // carries e.g. { ideaId, tier } so the webhook can fulfil without a back-dependency
+  boost        IdeaBoost?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([userId])
+}
+
+// ─────────────────────────── Campaigns & escrow (INERT: schema now, logic Phase 1/2) ───────────────────────────
+
+model Campaign {
+  id                       String         @id @default(cuid())
+  ideaId                   String?        @unique
+  idea                     Idea?          @relation(fields: [ideaId], references: [id])
+  ideaSnapshot             Json?
+  creatorId                String
+  creator                  User           @relation("CampaignCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  type                     CampaignType   @default(ALL_OR_NOTHING)
+  status                   CampaignStatus @default(DRAFT)
+  tokenType                TokenType
+  targetAmount             Decimal        @db.Decimal(14, 2)
+  fundingFloorPct          Int? // Flexible Funding only (FR-306)
+  deadline                 DateTime
+  termsHash                String? // FR-303: content hash, stored on-chain once published
+  workingCapitalPct        Decimal        @default(0) @db.Decimal(5, 2) // FR-503a: capped 20–25%
+  workingCapitalReleasedAt DateTime?
+  escrowPdaAddress         String?
+  totalRaised              Decimal        @default(0) @db.Decimal(14, 2)
+  applicationFeeChargeId   String? // FR-311 gate (Phase 1)
+
+  milestones    Milestone[]
+  contributions Contribution[]
+  onChainEvents OnChainEvent[]
+
+  createdAt  DateTime  @default(now())
+  launchedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+model Milestone {
+  id                 String  @id @default(cuid())
+  campaignId         String
+  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  index              Int
+  title              String
+  deliverable        String  @default("")
+  tranchePct         Decimal @db.Decimal(5, 2) // FR-302: sums to 100
+  evidenceDefinition Json // FR-302: proof type + source, immutable once published
+
+  claims MilestoneClaim[]
+
+  @@unique([campaignId, index])
+}
+
+model MilestoneClaim {
+  id                    String      @id @default(cuid())
+  milestoneId           String
+  milestone             Milestone   @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  proofBundle           Json
+  submittedAt           DateTime    @default(now())
+  objectionWindowEndsAt DateTime // default +7 days (FR-602)
+  status                ClaimStatus @default(UNDER_REVIEW)
+
+  objections MilestoneObjection[]
+  ruling     ReviewerRuling?
+
+  @@index([milestoneId])
+}
+
+model MilestoneObjection {
+  id        String         @id @default(cuid())
+  claimId   String
+  claim     MilestoneClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason    String
+  weightPct Decimal        @db.Decimal(5, 2) // FR-604: capped, default 15%
+  createdAt DateTime       @default(now())
+
+  @@unique([claimId, userId])
+}
+
+model ReviewerRuling {
+  id          String         @id @default(cuid())
+  claimId     String         @unique
+  claim       MilestoneClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  decision    String // "UPHELD_OBJECTION" | "OVERTURNED"
+  reasoning   String
+  txSignature String?
+  ruledAt     DateTime       @default(now())
+}
+
+model Contribution {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Decimal   @db.Decimal(14, 2)
+  tokenType   TokenType
+  txSignature String    @unique
+  createdAt   DateTime  @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
+}
+
+// FR-803: transparency dashboard reads ONLY from here. Written exclusively by the
+// indexer job (Phase 2) — never by application business logic.
+model OnChainEvent {
+  id          String           @id @default(cuid())
+  campaignId  String
+  campaign    Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  eventType   OnChainEventType
+  amount      Decimal?         @db.Decimal(14, 2)
+  txSignature String           @unique
+  blockTime   DateTime
+  indexedAt   DateTime         @default(now())
+
+  @@index([campaignId])
+}
+
+// FR-901 / FR-904: admin-configurable platform parameters (fees, thresholds, windows).
+model PlatformParam {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
