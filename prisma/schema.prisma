@@ -29,6 +29,14 @@ enum SignalType {
   PRE_PLEDGE
 }
 
+// FR-208: verification tier of a pre-pledger, resolved live at recompute time.
+// Weight + per-account cap per tier live in PlatformParams (validation.pledgeTiers).
+enum VerificationTier {
+  EMAIL // email-only, lowest weight + smallest cap (anti-manipulation)
+  SOCIAL // unique OAuth social (FR-212); inert until OAuth binding ships
+  VERIFIED // KYC-verified or past on-chain funder
+}
+
 enum BoostTier {
   BASIC
   FEATURED
@@ -102,8 +110,11 @@ model User {
   id             String    @id @default(cuid())
   privyDid       String    @unique
   email          String?   @unique
+  emailVerified  Boolean   @default(false) // FR-208: EMAIL tier eligibility
+  oauthSubject   String?   @unique // FR-212: one social identity ↔ one account (anti-sybil)
   kycStatus      KycStatus @default(NOT_REQUIRED) // FR-103 / FR-104
   kycProviderRef String? // NFR-12: reference only, never raw documents
+  bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
 
   wallets         WalletAccount[]
   creatorProfile  CreatorProfile?
@@ -176,20 +187,42 @@ model Idea {
   // FR-203 public validation metrics — behavioural & unpurchasable.
   // INVARIANT (FR-206a): no boost write path may ever touch these columns.
   supporterCount Int     @default(0)
-  prePledgeTotal Decimal @default(0) @db.Decimal(14, 2)
+  prePledgeTotal Decimal @default(0) @db.Decimal(14, 2) // raw USD sum (internal/audit)
+  // FR-207: the public "Estimated interest" figure — Σ min(amountUsd, tierCap) × tierWeight.
+  weightedPrePledgeTotal Decimal @default(0) @db.Decimal(14, 2)
   feedbackScore  Decimal @default(0) @db.Decimal(5, 2)
   feedbackCount  Int     @default(0)
 
-  signals  IdeaSignal[]
-  feedback IdeaFeedback[]
-  boosts   IdeaBoost[]
-  campaign Campaign?
+  // FR-204: creator-declared expected pre-pledge minimum; the gate uses max(platform floor, this).
+  creatorPrePledgeTarget Decimal? @db.Decimal(14, 2)
+  // FR-204a: validation window / sustainment.
+  validatingSince        DateTime? // set when DRAFT → VALIDATING
+  windowRenewedAt        DateTime? // window is renewable once
+
+  signals        IdeaSignal[]
+  feedback       IdeaFeedback[]
+  boosts         IdeaBoost[]
+  campaign       Campaign?
+  metricSnapshots IdeaMetricSnapshot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([creatorId])
   @@index([status])
+}
+
+// FR-204a: daily snapshot of the weighted figure, so the graduation gate can require
+// the threshold be SUSTAINED (held N consecutive days / at window close), not just touched.
+model IdeaMetricSnapshot {
+  id             String   @id @default(cuid())
+  ideaId         String
+  idea           Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  capturedAt     DateTime @default(now())
+  weightedTotal  Decimal  @db.Decimal(14, 2)
+  supporterCount Int
+
+  @@index([ideaId, capturedAt])
 }
 
 // FR-202: support or pre-pledge intent; NO funds move.
@@ -200,7 +233,9 @@ model IdeaSignal {
   userId    String
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      SignalType
-  amount    Decimal?   @db.Decimal(14, 2) // set only for PRE_PLEDGE
+  amount    Decimal?   @db.Decimal(14, 2) // set only for PRE_PLEDGE — stated amount, original currency
+  currency  String     @default("USD") // FR-210: USD default; NGN accepted and normalized
+  amountUsd Decimal?   @db.Decimal(14, 2) // FR-210: stated amount normalized to USD (drives weighting)
   createdAt DateTime   @default(now())
 
   @@unique([ideaId, userId, type])
