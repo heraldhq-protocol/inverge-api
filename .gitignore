@@ -34,3 +34,6 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# Local dev/probe helpers (root-level, excluded from build via tsconfig.build.json)
+/_*.ts
