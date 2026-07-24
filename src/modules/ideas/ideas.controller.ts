@@ -89,6 +89,16 @@ export class IdeasController {
     return this.ideas.prePledge(user.id, id, dto);
   }
 
+  @Delete(':id/pre-pledge')
+  @ApiBearerAuth()
+  @UseGuards(PrivyAuthGuard)
+  withdrawPrePledge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.ideas.withdrawPrePledge(user.id, id);
+  }
+
   @Post(':id/feedback')
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard)

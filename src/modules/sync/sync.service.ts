@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Idea } from '../../generated/prisma/client';
+import { MetricsService } from '../metrics/metrics.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { ConvertIdeaDto } from './dto/convert-idea.dto';
@@ -16,6 +17,7 @@ export class SyncService {
     private readonly prisma: PrismaService,
     private readonly params: PlatformParamsService,
     private readonly notifications: NotificationsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   // FR-204/205: convert an idea to a DRAFT campaign once the validation gate clears.
@@ -77,23 +79,42 @@ export class SyncService {
     return campaign;
   }
 
-  // FR-204 gate — shape locked; numbers are admin-configurable PlatformParams,
-  // read at call time so a change applies to the next conversion attempt.
-  async meetsValidationThreshold(idea: Idea): Promise<boolean> {
-    const [minSup, minAbs, minPct, minFbCount, minFbRating] = await Promise.all([
-      this.params.getNumber('validation.minSupporters', 30),
-      this.params.getNumber('validation.minPrePledgeAbsUSD', 500),
+  // FR-204/204a gate — shape locked; numbers are admin-configurable PlatformParams,
+  // read at call time so a change applies to the next conversion attempt. The gate
+  // reads the WEIGHTED pre-pledge figure (FR-207), not the raw sum, so inflated or
+  // sybil pledges cannot clear it. The required figure is the max of the platform
+  // floor and the creator's declared target (FR-204), and it must be SUSTAINED across
+  // the validation window (FR-204a), not merely touched.
+  async meetsValidationThreshold(idea: Idea, now: Date = new Date()): Promise<boolean> {
+    const [minSup, minWeighted, minPct, minFbCount, minFbRating] = await Promise.all([
+      this.params.getNumber('validation.minSupporters', 50),
+      this.params.getNumber('validation.minWeightedUSD', 2000),
       this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
       this.params.getNumber('validation.minFeedbackCount', 10),
       this.params.getNumber('validation.minAvgFeedbackRating', 3),
     ]);
-    const prePledge = Number(idea.prePledgeTotal);
+
+    const weighted = Number(idea.weightedPrePledgeTotal);
     const ask = Number(idea.askAmount);
-    return (
-      idea.supporterCount >= minSup &&
-      prePledge >= Math.max(minAbs, minPct * ask) &&
-      idea.feedbackCount >= minFbCount &&
-      Number(idea.feedbackScore) >= minFbRating
+    const creatorTarget = idea.creatorPrePledgeTarget
+      ? Number(idea.creatorPrePledgeTarget)
+      : 0;
+    // Required weighted interest: platform floor, the pct-of-ask backstop, and the
+    // creator's own declared minimum — whichever is highest.
+    const requiredWeighted = Math.max(minWeighted, minPct * ask, creatorTarget);
+
+    if (idea.supporterCount < minSup) return false;
+    if (weighted < requiredWeighted) return false;
+    if (idea.feedbackCount < minFbCount) return false;
+    if (Number(idea.feedbackScore) < minFbRating) return false;
+
+    // FR-204a: the figure must have HELD above the bar over the window, not spiked once.
+    return this.metrics.isSustained(
+      idea.id,
+      requiredWeighted,
+      weighted,
+      idea.validatingSince,
+      now,
     );
   }
 

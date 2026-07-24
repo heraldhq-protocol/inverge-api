@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma } from '../../generated/prisma/client';
+import { MetricsService } from '../metrics/metrics.service';
 import { slugify } from '../../common/utils/slug.util';
 import {
   CreateIdeaDto,
@@ -17,7 +17,10 @@ import {
 
 @Injectable()
 export class IdeasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   create(userId: string, dto: CreateIdeaDto) {
     return this.prisma.idea.create({
@@ -29,6 +32,7 @@ export class IdeasService {
         solution: dto.solution,
         roadmap: dto.roadmap,
         askAmount: dto.askAmount,
+        creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
         status: 'DRAFT',
       },
     });
@@ -47,9 +51,10 @@ export class IdeasService {
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Idea is not in draft');
     }
+    // FR-204a: stamp the start of the validation window at publish.
     return this.prisma.idea.update({
       where: { id },
-      data: { status: 'VALIDATING' },
+      data: { status: 'VALIDATING', validatingSince: new Date() },
     });
   }
 
@@ -95,7 +100,7 @@ export class IdeasService {
         update: {},
         create: { ideaId: id, userId, type: 'SUPPORT' },
       });
-      return this.recompute(tx, id);
+      return this.metrics.recompute(tx, id);
     });
   }
 
@@ -105,20 +110,41 @@ export class IdeasService {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'SUPPORT' },
       });
-      return this.recompute(tx, id);
+      return this.metrics.recompute(tx, id);
     });
   }
 
-  // FR-202: pre-pledge intent — NO funds move.
+  // FR-202: pre-pledge intent — NO funds move. FR-210: normalize to USD; the weighted
+  // figure (not this raw amount) is what the graduation gate reads.
   async prePledge(userId: string, id: string, dto: PrePledgeDto) {
     await this.exists(id);
+    const currency = dto.currency ?? 'USD';
+    const amountUsd = await this.metrics.normalizeToUsd(dto.amount, currency);
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
-        update: { amount: dto.amount },
-        create: { ideaId: id, userId, type: 'PRE_PLEDGE', amount: dto.amount },
+        update: { amount: dto.amount, currency, amountUsd },
+        create: {
+          ideaId: id,
+          userId,
+          type: 'PRE_PLEDGE',
+          amount: dto.amount,
+          currency,
+          amountUsd,
+        },
       });
-      return this.recompute(tx, id);
+      return this.metrics.recompute(tx, id);
+    });
+  }
+
+  // FR-211: withdraw a pre-pledge — a withdrawable signal is a more honest signal.
+  async withdrawPrePledge(userId: string, id: string) {
+    await this.exists(id);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.ideaSignal.deleteMany({
+        where: { ideaId: id, userId, type: 'PRE_PLEDGE' },
+      });
+      return this.metrics.recompute(tx, id);
     });
   }
 
@@ -131,33 +157,7 @@ export class IdeasService {
         update: { rating: dto.rating, body: dto.body },
         create: { ideaId: id, userId, rating: dto.rating, body: dto.body },
       });
-      return this.recompute(tx, id);
-    });
-  }
-
-  // Recomputes ALL public validation metrics from signals/feedback ONLY.
-  // Boost data never participates — this is the structural enforcement of FR-206a.
-  private async recompute(tx: Prisma.TransactionClient, ideaId: string) {
-    const supporterCount = await tx.ideaSignal.count({
-      where: { ideaId, type: 'SUPPORT' },
-    });
-    const pre = await tx.ideaSignal.aggregate({
-      where: { ideaId, type: 'PRE_PLEDGE' },
-      _sum: { amount: true },
-    });
-    const fb = await tx.ideaFeedback.aggregate({
-      where: { ideaId },
-      _avg: { rating: true },
-      _count: true,
-    });
-    return tx.idea.update({
-      where: { id: ideaId },
-      data: {
-        supporterCount,
-        prePledgeTotal: pre._sum.amount ?? 0,
-        feedbackScore: fb._avg.rating ?? 0,
-        feedbackCount: fb._count,
-      },
+      return this.metrics.recompute(tx, id);
     });
   }
 

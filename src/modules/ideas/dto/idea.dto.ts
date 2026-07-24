@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -12,6 +13,8 @@ import {
   IsNotEmpty,
 } from 'class-validator';
 
+export const PLEDGE_CURRENCIES = ['USD', 'NGN'] as const;
+
 export class CreateIdeaDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(140) title!: string;
   @ApiProperty() @IsString() @IsNotEmpty() problem!: string;
@@ -22,6 +25,15 @@ export class CreateIdeaDto {
   @IsNumber()
   @IsPositive()
   askAmount!: number;
+
+  @ApiPropertyOptional({
+    description: 'Creator-declared expected pre-pledge minimum in USD (FR-204). '
+      + 'The gate requires the weighted figure to clear max(platform floor, this).',
+  })
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  creatorPrePledgeTarget?: number;
 }
 
 export class UpdateIdeaDto extends PartialType(CreateIdeaDto) {}
@@ -31,6 +43,15 @@ export class PrePledgeDto {
   @IsNumber()
   @IsPositive()
   amount!: number;
+
+  @ApiPropertyOptional({
+    enum: PLEDGE_CURRENCIES,
+    default: 'USD',
+    description: 'FR-210: USD default; NGN normalized to USD at the current fx rate.',
+  })
+  @IsOptional()
+  @IsIn(PLEDGE_CURRENCIES)
+  currency?: (typeof PLEDGE_CURRENCIES)[number];
 }
 
 export class FeedbackDto {
