@@ -98,7 +98,7 @@ describe('IdeasService.publish', () => {
 
 describe('IdeasService — signals recompute through MetricsService (FR-206a boundary)', () => {
   it('support upserts a SUPPORT signal then recomputes', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.support('u2', 'idea1');
@@ -109,7 +109,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('unsupport deletes the SUPPORT signal then recomputes', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.unsupport('u2', 'idea1');
@@ -120,7 +120,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('pre-pledge normalizes to USD (default) and stores amount/currency/amountUsd', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.prePledge('u2', 'idea1', { amount: 500 } as any);
@@ -131,7 +131,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('pre-pledge passes an explicit NGN currency to normalization', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.prePledge('u2', 'idea1', { amount: 160000, currency: 'NGN' } as any);
@@ -139,7 +139,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('withdraw deletes the PRE_PLEDGE signal then recomputes (FR-211)', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.withdrawPrePledge('u2', 'idea1');
@@ -150,7 +150,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('feedback upserts one-per-user rating then recomputes', async () => {
-    const prisma = prismaMock({ id: 'idea1' });
+    const prisma = prismaMock({ id: 'idea1', status: 'VALIDATING' });
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await svc.feedback('u2', 'idea1', { rating: 4, body: 'nice' } as any);
@@ -164,11 +164,24 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('404s a signal against a missing idea (never opens a transaction)', async () => {
-    const prisma = prismaMock(null); // exists() finds nothing
+    const prisma = prismaMock(null); // assertSignalable finds nothing
     const metrics = metricsMock();
     const svc = new IdeasService(prisma, metrics);
     await expect(svc.support('u2', 'ghost')).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(metrics.recompute).not.toHaveBeenCalled();
+  });
+
+  it('rejects signals on a non-published idea (DRAFT/CONVERTED cannot be pumped)', async () => {
+    for (const status of ['DRAFT', 'CONVERTED', 'ARCHIVED']) {
+      const prisma = prismaMock({ id: 'idea1', status });
+      const metrics = metricsMock();
+      const svc = new IdeasService(prisma, metrics);
+      await expect(svc.prePledge('u2', 'idea1', { amount: 100 } as any)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(metrics.recompute).not.toHaveBeenCalled();
+    }
   });
 });
