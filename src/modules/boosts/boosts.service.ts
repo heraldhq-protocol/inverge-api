@@ -29,17 +29,17 @@ export class BoostsService {
     if (!idea) throw new NotFoundException('Idea not found');
 
     const priceKey =
-      dto.tier === 'FEATURED' ? 'boost.featured.priceNGN' : 'boost.basic.priceNGN';
+      dto.tier === 'FEATURED' ? 'boost.featured.priceUSD' : 'boost.basic.priceUSD';
     const amount = await this.params.getNumber(
       priceKey,
-      dto.tier === 'FEATURED' ? 20000 : 5000,
+      dto.tier === 'FEATURED' ? 20 : 5,
     );
 
     const charge = await this.flatFee.createCharge({
       userId,
       purpose: 'BOOST',
       amount,
-      currency: 'NGN',
+      currency: 'USD',
       metadata: { ideaId, tier: dto.tier },
     });
     return { redirectUrl: charge.redirectUrl, processorRef: charge.processorRef };
