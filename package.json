@@ -19,6 +19,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:e2e": "jest --config jest-e2e.config.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
