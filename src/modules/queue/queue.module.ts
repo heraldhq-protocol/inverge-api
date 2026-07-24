@@ -1,12 +1,13 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Env } from '../../config/env.validation';
 
-// BullMQ root connection. Feature queues (campaign-conversion, notification-dispatch,
-// milestone-deadline, onramp-webhook, flatfee-webhook, kyc-webhook, indexer-reconcile)
-// register here as they are built out. No queue is registered in Phase 0, so Redis is
-// not connected at boot — the idea-validation flow runs without it.
+// BullMQ root connection. Global so feature modules can BullModule.registerQueue()
+// against the shared connection. The first registered queue (metrics-snapshot, FR-204a)
+// connects Redis at boot; other feature queues (campaign-conversion, notification-dispatch,
+// milestone-deadline, onramp/flatfee/kyc-webhook, indexer-reconcile) join as built out.
+@Global()
 @Module({
   imports: [
     BullModule.forRootAsync({
