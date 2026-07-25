@@ -24,6 +24,14 @@ enum IdeaStatus {
   ARCHIVED
 }
 
+// FR-272: exposure level. Gate distribution, never existence — a LINK_ONLY idea is
+// always reachable by direct URL, just excluded from browse/search/homepage surfaces.
+enum DiscoverabilityTier {
+  LINK_ONLY
+  DISCOVERABLE
+  FEATURED
+}
+
 enum SignalType {
   SUPPORT
   PRE_PLEDGE
@@ -184,6 +192,18 @@ model Idea {
   askAmount Decimal    @db.Decimal(14, 2)
   status    IdeaStatus @default(DRAFT)
 
+  // FR-270 structured pitch (nullable for back-compat; required at the DTO for new ideas).
+  targetUser         String? // who specifically has the problem
+  currentAlternative String? // what they do today + why it's insufficient
+  askBreakdown       Json? // indicative breakdown of what the ask buys
+  roadmapSteps       Json? // >=2 dated steps [{ date, description }]
+  category           String? // software | agriculture | film | arts | ...
+
+  // FR-271/272 quality & discoverability.
+  qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
+  qualityScoredAt     DateTime?
+  discoverabilityTier DiscoverabilityTier @default(LINK_ONLY)
+
   // FR-203 public validation metrics — behavioural & unpurchasable.
   // INVARIANT (FR-206a): no boost write path may ever touch these columns.
   supporterCount Int     @default(0)
@@ -204,12 +224,26 @@ model Idea {
   boosts         IdeaBoost[]
   campaign       Campaign?
   metricSnapshots IdeaMetricSnapshot[]
+  qualityReports IdeaQualityReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([creatorId])
   @@index([status])
+  @@index([discoverabilityTier])
+}
+
+// FR-271: audit + coaching output of each quality scoring run (on publish and edit).
+model IdeaQualityReport {
+  id         String   @id @default(cuid())
+  ideaId     String
+  idea       Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  score      Decimal  @db.Decimal(5, 4) // 0..1
+  checks     Json // [{ id, passed, severity, message, kind: 'deterministic'|'ai' }]
+  computedAt DateTime @default(now())
+
+  @@index([ideaId, computedAt])
 }
 
 // FR-204a: daily snapshot of the weighted figure, so the graduation gate can require

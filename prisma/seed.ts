@@ -33,6 +33,10 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
   // FR-210: NGN→USD normalization rate (admin/job-refreshed)
   'fx.ngnPerUsd': 1600,
 
+  // FR-271/272/275: idea quality floor (0..1) + per-creator active-idea cap
+  'idea.qualityFloor': 0.7,
+  'idea.maxActivePerCreator': 3,
+
   // KYC (FR-104)
   'kyc.backerThresholdUSD': 200,
 

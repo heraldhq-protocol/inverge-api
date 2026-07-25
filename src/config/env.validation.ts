@@ -14,6 +14,9 @@ export const envSchema = z.object({
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
   KYC_PROVIDER: z.enum(['stub', 'smile']).default('stub'),
   NOTIFICATION_PROVIDER: z.enum(['stub', 'herald']).default('stub'),
+  // Idea quality scorer (FR-271). "stub" = deterministic completeness checks only;
+  // "claude" adds AI checks (thin-content/plagiarism/coherence) — Phase 1.
+  QUALITY_PROVIDER: z.enum(['stub', 'claude']).default('stub'),
 
   PRIVY_APP_ID: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),
