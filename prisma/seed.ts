@@ -37,6 +37,11 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
   'idea.qualityFloor': 0.7,
   'idea.maxActivePerCreator': 3,
 
+  // FR-1004/1012: moderation harness. Any category at/above riskThreshold holds for
+  // review. Auto-rejection is disabled at launch (D1) — kept as a flag for post-launch.
+  'moderation.riskThreshold': 0.5,
+  'moderation.autoRejectEnabled': 0,
+
   // KYC (FR-104)
   'kyc.backerThresholdUSD': 200,
 

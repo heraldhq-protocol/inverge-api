@@ -32,6 +32,13 @@ enum DiscoverabilityTier {
   FEATURED
 }
 
+// FR-1004: routing outcome of the moderation harness. Auto-rejection is disabled at
+// launch (decision D1) — the harness only auto-clears or holds for human review.
+enum ModerationDecision {
+  AUTO_CLEAR
+  HELD_FOR_REVIEW
+}
+
 enum SignalType {
   SUPPORT
   PRE_PLEDGE
@@ -225,6 +232,7 @@ model Idea {
   campaign       Campaign?
   metricSnapshots IdeaMetricSnapshot[]
   qualityReports IdeaQualityReport[]
+  moderationCases ModerationCase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -244,6 +252,30 @@ model IdeaQualityReport {
   computedAt DateTime @default(now())
 
   @@index([ideaId, computedAt])
+}
+
+// FR-1006/1012: recorded outcome of one moderation-harness run. Dual reason fields
+// (internal = full detail; external = creator-facing, generic for AML per D2/FR-1007).
+// Retained per NFR-19 (5-year AML record retention) — never hard-deleted by app logic.
+model ModerationCase {
+  id             String             @id @default(cuid())
+  kind           String // 'idea' | 'campaign'
+  ideaId         String?
+  idea           Idea?              @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  submittedById  String? // acting/submitting user
+  decision       ModerationDecision
+  maxRisk        Decimal            @db.Decimal(5, 4)
+  categories     Json // [{ code, riskScore, excerpt, draftReason }]
+  reasonCodes    String[] // FR-1006: >=1 policy reason code
+  internalReason String // full rationale (audit + compliance only)
+  externalReason String // creator-facing (generic when POL-AML contributes)
+  brief          String // FR-1005 pre-review brief for the admin queue
+  provider       String // classifier provenance ('stub' | 'ai:<model>')
+  policyVersion  String // FR-1001: taxonomy version in force
+  createdAt      DateTime           @default(now())
+
+  @@index([decision, createdAt])
+  @@index([ideaId])
 }
 
 // FR-204a: daily snapshot of the weighted figure, so the graduation gate can require
