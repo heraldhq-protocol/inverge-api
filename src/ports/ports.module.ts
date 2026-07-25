@@ -17,6 +17,9 @@ import { NOTIFICATION_PORT } from './notification/notification.port';
 import { StubNotificationAdapter } from './notification/stub-notification.adapter';
 import { HeraldNotificationAdapter } from './notification/herald-notification.adapter';
 
+import { QUALITY_SCORER_PORT } from './quality/quality-scorer.port';
+import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter';
+
 // Binds each port token to an adapter selected by env. Adapters are all constructed
 // (cheap), the factory picks one — so swapping a vendor is an env flip, and adding a
 // new vendor is a new adapter file. No business logic references a concrete vendor.
@@ -30,6 +33,7 @@ import { HeraldNotificationAdapter } from './notification/herald-notification.ad
     StubKycAdapter,
     StubNotificationAdapter,
     HeraldNotificationAdapter,
+    StubQualityScorerAdapter,
     {
       provide: EMBEDDED_WALLET_PORT,
       inject: [ConfigService, StubWalletAdapter, PrivyWalletAdapter],
@@ -67,12 +71,19 @@ import { HeraldNotificationAdapter } from './notification/herald-notification.ad
           ? herald
           : stub,
     },
+    {
+      provide: QUALITY_SCORER_PORT,
+      inject: [StubQualityScorerAdapter],
+      // 'claude' AI adapter lands at Phase 1; stub (deterministic) is the Phase 0 path.
+      useFactory: (stub: StubQualityScorerAdapter) => stub,
+    },
   ],
   exports: [
     EMBEDDED_WALLET_PORT,
     FLAT_FEE_PAYMENT_PORT,
     KYC_PROVIDER_PORT,
     NOTIFICATION_PORT,
+    QUALITY_SCORER_PORT,
   ],
 })
 export class PortsModule {}
