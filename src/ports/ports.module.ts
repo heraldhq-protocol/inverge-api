@@ -24,6 +24,9 @@ import { MODERATION_CLASSIFIER_PORT } from './moderation/moderation.port';
 import { StubModerationAdapter } from './moderation/stub-moderation.adapter';
 import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
 
+import { DUPLICATE_DETECTOR_PORT } from './dedup/dedup.port';
+import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
+
 // Binds each port token to an adapter selected by env. Adapters are all constructed
 // (cheap), the factory picks one — so swapping a vendor is an env flip, and adding a
 // new vendor is a new adapter file. No business logic references a concrete vendor.
@@ -40,6 +43,7 @@ import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
     StubQualityScorerAdapter,
     StubModerationAdapter,
     AiModerationAdapter,
+    StubShingleDetector,
     {
       provide: EMBEDDED_WALLET_PORT,
       inject: [ConfigService, StubWalletAdapter, PrivyWalletAdapter],
@@ -92,6 +96,12 @@ import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
         ai: AiModerationAdapter,
       ) => (config.get('MODERATION_PROVIDER', { infer: true }) === 'ai' ? ai : stub),
     },
+    {
+      provide: DUPLICATE_DETECTOR_PORT,
+      inject: [StubShingleDetector],
+      // Deterministic shingle detector now; a semantic adapter can drop in later.
+      useFactory: (stub: StubShingleDetector) => stub,
+    },
   ],
   exports: [
     EMBEDDED_WALLET_PORT,
@@ -100,6 +110,7 @@ import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
     NOTIFICATION_PORT,
     QUALITY_SCORER_PORT,
     MODERATION_CLASSIFIER_PORT,
+    DUPLICATE_DETECTOR_PORT,
   ],
 })
 export class PortsModule {}

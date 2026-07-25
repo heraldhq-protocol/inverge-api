@@ -41,6 +41,7 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
   // review. Auto-rejection is disabled at launch (D1) — kept as a flag for post-launch.
   'moderation.riskThreshold': 0.5,
   'moderation.autoRejectEnabled': 0,
+  'moderation.dedupThreshold': 0.8, // near-duplicate similarity that triggers a POL-FRD hold
 
   // KYC (FR-104)
   'kyc.backerThresholdUSD': 200,
