@@ -28,9 +28,27 @@ describe('Ideas routes (e2e)', () => {
   let backerA: string;
   let backerB: string;
   let ideaId: string;
+  // A fully-structured pitch scores 1.0 → DISCOVERABLE on publish.
   const validCreate = {
-    title: 'E2E Idea', problem: 'p', solution: 's', roadmap: 'r',
+    title: 'E2E Idea',
+    problem: 'Smallholder farmers lack credit history so lenders reject them outright.',
+    solution: 'Drone and satellite yield estimates become an alternative credit score banks trust.',
+    targetUser: 'smallholder maize farmers in Kaduna',
+    currentAlternative: 'lenders rely on slow manual farm visits that rarely happen at all.',
+    askBreakdown: { drones: 8000, staff: 12000 },
+    roadmapSteps: [
+      { date: '2026-Q1', description: 'pilot 200 farms' },
+      { date: '2026-Q2', description: 'lender API live' },
+    ],
+    category: 'agriculture',
     askAmount: 25000, creatorPrePledgeTarget: 800,
+  };
+  // All fields present (passes the DTO) but too thin to clear the quality floor → LINK_ONLY.
+  const lowQualityCreate = {
+    title: 'Lo', problem: 'p', solution: 's', targetUser: 'x', currentAlternative: 'y',
+    askBreakdown: { a: 1 },
+    roadmapSteps: [{ date: '1', description: 'a' }, { date: '2', description: 'b' }],
+    category: 'other', askAmount: 1000,
   };
   const convertBody = {
     type: 'ALL_OR_NOTHING', tokenType: 'USDC', targetAmount: 25000,
@@ -121,10 +139,12 @@ describe('Ideas routes (e2e)', () => {
     it('non-owner cannot publish (403)', async () => {
       await http().post(`/ideas/${ideaId}/publish`).set(auth(backerA)).expect(403);
     });
-    it('owner publishes DRAFT → VALIDATING (stamps validatingSince)', async () => {
+    it('owner publishes DRAFT → VALIDATING, auto-promoted to DISCOVERABLE (FR-272)', async () => {
       const res = await http().post(`/ideas/${ideaId}/publish`).set(auth(creator)).expect(201);
       expect(res.body.status).toBe('VALIDATING');
       expect(res.body.validatingSince).toBeTruthy();
+      expect(res.body.discoverabilityTier).toBe('DISCOVERABLE'); // full pitch cleared the floor
+      expect(Number(res.body.qualityScore)).toBe(1);
     });
     it('cannot edit a published idea (400)', async () => {
       await http().patch(`/ideas/${ideaId}`).set(auth(creator)).send({ title: 'late' }).expect(400);
@@ -214,6 +234,45 @@ describe('Ideas routes (e2e)', () => {
     it('owner is blocked below the validation threshold (403)', async () => {
       // weighted 25 is far below any floor and below the creator target (800).
       await http().post(`/ideas/${ideaId}/convert`).set(auth(creator)).send(convertBody).expect(403);
+    });
+  });
+
+  // ─────────────── Quality & discoverability (FR-270/271/272/274) ───────────────
+  describe('quality gate', () => {
+    it('exposes creator-facing coaching for the idea', async () => {
+      const res = await http().get(`/ideas/${ideaId}/quality`).expect(200);
+      expect(Number(res.body.score)).toBe(1);
+      expect(Array.isArray(res.body.checks)).toBe(true);
+    });
+
+    it('a thin idea publishes at LINK_ONLY, stays out of browse, and cannot be boosted (FR-271a/272/274)', async () => {
+      const created = await http().post('/ideas').set(auth(creator)).send(lowQualityCreate).expect(201);
+      const lowId = created.body.id;
+      expect(created.body.discoverabilityTier).toBe('LINK_ONLY'); // below floor from the start
+      expect(Number(created.body.qualityScore)).toBeLessThan(0.7);
+
+      const pub = await http().post(`/ideas/${lowId}/publish`).set(auth(creator)).expect(201);
+      expect(pub.body.discoverabilityTier).toBe('LINK_ONLY'); // still below floor after publish
+
+      // reachable by direct URL...
+      await http().get(`/ideas/${lowId}`).expect(200);
+      // ...but absent from browse (FR-272)
+      const list = await http().get('/ideas').expect(200);
+      expect(list.body.some((i: any) => i.id === lowId)).toBe(false);
+      // ...and boost is blocked (FR-274)
+      await http().post(`/ideas/${lowId}/boosts`).set(auth(creator)).send({ tier: 'BASIC' }).expect(400);
+    });
+  });
+
+  // ─────────────── Concurrency cap (FR-275) ───────────────
+  describe('per-creator concurrency cap', () => {
+    it('blocks a creator once they hold the maximum active ideas (default 3)', async () => {
+      const token = await session('capper');
+      // The capper starts fresh: 3 creations succeed, the 4th is rejected.
+      for (let i = 0; i < 3; i++) {
+        await http().post('/ideas').set(auth(token)).send({ ...validCreate, title: `cap-${i}` }).expect(201);
+      }
+      await http().post('/ideas').set(auth(token)).send({ ...validCreate, title: 'cap-over' }).expect(400);
     });
   });
 

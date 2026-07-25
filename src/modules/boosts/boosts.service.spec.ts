@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BoostsService } from './boosts.service';
 
 function paramsMock(overrides: Record<string, number> = {}) {
@@ -15,7 +15,7 @@ function paramsMock(overrides: Record<string, number> = {}) {
 describe('BoostsService.purchase — flat-fee rail, metrics untouched', () => {
   function setup() {
     const prisma = {
-      idea: { findUnique: jest.fn().mockResolvedValue({ id: 'idea1' }), update: jest.fn() },
+      idea: { findUnique: jest.fn().mockResolvedValue({ id: 'idea1', discoverabilityTier: 'DISCOVERABLE' }), update: jest.fn() },
       ideaBoost: { create: jest.fn() },
     } as any;
     const flatFee = {
@@ -58,6 +58,15 @@ describe('BoostsService.purchase — flat-fee rail, metrics untouched', () => {
     await expect(svc.purchase('user1', 'ghost', { tier: 'BASIC' } as any)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('rejects boosting a LINK_ONLY idea below the quality floor (FR-274)', async () => {
+    const { svc, prisma, flatFee } = setup();
+    prisma.idea.findUnique.mockResolvedValue({ id: 'idea1', discoverabilityTier: 'LINK_ONLY' });
+    await expect(svc.purchase('user1', 'idea1', { tier: 'BASIC' } as any)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(flatFee.createCharge).not.toHaveBeenCalled(); // paid visibility can't launder low-effort pages
   });
 });
 
