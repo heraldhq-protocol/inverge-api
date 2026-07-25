@@ -17,6 +17,15 @@ export const envSchema = z.object({
   // Idea quality scorer (FR-271). "stub" = deterministic completeness checks only;
   // "claude" adds AI checks (thin-content/plagiarism/coherence) — Phase 1.
   QUALITY_PROVIDER: z.enum(['stub', 'claude']).default('stub'),
+  // AI moderation classifier (FR-1003 Layer 2). "stub" = deterministic keyword rules;
+  // "ai" calls the Anthropic-compatible endpoint below.
+  MODERATION_PROVIDER: z.enum(['stub', 'ai']).default('stub'),
+
+  // Anthropic-compatible LLM (may point at DeepSeek via ANTHROPIC_BASE_URL). Used by the
+  // AI moderation adapter. Keys live in .env only (gitignored) — never commit them.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_BASE_URL: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
 
   PRIVY_APP_ID: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),

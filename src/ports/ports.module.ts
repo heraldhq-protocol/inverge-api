@@ -20,6 +20,10 @@ import { HeraldNotificationAdapter } from './notification/herald-notification.ad
 import { QUALITY_SCORER_PORT } from './quality/quality-scorer.port';
 import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter';
 
+import { MODERATION_CLASSIFIER_PORT } from './moderation/moderation.port';
+import { StubModerationAdapter } from './moderation/stub-moderation.adapter';
+import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
+
 // Binds each port token to an adapter selected by env. Adapters are all constructed
 // (cheap), the factory picks one — so swapping a vendor is an env flip, and adding a
 // new vendor is a new adapter file. No business logic references a concrete vendor.
@@ -34,6 +38,8 @@ import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter'
     StubNotificationAdapter,
     HeraldNotificationAdapter,
     StubQualityScorerAdapter,
+    StubModerationAdapter,
+    AiModerationAdapter,
     {
       provide: EMBEDDED_WALLET_PORT,
       inject: [ConfigService, StubWalletAdapter, PrivyWalletAdapter],
@@ -77,6 +83,15 @@ import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter'
       // 'claude' AI adapter lands at Phase 1; stub (deterministic) is the Phase 0 path.
       useFactory: (stub: StubQualityScorerAdapter) => stub,
     },
+    {
+      provide: MODERATION_CLASSIFIER_PORT,
+      inject: [ConfigService, StubModerationAdapter, AiModerationAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        stub: StubModerationAdapter,
+        ai: AiModerationAdapter,
+      ) => (config.get('MODERATION_PROVIDER', { infer: true }) === 'ai' ? ai : stub),
+    },
   ],
   exports: [
     EMBEDDED_WALLET_PORT,
@@ -84,6 +99,7 @@ import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter'
     KYC_PROVIDER_PORT,
     NOTIFICATION_PORT,
     QUALITY_SCORER_PORT,
+    MODERATION_CLASSIFIER_PORT,
   ],
 })
 export class PortsModule {}
