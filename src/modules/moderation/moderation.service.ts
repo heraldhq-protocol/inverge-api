@@ -6,6 +6,10 @@ import {
   ModeratableContent,
   ModerationClassifierPort,
 } from '../../ports/moderation/moderation.port';
+import {
+  DUPLICATE_DETECTOR_PORT,
+  DuplicateDetectorPort,
+} from '../../ports/dedup/dedup.port';
 import { buildBrief, buildReasons, route } from './moderation-routing';
 
 export interface ScreenOptions {
@@ -23,6 +27,7 @@ export class ModerationService {
 
   constructor(
     @Inject(MODERATION_CLASSIFIER_PORT) private readonly classifier: ModerationClassifierPort,
+    @Inject(DUPLICATE_DETECTOR_PORT) private readonly detector: DuplicateDetectorPort,
     private readonly prisma: PrismaService,
     private readonly params: PlatformParamsService,
   ) {}
@@ -36,13 +41,28 @@ export class ModerationService {
 
     // L2 — classification (off-chain flags only).
     const result = await this.classifier.classify(content);
-    const flaggedCodes = result.categories
-      .filter((c) => c.riskScore >= threshold)
-      .map((c) => c.code);
+    const categories = [...result.categories];
+
+    // Near-duplicate detection (FR-1003): a substantially similar existing idea becomes a
+    // POL-FRD finding, so the harness holds it for review.
+    const dedupThreshold = await this.params.getNumber('moderation.dedupThreshold', 0.8);
+    const [match] = await this.detector.findSimilar({ text: content.text, excludeIdeaId: opts.ideaId });
+    if (match && match.similarity >= dedupThreshold) {
+      categories.push({
+        code: 'POL-FRD',
+        riskScore: match.similarity,
+        excerpt: `Similar to "${match.title}" (${match.ideaId})`,
+        draftReason:
+          'This idea appears to substantially duplicate an existing one. Make it distinct or explain how it differs.',
+      });
+    }
+
+    const maxRisk = categories.reduce((m, c) => Math.max(m, c.riskScore), 0);
+    const flaggedCodes = categories.filter((c) => c.riskScore >= threshold).map((c) => c.code);
 
     const routing = route(l1Passed, l1FailureCodes, flaggedCodes);
-    const { internalReason, externalReason } = buildReasons(l1FailureCodes, result.categories, flaggedCodes);
-    const brief = buildBrief(content.kind, l1Passed, l1FailureCodes, result.categories, routing.decision);
+    const { internalReason, externalReason } = buildReasons(l1FailureCodes, categories, flaggedCodes);
+    const brief = buildBrief(content.kind, l1Passed, l1FailureCodes, categories, routing.decision);
 
     return this.prisma.moderationCase.create({
       data: {
@@ -50,8 +70,8 @@ export class ModerationService {
         ideaId: opts.ideaId ?? null,
         submittedById: opts.submittedById ?? null,
         decision: routing.decision,
-        maxRisk: result.maxRisk,
-        categories: result.categories as object,
+        maxRisk: Math.round(maxRisk * 1e4) / 1e4,
+        categories: categories as object,
         reasonCodes: routing.reasonCodes,
         internalReason,
         externalReason,
