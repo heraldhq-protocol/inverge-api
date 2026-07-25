@@ -16,6 +16,7 @@ import { SyncModule } from './modules/sync/sync.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
+import { SurveyModule } from './modules/survey/survey.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
     NotificationsModule,
     AdminModule,
     ModerationModule,
+    SurveyModule,
   ],
 })
 export class AppModule {}
