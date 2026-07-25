@@ -5,8 +5,7 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testRegex: '.*\\.spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
-  // isolatedModules: faster, and avoids typechecking the large generated Prisma client.
   transform: {
-    '^.+\\.ts$': ['ts-jest', { isolatedModules: true }],
+    '^.+\\.ts$': 'ts-jest',
   },
 };

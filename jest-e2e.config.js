@@ -6,7 +6,7 @@ module.exports = {
   testRegex: '.e2e-spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', { isolatedModules: true }],
+    '^.+\\.ts$': 'ts-jest',
   },
   testTimeout: 30000,
 };

@@ -15,6 +15,7 @@ export class SnapshotScheduler implements OnModuleInit {
     // Best-effort: a Redis outage must never crash or hang boot (the idea-validation
     // flow runs without Redis). Time-box the enqueue and swallow failures — the job
     // re-schedules on the next boot once Redis is reachable.
+    let timer: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
         this.queue.add(
@@ -27,9 +28,9 @@ export class SnapshotScheduler implements OnModuleInit {
             removeOnFail: 100,
           },
         ),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('enqueue timed out')), 3000),
-        ),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('enqueue timed out')), 3000);
+        }),
       ]);
       this.logger.log('Scheduled daily idea metric snapshot (03:00)');
     } catch (e) {
@@ -37,6 +38,8 @@ export class SnapshotScheduler implements OnModuleInit {
         `Daily snapshot not scheduled (Redis unavailable: ${(e as Error).message}); ` +
           'will schedule on next boot with Redis reachable.',
       );
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 }
