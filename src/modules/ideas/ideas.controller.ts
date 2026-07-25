@@ -64,6 +64,11 @@ export class IdeasController {
     return this.ideas.get(id);
   }
 
+  @Get(':id/quality')
+  quality(@Param('id') id: string) {
+    return this.ideas.getQuality(id);
+  }
+
   @Post(':id/support')
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard)

@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { QualityService } from '../quality/quality.service';
+import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { slugify } from '../../common/utils/slug.util';
 import {
   CreateIdeaDto,
@@ -20,22 +22,34 @@ export class IdeasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
+    private readonly quality: QualityService,
+    private readonly params: PlatformParamsService,
   ) {}
 
-  create(userId: string, dto: CreateIdeaDto) {
-    return this.prisma.idea.create({
+  // FR-201/270: create a structured-pitch DRAFT. FR-275: bounded by the per-creator
+  // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
+  async create(userId: string, dto: CreateIdeaDto) {
+    await this.assertUnderConcurrencyCap(userId);
+    const idea = await this.prisma.idea.create({
       data: {
         creatorId: userId,
         title: dto.title,
         slug: slugify(dto.title),
         problem: dto.problem,
         solution: dto.solution,
-        roadmap: dto.roadmap,
+        targetUser: dto.targetUser,
+        currentAlternative: dto.currentAlternative,
+        askBreakdown: dto.askBreakdown as object,
+        roadmapSteps: dto.roadmapSteps as object,
+        category: dto.category,
+        roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
         askAmount: dto.askAmount,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
         status: 'DRAFT',
       },
     });
+    await this.quality.evaluate(idea.id, false);
+    return this.get(idea.id);
   }
 
   async update(userId: string, id: string, dto: UpdateIdeaDto) {
@@ -43,7 +57,9 @@ export class IdeasService {
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Only draft ideas can be edited');
     }
-    return this.prisma.idea.update({ where: { id }, data: { ...dto } });
+    await this.prisma.idea.update({ where: { id }, data: { ...dto } as object });
+    await this.quality.evaluate(id, false); // FR-271: re-score on edit
+    return this.get(id);
   }
 
   async publish(userId: string, id: string) {
@@ -52,18 +68,30 @@ export class IdeasService {
       throw new BadRequestException('Idea is not in draft');
     }
     // FR-204a: stamp the start of the validation window at publish.
-    return this.prisma.idea.update({
+    await this.prisma.idea.update({
       where: { id },
       data: { status: 'VALIDATING', validatingSince: new Date() },
     });
+    // FR-272: score and set the discoverability tier (auto-promote if it clears the floor).
+    await this.quality.evaluate(id, true);
+    return this.get(id);
   }
 
-  // Public browse. Boosted ideas surface first in DISCOVERY ONLY (FR-206a); the
-  // validation metrics returned are the idea's own columns — boosts are not merged in.
+  // FR-271a: creator-facing coaching for their idea.
+  getQuality(id: string) {
+    return this.quality.latestReport(id);
+  }
+
+  // Public browse (FR-272/273). Only DISCOVERABLE/FEATURED ideas appear; LINK_ONLY are
+  // reachable by direct URL only. Ordering is behavioural + editorial — never paid:
+  // FEATURED first, then boosted (discovery-only promotion, FR-206a), then recency.
   async list(query: ListIdeasQueryDto) {
     const now = new Date();
     const ideas = await this.prisma.idea.findMany({
-      where: { status: { in: ['VALIDATING', 'THRESHOLD_MET'] } },
+      where: {
+        status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
+        discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
+      },
       include: {
         boosts: {
           where: {
@@ -82,7 +110,10 @@ export class IdeasService {
         promoted: boosts.length > 0,
         boostTier: boosts[0]?.tier ?? null,
       }))
-      .sort((a, b) => Number(b.promoted) - Number(a.promoted));
+      .sort((a, b) => {
+        const feat = Number(b.discoverabilityTier === 'FEATURED') - Number(a.discoverabilityTier === 'FEATURED');
+        return feat !== 0 ? feat : Number(b.promoted) - Number(a.promoted);
+      });
   }
 
   async get(id: string) {
@@ -180,5 +211,17 @@ export class IdeasService {
     if (!idea) throw new NotFoundException('Idea not found');
     if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
     return idea;
+  }
+
+  // FR-275: cap concurrent non-archived/non-converted ideas per creator (default 3) to
+  // prevent spray-and-pray. Admin-tunable via idea.maxActivePerCreator.
+  private async assertUnderConcurrencyCap(userId: string) {
+    const max = await this.params.getNumber('idea.maxActivePerCreator', 3);
+    const active = await this.prisma.idea.count({
+      where: { creatorId: userId, status: { notIn: ['ARCHIVED', 'CONVERTED'] } },
+    });
+    if (active >= max) {
+      throw new BadRequestException(`You can have at most ${max} active ideas at once`);
+    }
   }
 }

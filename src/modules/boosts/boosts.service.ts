@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FlatFeeService } from '../flat-fee/flat-fee.service';
@@ -24,9 +24,13 @@ export class BoostsService {
   async purchase(userId: string, ideaId: string, dto: PurchaseBoostDto) {
     const idea = await this.prisma.idea.findUnique({
       where: { id: ideaId },
-      select: { id: true },
+      select: { id: true, discoverabilityTier: true },
     });
     if (!idea) throw new NotFoundException('Idea not found');
+    // FR-274: paid visibility can never launder a low-effort page onto discovery surfaces.
+    if (idea.discoverabilityTier === 'LINK_ONLY') {
+      throw new BadRequestException('Idea must clear the quality floor before it can be boosted');
+    }
 
     const priceKey =
       dto.tier === 'FEATURED' ? 'boost.featured.priceUSD' : 'boost.basic.priceUSD';
