@@ -44,6 +44,16 @@ enum SignalType {
   PRE_PLEDGE
 }
 
+// FR-202/203: creator-built survey question types. RATING answers (1..5) feed the
+// idea's feedbackScore; the gate needs at least one RATING question per survey.
+enum SurveyQuestionType {
+  RATING
+  TEXT
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  BOOLEAN
+}
+
 // FR-208: verification tier of a pre-pledger, resolved live at recompute time.
 // Weight + per-account cap per tier live in PlatformParams (validation.pledgeTiers).
 enum VerificationTier {
@@ -135,7 +145,9 @@ model User {
   creatorProfile  CreatorProfile?
   ideas           Idea[]               @relation("IdeaCreator")
   signals         IdeaSignal[]
-  feedback        IdeaFeedback[]
+  surveyResponses SurveyResponse[]
+  comments        IdeaComment[]
+  commentLikes    CommentLike[]
   boostsPurchased IdeaBoost[]
   kycEvents       KycStatusEvent[]
   flatFeeCharges  FlatFeeCharge[]
@@ -219,6 +231,7 @@ model Idea {
   weightedPrePledgeTotal Decimal @default(0) @db.Decimal(14, 2)
   feedbackScore  Decimal @default(0) @db.Decimal(5, 2)
   feedbackCount  Int     @default(0)
+  commentCount   Int     @default(0) // engagement volume from the comments thread (FR-273)
 
   // FR-204: creator-declared expected pre-pledge minimum; the gate uses max(platform floor, this).
   creatorPrePledgeTarget Decimal? @db.Decimal(14, 2)
@@ -227,7 +240,9 @@ model Idea {
   windowRenewedAt        DateTime? // window is renewable once
 
   signals        IdeaSignal[]
-  feedback       IdeaFeedback[]
+  surveyQuestions SurveyQuestion[]
+  surveyResponses SurveyResponse[]
+  comments       IdeaComment[]
   boosts         IdeaBoost[]
   campaign       Campaign?
   metricSnapshots IdeaMetricSnapshot[]
@@ -308,19 +323,72 @@ model IdeaSignal {
   @@index([ideaId])
 }
 
-// FR-202 / FR-203: structured feedback, feeds feedbackScore.
-model IdeaFeedback {
+// FR-202/203: a creator-built survey question. Ordered per idea; choice types carry
+// their options. Editable while the survey is being built; responses reference by id.
+model SurveyQuestion {
+  id        String             @id @default(cuid())
+  ideaId    String
+  idea      Idea               @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  index     Int // display order
+  prompt    String
+  type      SurveyQuestionType
+  options   Json? // string[] for SINGLE_CHOICE / MULTI_CHOICE
+  required  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+
+  @@unique([ideaId, index])
+  @@index([ideaId])
+}
+
+// FR-202/203: one backer's survey submission (one per idea+user). `answers` is
+// [{ questionId, value }]; RATING values (1..5) drive feedbackScore, response count
+// drives feedbackCount. Recomputed server-side on write (no boost path touches it).
+model SurveyResponse {
   id        String   @id @default(cuid())
   ideaId    String
   idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rating    Int // 1..5
-  body      String?
+  answers   Json // [{ questionId, value }]
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([ideaId, userId])
   @@index([ideaId])
+}
+
+// Free-form comments thread on an idea (distinct from the structured survey). Comments
+// can be liked and replied to (self-relation); a creator can highlight standout comments.
+model IdeaComment {
+  id          String        @id @default(cuid())
+  ideaId      String
+  idea        Idea          @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body        String
+  highlighted Boolean       @default(false)
+  parentId    String? // reply target (null = top-level)
+  parent      IdeaComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     IdeaComment[] @relation("CommentReplies")
+  likes       CommentLike[]
+  likeCount   Int           @default(0)
+  createdAt   DateTime      @default(now())
+
+  @@index([ideaId, createdAt])
+  @@index([parentId])
+}
+
+// One like per (comment, user).
+model CommentLike {
+  id        String      @id @default(cuid())
+  commentId String
+  comment   IdeaComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+
+  @@unique([commentId, userId])
+  @@index([commentId])
 }
 
 // FR-206 / FR-206a: paid placement. Separate table from signals/feedback by design —
