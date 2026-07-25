@@ -2,7 +2,10 @@ import { ModerationService } from './moderation.service';
 import { AML_GENERIC_EXTERNAL } from './moderation-routing';
 import { CategoryFinding, POLICY_VERSION } from '../../ports/moderation/moderation.port';
 
-function setup(categories: CategoryFinding[], opts: { threshold?: number; provider?: string } = {}) {
+function setup(
+  categories: CategoryFinding[],
+  opts: { threshold?: number; provider?: string; dedupThreshold?: number; matches?: any[] } = {},
+) {
   const maxRisk = categories.reduce((m, c) => Math.max(m, c.riskScore), 0);
   const classifier = {
     classify: jest.fn().mockResolvedValue({
@@ -12,11 +15,17 @@ function setup(categories: CategoryFinding[], opts: { threshold?: number; provid
       provider: opts.provider ?? 'stub',
     }),
   } as any;
+  const detector = { findSimilar: jest.fn().mockResolvedValue(opts.matches ?? []) } as any;
   const prisma = {
     moderationCase: { create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'case1', ...data })) },
   } as any;
-  const params = { getNumber: jest.fn(async (_k: string, fb = 0) => opts.threshold ?? fb) } as any;
-  return { svc: new ModerationService(classifier, prisma, params), classifier, prisma };
+  // riskThreshold + dedupThreshold both read via getNumber(key, fallback).
+  const params = {
+    getNumber: jest.fn(async (k: string, fb = 0) =>
+      k === 'moderation.dedupThreshold' ? (opts.dedupThreshold ?? 0.8) : (opts.threshold ?? fb),
+    ),
+  } as any;
+  return { svc: new ModerationService(classifier, detector, prisma, params), classifier, detector, prisma };
 }
 
 const cat = (code: string, riskScore: number, draftReason = 'reframe'): CategoryFinding =>
@@ -70,6 +79,27 @@ describe('ModerationService.screen (harness)', () => {
   it('records the classifier provenance', async () => {
     const { svc } = setup([], { threshold: 0.5, provider: 'ai:deepseek-v4-pro' });
     expect((await svc.screen(content)).provider).toBe('ai:deepseek-v4-pro');
+  });
+
+  it('holds on a near-duplicate idea as POL-FRD (FR-1003 dedup)', async () => {
+    const { svc, detector } = setup([], {
+      threshold: 0.5, dedupThreshold: 0.8,
+      matches: [{ ideaId: 'other', title: 'Twin', similarity: 0.92 }],
+    });
+    const c = await svc.screen(content, { ideaId: 'idea1' });
+    expect(detector.findSimilar).toHaveBeenCalledWith(expect.objectContaining({ excludeIdeaId: 'idea1' }));
+    expect(c.decision).toBe('HELD_FOR_REVIEW');
+    expect(c.reasonCodes).toContain('POL-FRD');
+    expect(c.internalReason).toMatch(/Similar to "Twin"/);
+    expect(Number(c.maxRisk)).toBe(0.92);
+  });
+
+  it('ignores a similar idea below the dedup threshold', async () => {
+    const { svc } = setup([], {
+      threshold: 0.5, dedupThreshold: 0.8,
+      matches: [{ ideaId: 'other', title: 'Twin', similarity: 0.5 }],
+    });
+    expect((await svc.screen(content)).decision).toBe('AUTO_CLEAR');
   });
 });
 
