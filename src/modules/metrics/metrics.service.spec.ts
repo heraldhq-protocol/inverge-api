@@ -41,7 +41,13 @@ describe('MetricsService.recompute — weighted aggregation (FR-207)', () => {
           },
         ]),
       },
-      ideaFeedback: { aggregate: jest.fn().mockResolvedValue({ _avg: { rating: 4.5 }, _count: 2 }) },
+      surveyResponse: {
+        findMany: jest.fn().mockResolvedValue([
+          { answers: [{ questionId: 'q1', value: 4 }] },
+          { answers: [{ questionId: 'q1', value: 5 }] },
+        ]),
+      },
+      surveyQuestion: { findMany: jest.fn().mockResolvedValue([{ id: 'q1' }]) },
       idea: { update: jest.fn().mockImplementation(({ data }) => Promise.resolve(data)) },
     } as any;
 
@@ -52,8 +58,8 @@ describe('MetricsService.recompute — weighted aggregation (FR-207)', () => {
     expect(data.supporterCount).toBe(2);
     expect(data.prePledgeTotal).toBe(1_001_000); // raw sum untouched
     expect(data.weightedPrePledgeTotal).toBe(1025); // 1000 + 25 — the troll is capped
-    expect(data.feedbackScore).toBe(4.5);
-    expect(data.feedbackCount).toBe(2);
+    expect(data.feedbackScore).toBe(4.5); // mean of RATING answers (4,5)
+    expect(data.feedbackCount).toBe(2); // distinct responders
   });
 
   it('drops banned pledgers from the weighted figure (FR-216)', async () => {
@@ -65,7 +71,8 @@ describe('MetricsService.recompute — weighted aggregation (FR-207)', () => {
           { amount: 1000, amountUsd: 1000, user: { kycStatus: 'VERIFIED', oauthSubject: null, emailVerified: true, bannedAt: NOW, createdAt: OLD } },
         ]),
       },
-      ideaFeedback: { aggregate: jest.fn().mockResolvedValue({ _avg: { rating: null }, _count: 0 }) },
+      surveyResponse: { findMany: jest.fn().mockResolvedValue([]) },
+      surveyQuestion: { findMany: jest.fn().mockResolvedValue([]) },
       idea: { update: jest.fn().mockImplementation(({ data }) => Promise.resolve(data)) },
     } as any;
 
@@ -80,7 +87,8 @@ describe('MetricsService.recompute — weighted aggregation (FR-207)', () => {
   it('reads FR-206a-safe inputs only: never queries IdeaBoost', async () => {
     const tx = {
       ideaSignal: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-      ideaFeedback: { aggregate: jest.fn().mockResolvedValue({ _avg: { rating: null }, _count: 0 }) },
+      surveyResponse: { findMany: jest.fn().mockResolvedValue([]) },
+      surveyQuestion: { findMany: jest.fn().mockResolvedValue([]) },
       idea: { update: jest.fn().mockResolvedValue({}) },
       ideaBoost: { count: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     } as any;

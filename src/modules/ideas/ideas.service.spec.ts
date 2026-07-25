@@ -4,7 +4,6 @@ import { IdeasService } from './ideas.service';
 function txMock() {
   return {
     ideaSignal: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({}) },
-    ideaFeedback: { upsert: jest.fn().mockResolvedValue({}) },
   };
 }
 
@@ -18,6 +17,7 @@ function prismaMock(idea: any = null) {
       findUnique: jest.fn().mockResolvedValue(idea),
       count: jest.fn().mockResolvedValue(0),
     },
+    surveyQuestion: { createMany: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
   } as any;
 }
@@ -144,13 +144,12 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
     expect(m.recompute).toHaveBeenCalled();
   });
 
-  it('feedback upserts one-per-user rating then recomputes', async () => {
-    const { svc, p, m } = make({ id: 'idea1', status: 'VALIDATING' });
-    await svc.feedback('u2', 'idea1', { rating: 4, body: 'nice' } as any);
-    expect(p._tx.ideaFeedback.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { ideaId_userId: { ideaId: 'idea1', userId: 'u2' } }, create: expect.objectContaining({ rating: 4, body: 'nice' }) }),
-    );
-    expect(m.recompute).toHaveBeenCalled();
+  it('seeds a default survey on create (rating + open-text)', async () => {
+    const { svc, p } = make({ id: 'new-id', status: 'DRAFT' });
+    await svc.create('u1', validDto);
+    const data = p.surveyQuestion.createMany.mock.calls[0][0].data;
+    expect(data.some((q: any) => q.type === 'RATING')).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
   });
 
   it('404s a signal against a missing idea (never opens a transaction)', async () => {

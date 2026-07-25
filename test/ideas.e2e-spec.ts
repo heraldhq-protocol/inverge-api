@@ -77,7 +77,7 @@ describe('Ideas routes (e2e)', () => {
 
   // ─────────────── Security: auth guard on every mutating route ───────────────
   describe('auth guards', () => {
-    const mutating: [string, 'post' | 'patch' | 'delete', object][] = [
+    const mutating: [string, 'post' | 'put' | 'patch' | 'delete', object][] = [
       ['/ideas', 'post', validCreate],
       ['/ideas/x/publish', 'post', {}],
       ['/ideas/x', 'patch', { title: 't' }],
@@ -85,7 +85,10 @@ describe('Ideas routes (e2e)', () => {
       ['/ideas/x/support', 'delete', {}],
       ['/ideas/x/pre-pledge', 'post', { amount: 1 }],
       ['/ideas/x/pre-pledge', 'delete', {}],
-      ['/ideas/x/feedback', 'post', { rating: 3 }],
+      ['/ideas/x/survey', 'put', { questions: [] }],
+      ['/ideas/x/survey/responses', 'post', { answers: [{ questionId: 'q', value: 1 }] }],
+      ['/ideas/x/survey/responses', 'delete', {}],
+      ['/ideas/x/comments', 'post', { body: 'hi' }],
       ['/ideas/x/convert', 'post', convertBody],
       ['/ideas/x/boosts', 'post', { tier: 'BASIC' }],
     ];
@@ -123,10 +126,10 @@ describe('Ideas routes (e2e)', () => {
       ideaId = res.body.id;
     });
 
-    it('security: signals are rejected on an unpublished DRAFT (400)', async () => {
+    it('security: signals + survey responses are rejected on an unpublished DRAFT (400)', async () => {
       await http().post(`/ideas/${ideaId}/support`).set(auth(backerA)).expect(400);
       await http().post(`/ideas/${ideaId}/pre-pledge`).set(auth(backerA)).send({ amount: 100 }).expect(400);
-      await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerA)).send({ rating: 5 }).expect(400);
+      await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerA)).send({ answers: [{ questionId: 'x', value: 1 }] }).expect(400);
     });
 
     it('owner can edit a DRAFT', async () => {
@@ -209,20 +212,83 @@ describe('Ideas routes (e2e)', () => {
     });
   });
 
-  // ─────────────── Feedback (one per user, aggregation, range) ───────────────
-  describe('feedback', () => {
-    it('400 on out-of-range ratings', async () => {
-      await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerA)).send({ rating: 6 }).expect(400);
-      await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerA)).send({ rating: 0 }).expect(400);
+  // ─────────────── Survey (creator form + backer responses) ───────────────
+  describe('survey', () => {
+    let ratingQid: string;
+    const answer = (v: number) => ({ answers: [{ questionId: ratingQid, value: v }] });
+
+    it('exposes the default survey (RATING + open-text) seeded on create', async () => {
+      const res = await http().get(`/ideas/${ideaId}/survey`).expect(200);
+      expect(res.body.length).toBeGreaterThanOrEqual(2);
+      const rating = res.body.find((q: any) => q.type === 'RATING');
+      expect(rating).toBeDefined();
+      ratingQid = rating.id;
     });
-    it('aggregates average + count, one per user (upsert on revise)', async () => {
-      await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerA)).send({ rating: 4, body: 'good' }).expect(201);
-      let res = await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerB)).send({ rating: 2 }).expect(201);
+
+    it('400 on out-of-range / unknown-question answers', async () => {
+      await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerA)).send(answer(6)).expect(400);
+      await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerA)).send(answer(0)).expect(400);
+    });
+
+    it('aggregates RATING answers into feedbackScore/count, one response per user', async () => {
+      await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerA)).send(answer(4)).expect(201);
+      let res = await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerB)).send(answer(2)).expect(201);
       expect(res.body.feedbackCount).toBe(2);
       expect(Number(res.body.feedbackScore)).toBe(3); // (4+2)/2
-      res = await http().post(`/ideas/${ideaId}/feedback`).set(auth(backerA)).send({ rating: 5 }).expect(201);
-      expect(res.body.feedbackCount).toBe(2); // still one per user
+      res = await http().post(`/ideas/${ideaId}/survey/responses`).set(auth(backerA)).send(answer(5)).expect(201);
+      expect(res.body.feedbackCount).toBe(2); // still one per user (upsert)
       expect(Number(res.body.feedbackScore)).toBe(3.5); // (5+2)/2
+    });
+
+    it('rejects editing the survey after publish (draft-only)', async () => {
+      await http().put(`/ideas/${ideaId}/survey`).set(auth(creator))
+        .send({ questions: [{ index: 0, prompt: 'Rate', type: 'RATING' }] }).expect(400);
+    });
+  });
+
+  // ─────────────── Comments (thread + replies + likes + count metric) ───────────────
+  describe('comments', () => {
+    let commentId: string;
+    let replyId: string;
+    const commentCount = async () => Number((await http().get(`/ideas/${ideaId}`).expect(200)).body.commentCount);
+
+    it('a backer posts a comment and a reply; both appear in the thread', async () => {
+      const c = await http().post(`/ideas/${ideaId}/comments`).set(auth(backerA)).send({ body: 'Love this — how do you handle drone regs?' }).expect(201);
+      commentId = c.body.id;
+      const r = await http().post(`/ideas/${ideaId}/comments`).set(auth(backerB)).send({ body: 'Per-state licensing, phased.', parentId: commentId }).expect(201);
+      replyId = r.body.id;
+      expect(r.body.parentId).toBe(commentId);
+      const list = await http().get(`/ideas/${ideaId}/comments`).expect(200);
+      expect(list.body.map((x: any) => x.id)).toEqual(expect.arrayContaining([commentId, replyId]));
+    });
+
+    it('404s a reply to a comment on another idea / missing parent', async () => {
+      await http().post(`/ideas/${ideaId}/comments`).set(auth(backerA)).send({ body: 'x', parentId: 'nope' }).expect(404);
+    });
+
+    it('likes are one-per-user and reflected in likeCount', async () => {
+      let res = await http().post(`/ideas/${ideaId}/comments/${commentId}/like`).set(auth(backerB)).expect(201);
+      expect(res.body.likeCount).toBe(1);
+      res = await http().post(`/ideas/${ideaId}/comments/${commentId}/like`).set(auth(backerB)).expect(201); // idempotent
+      expect(res.body.likeCount).toBe(1);
+      res = await http().delete(`/ideas/${ideaId}/comments/${commentId}/like`).set(auth(backerB)).expect(200);
+      expect(res.body.likeCount).toBe(0);
+    });
+
+    it('feeds the idea commentCount metric (comment + reply = 2)', async () => {
+      expect(await commentCount()).toBe(2);
+    });
+
+    it('only the idea creator can highlight a comment', async () => {
+      await http().patch(`/ideas/${ideaId}/comments/${commentId}/highlight`).set(auth(backerB)).send({ highlighted: true }).expect(403);
+      const res = await http().patch(`/ideas/${ideaId}/comments/${commentId}/highlight`).set(auth(creator)).send({ highlighted: true }).expect(200);
+      expect(res.body.highlighted).toBe(true);
+    });
+
+    it('deleting a comment cascades its replies and updates commentCount', async () => {
+      await http().delete(`/ideas/${ideaId}/comments/${commentId}`).set(auth(backerB)).expect(403); // not author/creator
+      await http().delete(`/ideas/${ideaId}/comments/${commentId}`).set(auth(backerA)).expect(200); // author
+      expect(await commentCount()).toBe(0); // reply cascaded
     });
   });
 
