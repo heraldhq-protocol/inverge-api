@@ -23,12 +23,13 @@ function prismaMock(idea: any = null) {
 }
 const metricsMock = () => ({ recompute: jest.fn().mockResolvedValue({}), normalizeToUsd: jest.fn().mockResolvedValue(100) }) as any;
 const qualityMock = () => ({ evaluate: jest.fn().mockResolvedValue({ tier: 'DISCOVERABLE' }), latestReport: jest.fn().mockResolvedValue({ id: 'r1' }) }) as any;
+const moderationMock = () => ({ screenSafe: jest.fn().mockResolvedValue(null), screen: jest.fn() }) as any;
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
 
 function make(idea: any = null, params = paramsMock()) {
-  const p = prismaMock(idea), m = metricsMock(), q = qualityMock();
-  return { svc: new IdeasService(p, m, q, params), p, m, q };
+  const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
+  return { svc: new IdeasService(p, m, q, mod, params), p, m, q, mod };
 }
 
 const validDto = {
@@ -82,13 +83,14 @@ describe('IdeasService.update — draft + ownership guards', () => {
 });
 
 describe('IdeasService.publish (FR-204a + FR-272)', () => {
-  it('moves DRAFT → VALIDATING, stamps validatingSince, applies the tier', async () => {
-    const { svc, p, q } = make({ id: 'idea1', creatorId: 'u1', status: 'DRAFT' });
+  it('moves DRAFT → VALIDATING, stamps validatingSince, applies the tier, screens on publish', async () => {
+    const { svc, p, q, mod } = make({ id: 'idea1', creatorId: 'u1', status: 'DRAFT' });
     await svc.publish('u1', 'idea1');
     const data = p.idea.update.mock.calls[0][0].data;
     expect(data.status).toBe('VALIDATING');
     expect(data.validatingSince).toBeInstanceOf(Date);
     expect(q.evaluate).toHaveBeenCalledWith('idea1', true); // sets discoverability tier
+    expect(mod.screenSafe).toHaveBeenCalled(); // FR-1004 non-blocking moderation screen
   });
   it('rejects publishing a non-draft idea', async () => {
     const { svc } = make({ id: 'idea1', creatorId: 'u1', status: 'VALIDATING' });
