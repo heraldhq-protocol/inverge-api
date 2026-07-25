@@ -82,11 +82,24 @@ export class MetricsService {
     const rawTotal = round2(pledges.reduce((a, p) => a + (p.amountUsd || 0), 0));
     const weighted = weightedTotal(pledges, wp, now);
 
-    const fb = await tx.ideaFeedback.aggregate({
-      where: { ideaId },
-      _avg: { rating: true },
-      _count: true,
-    });
+    // Feedback now comes from survey responses: feedbackCount = distinct responders,
+    // feedbackScore = mean of all RATING answers (1..5) across responses.
+    const [responses, ratingQuestions] = await Promise.all([
+      tx.surveyResponse.findMany({ where: { ideaId }, select: { answers: true } }),
+      tx.surveyQuestion.findMany({ where: { ideaId, type: 'RATING' }, select: { id: true } }),
+    ]);
+    const ratingIds = new Set(ratingQuestions.map((q) => q.id));
+    let ratingSum = 0;
+    let ratingCount = 0;
+    for (const r of responses) {
+      const answers = Array.isArray(r.answers) ? (r.answers as { questionId: string; value: unknown }[]) : [];
+      for (const a of answers) {
+        if (a && ratingIds.has(a.questionId) && typeof a.value === 'number') {
+          ratingSum += a.value;
+          ratingCount += 1;
+        }
+      }
+    }
 
     return tx.idea.update({
       where: { id: ideaId },
@@ -94,8 +107,8 @@ export class MetricsService {
         supporterCount,
         prePledgeTotal: rawTotal,
         weightedPrePledgeTotal: weighted,
-        feedbackScore: fb._avg.rating ?? 0,
-        feedbackCount: fb._count,
+        feedbackScore: ratingCount ? round2(ratingSum / ratingCount) : 0,
+        feedbackCount: responses.length,
       },
     });
   }

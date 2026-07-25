@@ -17,7 +17,6 @@ import {
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import {
   CreateIdeaDto,
-  FeedbackDto,
   ListIdeasQueryDto,
   PrePledgeDto,
   UpdateIdeaDto,
@@ -102,16 +101,5 @@ export class IdeasController {
     @Param('id') id: string,
   ) {
     return this.ideas.withdrawPrePledge(user.id, id);
-  }
-
-  @Post(':id/feedback')
-  @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
-  feedback(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body() dto: FeedbackDto,
-  ) {
-    return this.ideas.feedback(user.id, id, dto);
   }
 }

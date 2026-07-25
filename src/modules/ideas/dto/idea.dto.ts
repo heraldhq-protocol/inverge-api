@@ -87,20 +87,6 @@ export class PrePledgeDto {
   currency?: (typeof PLEDGE_CURRENCIES)[number];
 }
 
-export class FeedbackDto {
-  @ApiProperty({ minimum: 1, maximum: 5 })
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  rating!: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  body?: string;
-}
-
 export class ListIdeasQueryDto {
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()

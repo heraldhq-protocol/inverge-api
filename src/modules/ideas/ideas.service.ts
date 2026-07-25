@@ -10,9 +10,9 @@ import { QualityService } from '../quality/quality.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { slugify } from '../../common/utils/slug.util';
+import { DEFAULT_SURVEY } from '../survey/survey-validation';
 import {
   CreateIdeaDto,
-  FeedbackDto,
   ListIdeasQueryDto,
   PrePledgeDto,
   UpdateIdeaDto,
@@ -49,6 +49,16 @@ export class IdeasService {
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
         status: 'DRAFT',
       },
+    });
+    // FR-202/203: seed a default survey (rating + open-text) the creator can customise.
+    await this.prisma.surveyQuestion.createMany({
+      data: DEFAULT_SURVEY.map((q) => ({
+        ideaId: idea.id,
+        index: q.index,
+        prompt: q.prompt,
+        type: q.type,
+        required: q.required ?? true,
+      })),
     });
     await this.quality.evaluate(idea.id, false);
     return this.get(idea.id);
@@ -188,19 +198,6 @@ export class IdeasService {
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'PRE_PLEDGE' },
-      });
-      return this.metrics.recompute(tx, id);
-    });
-  }
-
-  // FR-202/203: structured feedback, one per user.
-  async feedback(userId: string, id: string, dto: FeedbackDto) {
-    await this.assertSignalable(id);
-    return this.prisma.$transaction(async (tx) => {
-      await tx.ideaFeedback.upsert({
-        where: { ideaId_userId: { ideaId: id, userId } },
-        update: { rating: dto.rating, body: dto.body },
-        create: { ideaId: id, userId, rating: dto.rating, body: dto.body },
       });
       return this.metrics.recompute(tx, id);
     });
