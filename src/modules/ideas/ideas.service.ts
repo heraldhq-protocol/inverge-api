@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { QualityService } from '../quality/quality.service';
+import { ModerationService } from '../moderation/moderation.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { slugify } from '../../common/utils/slug.util';
 import {
@@ -23,6 +24,7 @@ export class IdeasService {
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
     private readonly quality: QualityService,
+    private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
   ) {}
 
@@ -74,7 +76,19 @@ export class IdeasService {
     });
     // FR-272: score and set the discoverability tier (auto-promote if it clears the floor).
     await this.quality.evaluate(id, true);
-    return this.get(id);
+    const fresh = await this.get(id);
+    // FR-1004: screen on publish — advisory + non-blocking (records a ModerationCase).
+    await this.moderation.screenSafe(
+      {
+        kind: 'idea',
+        title: fresh.title,
+        text: [fresh.problem, fresh.solution, fresh.targetUser, fresh.currentAlternative, fresh.roadmap]
+          .filter(Boolean)
+          .join('\n'),
+      },
+      { ideaId: id, submittedById: userId },
+    );
+    return fresh;
   }
 
   // FR-271a: creator-facing coaching for their idea.
