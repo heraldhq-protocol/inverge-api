@@ -23,16 +23,19 @@ export function isFundsEligible(u: UserVerification): boolean {
   return u.kycStatus === 'VERIFIED' && u.amlStatus === 'CLEAR';
 }
 
+// The single KYC blocker line (null ⇒ identity is verified).
+function kycReason(u: UserVerification): string | null {
+  if (u.kycStatus === 'VERIFIED') return null;
+  return u.kycStatus === 'REJECTED'
+    ? 'Identity verification was declined'
+    : 'Identity verification (KYC) is required';
+}
+
 // Human-readable list of what still blocks funds-eligibility (empty ⇒ eligible).
 export function fundsEligibilityReasons(u: UserVerification): string[] {
   const reasons: string[] = [];
-  if (u.kycStatus !== 'VERIFIED') {
-    reasons.push(
-      u.kycStatus === 'REJECTED'
-        ? 'Identity verification was declined'
-        : 'Identity verification (KYC) is required',
-    );
-  }
+  const kyc = kycReason(u);
+  if (kyc) reasons.push(kyc);
   if (u.amlStatus === 'FLAGGED') reasons.push('AML screening flagged this account');
   else if (u.amlStatus === 'IN_REVIEW') reasons.push('AML screening is under review');
   else if (u.amlStatus === 'NOT_SCREENED') reasons.push('AML screening is required');
@@ -46,7 +49,8 @@ export function purposeEligible(purpose: KycPurpose, u: UserVerification): boole
 
 export function purposeReasons(purpose: KycPurpose, u: UserVerification): string[] {
   if (purposeRequiresAml(purpose)) return fundsEligibilityReasons(u);
-  return isIdentityVerified(u) ? [] : ['Identity verification (KYC) is required'];
+  const kyc = kycReason(u);
+  return kyc ? [kyc] : [];
 }
 
 // FR-104: a backer may fund without KYC until their cumulative funding would exceed the

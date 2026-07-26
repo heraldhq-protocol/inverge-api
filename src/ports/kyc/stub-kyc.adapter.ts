@@ -22,6 +22,10 @@ import {
 //     without a provider (mirrors the deterministic moderation stub).
 @Injectable()
 export class StubKycAdapter implements KycProviderPort {
+  // Remembers the outcome a session was "completed" with (via dev-complete → parseWebhook) so
+  // getDecision can echo it authoritatively — the stub is a faithful in-process simulator.
+  private readonly completed = new Map<string, { status: KycOutcome; aml: AmlOutcome | null }>();
+
   async startVerification(
     params: StartVerificationParams,
   ): Promise<StartVerificationResult> {
@@ -34,11 +38,16 @@ export class StubKycAdapter implements KycProviderPort {
 
   async getDecision(providerRef: string): Promise<KycDecision> {
     const runsAml = refRequiresAml(providerRef);
+    const done = this.completed.get(providerRef);
+    const status: KycOutcome = done?.status ?? 'VERIFIED';
+    // AML only applies to a passing identity result on an AML workflow.
+    const aml: AmlOutcome | null =
+      status === 'VERIFIED' && runsAml ? (done?.aml ?? 'CLEAR') : null;
     return {
       providerRef,
-      status: 'VERIFIED',
-      aml: runsAml ? 'CLEAR' : null,
-      amlSummary: runsAml ? { totalHits: 0, topRiskScore: 0, datasets: [] } : null,
+      status,
+      aml,
+      amlSummary: aml ? { totalHits: aml === 'CLEAR' ? 0 : 1, topRiskScore: aml === 'CLEAR' ? 0 : 100, datasets: aml === 'CLEAR' ? [] : ['Sanctions'] } : null,
       raw: { stub: true, providerRef },
     };
   }
@@ -52,11 +61,14 @@ export class StubKycAdapter implements KycProviderPort {
     }
     const providerRef = evt?.providerRef ?? evt?.session_id;
     if (!providerRef) return null;
+    const status = normalizeStubStatus(evt?.status);
+    const aml = normalizeStubAml(evt?.aml);
+    this.completed.set(providerRef, { status, aml });
     return {
       providerRef,
       vendorData: evt?.vendor_data ?? evt?.vendorData ?? null,
-      status: normalizeStubStatus(evt?.status),
-      aml: normalizeStubAml(evt?.aml),
+      status,
+      aml,
     };
   }
 

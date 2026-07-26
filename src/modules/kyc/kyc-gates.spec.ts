@@ -54,6 +54,9 @@ describe('purposeEligible', () => {
     expect(purposeReasons('IDEA_VALIDATION', V('PENDING'))).toEqual([
       'Identity verification (KYC) is required',
     ]);
+    expect(purposeReasons('IDEA_VALIDATION', V('REJECTED'))).toEqual([
+      'Identity verification was declined',
+    ]);
   });
 });
 
