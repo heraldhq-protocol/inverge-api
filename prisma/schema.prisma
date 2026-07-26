@@ -170,6 +170,7 @@ model User {
 
   wallets         WalletAccount[]
   creatorProfile  CreatorProfile?
+  business        BusinessProfile?
   ideas           Idea[]               @relation("IdeaCreator")
   signals         IdeaSignal[]
   surveyResponses SurveyResponse[]
@@ -208,9 +209,11 @@ model KycStatusEvent {
   fromStatus  KycStatus
   toStatus    KycStatus
   providerRef String?
+  businessId  String? // set when the transition is a business (KYB) verification, not personal
   createdAt   DateTime  @default(now())
 
   @@index([userId])
+  @@index([businessId])
 }
 
 // AML screening record (NFR-19: retained 5 years, never hard-deleted by app logic). Stores
@@ -218,8 +221,9 @@ model KycStatusEvent {
 // PEP/sanction/adverse-media detail). Not raw KYC documents (NFR-12) — screening evidence.
 model AmlScreening {
   id           String             @id @default(cuid())
-  userId       String
+  userId       String // owner (the account that initiated / owns the screened entity)
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId   String? // set for a business (KYB / company) screening; null for individuals
   source       AmlScreeningSource
   status       AmlStatus
   providerRef  String? // Didit request_id / session_id for cross-reference
@@ -230,7 +234,29 @@ model AmlScreening {
   createdAt    DateTime           @default(now())
 
   @@index([userId])
+  @@index([businessId])
   @@index([createdAt])
+}
+
+// A business/organisation a user registers to run (or back) campaigns as. Verified via
+// Didit KYB (registry + documents + directors/UBOs + AML) — one per account. A user is
+// funds-eligible as a business on kybStatus VERIFIED + amlStatus CLEAR, independent of any
+// personal KYC. Raw KYB detail is never stored here (NFR-12) — only refs + status.
+model BusinessProfile {
+  id                 String    @id @default(cuid())
+  userId             String    @unique // 1:1 owner / representative account
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legalName          String
+  registrationNumber String? // company / registration number
+  country            String? // ISO country of registration
+  kybStatus          KycStatus @default(NOT_REQUIRED) // reuses the KYC status vocabulary
+  amlStatus          AmlStatus @default(NOT_SCREENED) // business AML (sanctions/PEP/adverse media)
+  amlScreenedAt      DateTime?
+  kybProviderRef     String? // Didit KYB session id
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([kybProviderRef])
 }
 
 // FR-306 family — Phase 3 logic, schema present now.
