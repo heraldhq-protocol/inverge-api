@@ -12,7 +12,7 @@ export const envSchema = z.object({
 
   WALLET_PROVIDER: z.enum(['stub', 'privy']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
-  KYC_PROVIDER: z.enum(['stub', 'smile']).default('stub'),
+  KYC_PROVIDER: z.enum(['stub', 'didit']).default('stub'),
   NOTIFICATION_PROVIDER: z.enum(['stub', 'herald']).default('stub'),
   // Idea quality scorer (FR-271). "stub" = deterministic completeness checks only;
   // "claude" adds AI checks (thin-content/plagiarism/coherence) — Phase 1.
@@ -34,8 +34,15 @@ export const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
 
-  SMILE_PARTNER_ID: z.string().optional(),
-  SMILE_API_KEY: z.string().optional(),
+  // Didit KYC/AML (KYC_PROVIDER=didit, FR-103–105). Two workflows: a plain KYC one for
+  // idea-validation identity (grants the VERIFIED pre-pledge tier) and a KYC+AML one for
+  // funds handlers (creators / threshold backers). Keys/secret live in .env only.
+  DIDIT_API_KEY: z.string().optional(),
+  DIDIT_BASE_URL: z.string().default('https://verification.didit.me/v3'),
+  DIDIT_KYC_WORKFLOW_ID: z.string().optional(), // identity only (no AML)
+  DIDIT_KYC_AML_WORKFLOW_ID: z.string().optional(), // identity + AML screening
+  DIDIT_WEBHOOK_SECRET: z.string().optional(), // secret_shared_key for HMAC verification
+  DIDIT_CALLBACK_URL: z.string().optional(), // where the user returns after verifying
 
   HERALD_GATEWAY_URL: z.string().optional(),
   HERALD_API_KEY: z.string().optional(),
