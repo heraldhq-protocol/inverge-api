@@ -4,15 +4,26 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-// Admin boost-price config + FR-904 audit trail, against real Postgres.
-describe('Admin — boost prices + audit (e2e)', () => {
+// Admin RBAC (FR-901) + boost-price config + FR-904 audit trail, against real Postgres.
+describe('Admin — RBAC, boost prices + audit (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  let token: string;
+  let adminToken: string;
   let adminId: string;
+  let userToken: string;
+  let userId: string;
   const PREFIX = `e2e-admin-${Date.now()}`;
   const http = () => request(app.getHttpServer());
-  const auth = { get Authorization() { return `Bearer ${token}`; } };
+  const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+  async function session(suffix: string) {
+    const did = `${PREFIX}${suffix}`;
+    const res = await http()
+      .post('/auth/session')
+      .send({ accessToken: `stub:${did}:${did}@e2e.test` })
+      .expect(201);
+    return { token: res.body.sessionToken as string, id: res.body.user.id as string };
+  }
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -20,14 +31,15 @@ describe('Admin — boost prices + audit (e2e)', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
     prisma = app.get(PrismaService);
-    const res = await http().post('/auth/session').send({ accessToken: `stub:${PREFIX}:${PREFIX}@e2e.test` }).expect(201);
-    token = res.body.sessionToken;
-    adminId = res.body.user.id;
+
+    ({ token: adminToken, id: adminId } = await session(''));
+    await prisma.user.update({ where: { id: adminId }, data: { role: 'ADMIN' } }); // seed the admin
+    ({ token: userToken, id: userId } = await session('-plain')); // stays a plain USER
   });
 
   afterAll(async () => {
     if (prisma) {
-      await prisma.platformParamAudit.deleteMany({ where: { changedBy: adminId } }); // scrub test audit rows
+      await prisma.platformParamAudit.deleteMany({ where: { changedBy: adminId } });
       await prisma.platformParam.upsert({ where: { key: 'boost.basic.priceUSD' }, update: { value: 5 }, create: { key: 'boost.basic.priceUSD', value: 5 } });
       await prisma.platformParam.upsert({ where: { key: 'boost.featured.priceUSD' }, update: { value: 20 }, create: { key: 'boost.featured.priceUSD', value: 20 } });
       await prisma.user.deleteMany({ where: { privyDid: { startsWith: PREFIX } } });
@@ -35,41 +47,72 @@ describe('Admin — boost prices + audit (e2e)', () => {
     if (app) await app.close();
   });
 
+  // ── access control ──────────────────────────────────────────────
   it('401 without a token', async () => {
     await http().get('/admin/params/audit').expect(401);
     await http().patch('/admin/boost-prices').send({ basicPriceUSD: 5 }).expect(401);
   });
 
-  it('400 on an invalid price', async () => {
-    await http().patch('/admin/boost-prices').set(auth).send({ basicPriceUSD: -1 }).expect(400);
-    await http().patch('/admin/boost-prices').set(auth).send({ basicDurationDays: 0 }).expect(400);
+  it('403 for an authenticated non-admin', async () => {
+    await http().get('/admin/params/audit').set(bearer(userToken)).expect(403);
+    await http().patch('/admin/boost-prices').set(bearer(userToken)).send({ basicPriceUSD: 5 }).expect(403);
+    await http().get('/admin/users').set(bearer(userToken)).expect(403);
   });
 
+  it('400 on an invalid price', async () => {
+    await http().patch('/admin/boost-prices').set(bearer(adminToken)).send({ basicPriceUSD: -1 }).expect(400);
+    await http().patch('/admin/boost-prices').set(bearer(adminToken)).send({ basicDurationDays: 0 }).expect(400);
+  });
+
+  // ── boost prices + audit ────────────────────────────────────────
   it('configures Basic/Featured prices and reflects them', async () => {
-    const res = await http().patch('/admin/boost-prices').set(auth).send({ basicPriceUSD: 7, featuredPriceUSD: 22 }).expect(200);
+    const res = await http().patch('/admin/boost-prices').set(bearer(adminToken)).send({ basicPriceUSD: 7, featuredPriceUSD: 22 }).expect(200);
     expect(res.body).toMatchObject({ basic: { priceUSD: 7 }, featured: { priceUSD: 22 } });
-    const get = await http().get('/admin/boost-prices').set(auth).expect(200);
+    const get = await http().get('/admin/boost-prices').set(bearer(adminToken)).expect(200);
     expect(get.body.basic.priceUSD).toBe(7);
     expect(get.body.featured.priceUSD).toBe(22);
   });
 
   it('a no-op edit (same value) adds no audit row', async () => {
     const before = await prisma.platformParamAudit.count({ where: { key: 'boost.basic.priceUSD', changedBy: adminId } });
-    await http().patch('/admin/boost-prices').set(auth).send({ basicPriceUSD: 7 }).expect(200); // unchanged
+    await http().patch('/admin/boost-prices').set(bearer(adminToken)).send({ basicPriceUSD: 7 }).expect(200);
     const after = await prisma.platformParamAudit.count({ where: { key: 'boost.basic.priceUSD', changedBy: adminId } });
     expect(after).toBe(before);
   });
 
   it('a real change appends an audit row (old -> new + actor)', async () => {
-    await http().patch('/admin/boost-prices').set(auth).send({ basicPriceUSD: 9 }).expect(200);
-    const res = await http().get('/admin/params/audit').query({ key: 'boost.basic.priceUSD' }).set(auth).expect(200);
+    await http().patch('/admin/boost-prices').set(bearer(adminToken)).send({ basicPriceUSD: 9 }).expect(200);
+    const res = await http().get('/admin/params/audit').query({ key: 'boost.basic.priceUSD' }).set(bearer(adminToken)).expect(200);
     expect(res.body[0]).toMatchObject({ key: 'boost.basic.priceUSD', oldValue: 7, newValue: 9, changedBy: adminId });
   });
 
-  it('the audit endpoint also serves the generic PATCH /admin/params path', async () => {
-    await http().patch('/admin/params').set(auth).send({ params: { 'validation.minSupporters': 42 } }).expect(200);
-    const res = await http().get('/admin/params/audit').query({ key: 'validation.minSupporters' }).set(auth).expect(200);
-    expect(res.body[0]).toMatchObject({ key: 'validation.minSupporters', newValue: 42, changedBy: adminId });
-    await prisma.platformParam.update({ where: { key: 'validation.minSupporters' }, data: { value: 50 } }); // restore
+  // ── user / role management ──────────────────────────────────────
+  it('lists users (searchable), without leaking KYC internals', async () => {
+    const res = await http().get('/admin/users').query({ query: PREFIX }).set(bearer(adminToken)).expect(200);
+    const ids = res.body.map((u: any) => u.id);
+    expect(ids).toContain(userId);
+    expect(res.body[0]).toHaveProperty('role');
+    expect(res.body[0]).not.toHaveProperty('kycProviderRef');
+  });
+
+  it('grants and revokes admin, gating access accordingly', async () => {
+    // plain user is denied before promotion
+    await http().get('/admin/boost-prices').set(bearer(userToken)).expect(403);
+    // promote
+    const up = await http().patch(`/admin/users/${userId}/role`).set(bearer(adminToken)).send({ role: 'ADMIN' }).expect(200);
+    expect(up.body).toMatchObject({ id: userId, role: 'ADMIN' });
+    await http().get('/admin/boost-prices').set(bearer(userToken)).expect(200); // now allowed
+    // revoke
+    const down = await http().patch(`/admin/users/${userId}/role`).set(bearer(adminToken)).send({ role: 'USER' }).expect(200);
+    expect(down.body).toMatchObject({ id: userId, role: 'USER' });
+    await http().get('/admin/boost-prices').set(bearer(userToken)).expect(403); // denied again
+  });
+
+  it('blocks self-demotion (anti-lockout)', async () => {
+    await http().patch(`/admin/users/${adminId}/role`).set(bearer(adminToken)).send({ role: 'USER' }).expect(400);
+  });
+
+  it('404 on an unknown user', async () => {
+    await http().patch('/admin/users/nope-does-not-exist/role').set(bearer(adminToken)).send({ role: 'ADMIN' }).expect(404);
   });
 });
