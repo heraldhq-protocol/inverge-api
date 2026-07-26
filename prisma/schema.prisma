@@ -79,6 +79,13 @@ enum WalletRole {
   PAYOUT
 }
 
+// FR-901: platform access tier. ADMIN unlocks the /admin surface (param + boost-price
+// config, audit log, user management). Bootstrapped via ADMIN_ALLOWLIST (see env).
+enum UserRole {
+  USER
+  ADMIN
+}
+
 enum FlatFeeChargePurpose {
   BOOST
   APPLICATION_FEE
@@ -140,6 +147,7 @@ model User {
   kycStatus      KycStatus @default(NOT_REQUIRED) // FR-103 / FR-104
   kycProviderRef String? // NFR-12: reference only, never raw documents
   bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
+  role           UserRole  @default(USER) // FR-901: gates the /admin surface
 
   wallets         WalletAccount[]
   creatorProfile  CreatorProfile?
