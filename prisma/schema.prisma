@@ -551,3 +551,17 @@ model PlatformParam {
   updatedAt DateTime @updatedAt
   updatedBy String?
 }
+
+// FR-904: append-only audit trail of every platform-param change (who, when, old -> new).
+// Written on each effective change; the PlatformParam row keeps only the latest value.
+model PlatformParamAudit {
+  id        String   @id @default(cuid())
+  key       String
+  oldValue  Json? // null on first-ever set
+  newValue  Json
+  changedBy String? // acting user id
+  changedAt DateTime @default(now())
+
+  @@index([key, changedAt])
+  @@index([changedAt])
+}
