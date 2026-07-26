@@ -44,6 +44,11 @@ export const envSchema = z.object({
   SOLANA_RPC_URL: z.string().optional(),
 
   SESSION_JWT_SECRET: z.string().min(1).default('change-me-in-production'),
+
+  // FR-901: break-glass / bootstrap superadmins. Comma-separated emails and/or Privy DIDs
+  // that always pass the AdminGuard regardless of their DB role — used to seed the first
+  // admin, who then grants others via PATCH /admin/users/:id/role. Empty by default.
+  ADMIN_ALLOWLIST: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;
