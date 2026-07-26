@@ -12,6 +12,7 @@ import { PaystackFlatFeeAdapter } from './flat-fee/paystack-flat-fee.adapter';
 
 import { KYC_PROVIDER_PORT } from './kyc/kyc-provider.port';
 import { StubKycAdapter } from './kyc/stub-kyc.adapter';
+import { DiditKycAdapter } from './kyc/didit-kyc.adapter';
 
 import { NOTIFICATION_PORT } from './notification/notification.port';
 import { StubNotificationAdapter } from './notification/stub-notification.adapter';
@@ -38,6 +39,7 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
     StubFlatFeeAdapter,
     PaystackFlatFeeAdapter,
     StubKycAdapter,
+    DiditKycAdapter,
     StubNotificationAdapter,
     HeraldNotificationAdapter,
     StubQualityScorerAdapter,
@@ -65,9 +67,12 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
     },
     {
       provide: KYC_PROVIDER_PORT,
-      inject: [StubKycAdapter],
-      // 'smile' adapter lands at Phase 1; stub is the only Phase 0 KYC path.
-      useFactory: (stub: StubKycAdapter) => stub,
+      inject: [ConfigService, StubKycAdapter, DiditKycAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        stub: StubKycAdapter,
+        didit: DiditKycAdapter,
+      ) => (config.get('KYC_PROVIDER', { infer: true }) === 'didit' ? didit : stub),
     },
     {
       provide: NOTIFICATION_PORT,
