@@ -90,7 +90,8 @@ function refRequiresAml(providerRef: string): boolean {
   // substring rather than positional split.
   return (
     providerRef.includes('CAMPAIGN_CREATOR') ||
-    providerRef.includes('BACKER_THRESHOLD')
+    providerRef.includes('BACKER_THRESHOLD') ||
+    providerRef.includes('BUSINESS_VERIFICATION')
   );
 }
 

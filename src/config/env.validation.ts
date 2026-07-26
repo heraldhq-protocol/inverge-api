@@ -41,6 +41,7 @@ export const envSchema = z.object({
   DIDIT_BASE_URL: z.string().default('https://verification.didit.me/v3'),
   DIDIT_KYC_WORKFLOW_ID: z.string().optional(), // identity only (no AML)
   DIDIT_KYC_AML_WORKFLOW_ID: z.string().optional(), // identity + AML screening
+  DIDIT_KYB_WORKFLOW_ID: z.string().optional(), // business KYB (registry + docs + UBOs + AML)
   DIDIT_WEBHOOK_SECRET: z.string().optional(), // secret_shared_key for HMAC verification
   DIDIT_CALLBACK_URL: z.string().optional(), // where the user returns after verifying
 

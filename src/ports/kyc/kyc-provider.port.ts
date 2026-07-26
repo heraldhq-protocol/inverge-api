@@ -4,18 +4,29 @@
 // identity + AML for anyone who will handle funds (campaign creators, threshold backers).
 
 // What a verification session is for. Drives which provider workflow runs and whether AML
-// screening is part of it.
-export type KycPurpose = 'IDEA_VALIDATION' | 'CAMPAIGN_CREATOR' | 'BACKER_THRESHOLD';
+// screening is part of it. BUSINESS_VERIFICATION runs Didit KYB (registry + documents +
+// directors/UBOs + AML) for a company, rather than an individual's identity.
+export type KycPurpose =
+  | 'IDEA_VALIDATION'
+  | 'CAMPAIGN_CREATOR'
+  | 'BACKER_THRESHOLD'
+  | 'BUSINESS_VERIFICATION';
 
 export const KYC_PURPOSES: readonly KycPurpose[] = [
   'IDEA_VALIDATION',
   'CAMPAIGN_CREATOR',
   'BACKER_THRESHOLD',
+  'BUSINESS_VERIFICATION',
 ];
 
-// Purposes that require AML screening (they let a user handle money).
+// Purposes that require AML screening (they let a user/entity handle money). KYB always
+// screens the business, so BUSINESS_VERIFICATION is included.
 export function purposeRequiresAml(purpose: KycPurpose): boolean {
-  return purpose === 'CAMPAIGN_CREATOR' || purpose === 'BACKER_THRESHOLD';
+  return (
+    purpose === 'CAMPAIGN_CREATOR' ||
+    purpose === 'BACKER_THRESHOLD' ||
+    purpose === 'BUSINESS_VERIFICATION'
+  );
 }
 
 // Normalized identity-verification outcome (provider statuses mapped onto our vocabulary).

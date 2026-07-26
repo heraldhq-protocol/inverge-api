@@ -41,9 +41,12 @@ export class DiditKycAdapter implements KycProviderPort {
   }
 
   private workflowFor(purpose: KycPurpose): string {
-    const key = purposeRequiresAml(purpose)
-      ? 'DIDIT_KYC_AML_WORKFLOW_ID'
-      : 'DIDIT_KYC_WORKFLOW_ID';
+    const key =
+      purpose === 'BUSINESS_VERIFICATION'
+        ? 'DIDIT_KYB_WORKFLOW_ID'
+        : purposeRequiresAml(purpose)
+          ? 'DIDIT_KYC_AML_WORKFLOW_ID'
+          : 'DIDIT_KYC_WORKFLOW_ID';
     const id = this.config.get(key as any, { infer: true }) as string | undefined;
     if (!id) throw new Error(`${key} is not configured (needed for purpose ${purpose})`);
     return id;
