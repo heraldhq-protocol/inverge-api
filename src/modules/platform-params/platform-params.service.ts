@@ -22,11 +22,38 @@ export class PlatformParamsService {
     return typeof v === 'number' ? v : fallback;
   }
 
+  // FR-904: sets the value AND appends an audit row when the value actually changes.
   async set(key: string, value: unknown, updatedBy?: string) {
-    return this.prisma.platformParam.upsert({
+    const existing = await this.prisma.platformParam.findUnique({ where: { key } });
+    const oldValue = existing ? existing.value : null;
+    const changed = JSON.stringify(oldValue) !== JSON.stringify(value ?? null);
+
+    const row = await this.prisma.platformParam.upsert({
       where: { key },
       update: { value: value as object, updatedBy },
       create: { key, value: value as object, updatedBy },
+    });
+
+    if (changed) {
+      await this.prisma.platformParamAudit.create({
+        data: {
+          key,
+          oldValue: oldValue === null ? undefined : (oldValue as object),
+          newValue: value as object,
+          changedBy: updatedBy ?? null,
+        },
+      });
+    }
+    return row;
+  }
+
+  // FR-904: read the change history, newest first (optionally filtered by key).
+  async auditLog(opts: { key?: string; limit?: number; offset?: number } = {}) {
+    return this.prisma.platformParamAudit.findMany({
+      where: opts.key ? { key: opts.key } : {},
+      orderBy: { changedAt: 'desc' },
+      take: Math.min(opts.limit ?? 100, 500),
+      skip: opts.offset ?? 0,
     });
   }
 }
