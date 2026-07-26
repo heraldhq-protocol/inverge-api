@@ -10,12 +10,19 @@ import {
   DUPLICATE_DETECTOR_PORT,
   DuplicateDetectorPort,
 } from '../../ports/dedup/dedup.port';
-import { buildBrief, buildReasons, route } from './moderation-routing';
+import {
+  buildBrief,
+  buildReasons,
+  L1_SUBMITTER_BANNED,
+  L1_SUBMITTER_SANCTIONED,
+  route,
+} from './moderation-routing';
 
 export interface ScreenOptions {
   ideaId?: string;
   submittedById?: string;
   submitterBanned?: boolean; // L1 deterministic gate input (FR-1002)
+  submitterAmlFlagged?: boolean; // L1 sanctions gate — usually resolved from the DB
 }
 
 // The moderation harness (FR-1001–1007). Runs a submission through the layers:
@@ -35,8 +42,22 @@ export class ModerationService {
   async screen(content: ModeratableContent, opts: ScreenOptions = {}) {
     const threshold = await this.params.getNumber('moderation.riskThreshold', 0.5);
 
-    // L1 — deterministic gates (Phase 0: submitter-ban check; sanctions/geo/wallet deferred).
-    const l1FailureCodes = opts.submitterBanned ? ['L1-SUBMITTER-BANNED'] : [];
+    // L1 — deterministic gates (FR-1002): submitter ban + AML sanctions. Both are resolved
+    // authoritatively from the submitter record when we have one, OR-ed with any passed flags.
+    let banned = opts.submitterBanned ?? false;
+    let amlFlagged = opts.submitterAmlFlagged ?? false;
+    if (opts.submittedById) {
+      const submitter = await this.prisma.user.findUnique({
+        where: { id: opts.submittedById },
+        select: { bannedAt: true, amlStatus: true },
+      });
+      if (submitter?.bannedAt) banned = true;
+      if (submitter?.amlStatus === 'FLAGGED') amlFlagged = true;
+    }
+    const l1FailureCodes = [
+      ...(banned ? [L1_SUBMITTER_BANNED] : []),
+      ...(amlFlagged ? [L1_SUBMITTER_SANCTIONED] : []),
+    ];
     const l1Passed = l1FailureCodes.length === 0;
 
     // L2 — classification (off-chain flags only).

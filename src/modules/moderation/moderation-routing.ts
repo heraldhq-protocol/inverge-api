@@ -14,6 +14,11 @@ export interface Routing {
 export const AML_GENERIC_EXTERNAL =
   'Your submission is under additional review. We will follow up if anything further is needed.';
 
+// L1 deterministic gate codes (FR-1002). SANCTIONED comes from the submitter's AML status
+// (FLAGGED) and is subject to tipping-off (FR-1007) — its external reason is always generic.
+export const L1_SUBMITTER_BANNED = 'L1-SUBMITTER-BANNED';
+export const L1_SUBMITTER_SANCTIONED = 'L1-SUBMITTER-SANCTIONED';
+
 const uniq = (xs: string[]): string[] => [...new Set(xs)];
 
 // FR-1004: below threshold in all categories AND L1 passed → auto-clear; otherwise hold.
@@ -47,10 +52,11 @@ export function buildReasons(
   const internalReason = internalParts.join('\n') || 'No findings.';
 
   const amlContributes = categories.some((c) => c.code === 'POL-AML' && c.riskScore > 0);
+  const amlL1 = l1FailureCodes.includes(L1_SUBMITTER_SANCTIONED);
   const held = l1FailureCodes.length > 0 || flaggedCategoryCodes.length > 0;
 
   let externalReason: string;
-  if (amlContributes) {
+  if (amlContributes || amlL1) {
     externalReason = AML_GENERIC_EXTERNAL; // D2: never disclose financial-crime review
   } else if (!held) {
     externalReason = ''; // auto-clear — nothing shown to the creator

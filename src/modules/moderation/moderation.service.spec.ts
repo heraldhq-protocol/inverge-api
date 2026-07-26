@@ -4,7 +4,13 @@ import { CategoryFinding, POLICY_VERSION } from '../../ports/moderation/moderati
 
 function setup(
   categories: CategoryFinding[],
-  opts: { threshold?: number; provider?: string; dedupThreshold?: number; matches?: any[] } = {},
+  opts: {
+    threshold?: number;
+    provider?: string;
+    dedupThreshold?: number;
+    matches?: any[];
+    submitter?: { bannedAt?: Date | null; amlStatus?: string } | null;
+  } = {},
 ) {
   const maxRisk = categories.reduce((m, c) => Math.max(m, c.riskScore), 0);
   const classifier = {
@@ -18,6 +24,7 @@ function setup(
   const detector = { findSimilar: jest.fn().mockResolvedValue(opts.matches ?? []) } as any;
   const prisma = {
     moderationCase: { create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'case1', ...data })) },
+    user: { findUnique: jest.fn().mockResolvedValue(opts.submitter ?? null) },
   } as any;
   // riskThreshold + dedupThreshold both read via getNumber(key, fallback).
   const params = {
@@ -61,6 +68,21 @@ describe('ModerationService.screen (harness)', () => {
     const { svc } = setup([], { threshold: 0.5 });
     const c = await svc.screen(content, { submitterBanned: true });
     expect(c.decision).toBe('HELD_FOR_REVIEW');
+    expect(c.reasonCodes).toContain('L1-SUBMITTER-BANNED');
+  });
+
+  it('L1: an AML-flagged submitter is held with a tipping-off-safe external reason', async () => {
+    const { svc } = setup([], { threshold: 0.5, submitter: { amlStatus: 'FLAGGED' } });
+    const c = await svc.screen(content, { submittedById: 'u1' });
+    expect(c.decision).toBe('HELD_FOR_REVIEW');
+    expect(c.reasonCodes).toContain('L1-SUBMITTER-SANCTIONED');
+    expect(c.externalReason).toBe(AML_GENERIC_EXTERNAL); // never disclose the sanctions review
+    expect(c.internalReason).toMatch(/L1-SUBMITTER-SANCTIONED/);
+  });
+
+  it('L1: resolves the submitter ban from the DB record', async () => {
+    const { svc } = setup([], { threshold: 0.5, submitter: { bannedAt: new Date() } });
+    const c = await svc.screen(content, { submittedById: 'u1' });
     expect(c.reasonCodes).toContain('L1-SUBMITTER-BANNED');
   });
 
