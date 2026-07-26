@@ -25,6 +25,13 @@ import {
   purposeEligible,
   purposeReasons,
 } from './kyc-gates';
+import { businessFundsReasons, isBusinessFundsEligible } from './kyb-gates';
+
+export interface StartBusinessParams {
+  legalName: string;
+  registrationNumber?: string;
+  country?: string;
+}
 
 @Injectable()
 export class KycService {
@@ -75,6 +82,12 @@ export class KycService {
   async handleWebhook(rawBody: string, headers: Record<string, string | undefined>) {
     const evt = this.provider.parseWebhook(rawBody, headers);
     if (!evt) throw new BadRequestException('Invalid or unverifiable webhook');
+
+    // A KYB session's ref is stored on the business, not a user — route it there first.
+    const business = await this.prisma.businessProfile.findFirst({
+      where: { kybProviderRef: evt.providerRef },
+    });
+    if (business) return this.applyBusinessDecision(business.id, business.userId, evt);
 
     const user = await this.resolveUser(evt.vendorData, evt.providerRef);
     if (!user) {
@@ -184,7 +197,214 @@ export class KycService {
     });
   }
 
+  // ── Business (KYB) ───────────────────────────────────────────────────────────────
+
+  // Register (or update) the caller's business and start a KYB verification session. One
+  // business per account; a fresh session resets a non-VERIFIED business back to PENDING.
+  async startBusinessSession(userId: string, params: StartBusinessParams) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const business = await this.prisma.businessProfile.upsert({
+      where: { userId },
+      create: {
+        userId,
+        legalName: params.legalName,
+        registrationNumber: params.registrationNumber ?? null,
+        country: params.country ?? null,
+      },
+      update: {
+        legalName: params.legalName,
+        registrationNumber: params.registrationNumber ?? null,
+        country: params.country ?? null,
+      },
+    });
+    const res = await this.provider.startVerification({
+      userId,
+      purpose: 'BUSINESS_VERIFICATION',
+      callbackUrl: this.config.get('DIDIT_CALLBACK_URL', { infer: true }),
+      email: user.email ?? undefined,
+    });
+    const next: KycStatus = business.kybStatus === 'VERIFIED' ? 'VERIFIED' : 'PENDING';
+    await this.transitionBusiness(business.id, userId, next, res.providerRef);
+    return { ...res, purpose: 'BUSINESS_VERIFICATION' as const, businessId: business.id };
+  }
+
+  async businessStatus(userId: string) {
+    const b = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!b) return { registered: false as const };
+    return {
+      registered: true as const,
+      legalName: b.legalName,
+      registrationNumber: b.registrationNumber,
+      country: b.country,
+      kybStatus: b.kybStatus,
+      amlStatus: b.amlStatus,
+      amlScreenedAt: b.amlScreenedAt,
+    };
+  }
+
+  async businessEligibility(userId: string) {
+    const b = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!b) {
+      return {
+        registered: false as const,
+        eligible: false,
+        reasons: ['No business registered — start business verification'],
+      };
+    }
+    return {
+      registered: true as const,
+      eligible: isBusinessFundsEligible(b),
+      kybStatus: b.kybStatus,
+      amlStatus: b.amlStatus,
+      reasons: businessFundsReasons(b),
+    };
+  }
+
+  // FR-103/104 for a business acting entity: hard gate for campaign creation AND funding.
+  async assertBusinessFundsEligible(userId: string): Promise<void> {
+    const b = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!b || !isBusinessFundsEligible(b)) {
+      throw new ForbiddenException({
+        message: 'Business verification (KYB) and AML screening are required',
+        reasons: b ? businessFundsReasons(b) : ['No business registered'],
+      });
+    }
+  }
+
+  async assertBusinessBackerFundingAllowed(
+    userId: string,
+    cumulativeUsd: number,
+    nextAmountUsd: number,
+  ): Promise<void> {
+    const threshold = await this.backerThresholdUsd();
+    if (backerFundingRequiresKyc(cumulativeUsd, nextAmountUsd, threshold)) {
+      await this.assertBusinessFundsEligible(userId);
+    }
+  }
+
+  // Admin standalone AML re-screen of the business entity (company).
+  async screenBusinessAml(userId: string, params: AmlScreeningParams) {
+    const b = await this.prisma.businessProfile.findUniqueOrThrow({ where: { userId } });
+    const result = await this.provider.screenAml({ ...params, entityType: 'company' });
+    await this.recordBusinessAml(
+      b.id,
+      userId,
+      'STANDALONE',
+      result.status,
+      { totalHits: result.totalHits, topRiskScore: result.topRiskScore, datasets: result.datasets },
+      undefined,
+      result.raw,
+    );
+    return {
+      status: result.status,
+      totalHits: result.totalHits,
+      topRiskScore: result.topRiskScore,
+      datasets: result.datasets,
+    };
+  }
+
+  async listBusinessScreenings(userId: string) {
+    const b = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!b) return [];
+    return this.prisma.amlScreening.findMany({
+      where: { businessId: b.id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        source: true,
+        status: true,
+        totalHits: true,
+        topRiskScore: true,
+        datasets: true,
+        createdAt: true,
+      },
+    });
+  }
+
   // ── internals ──────────────────────────────────────────────────────────────────────
+
+  private async applyBusinessDecision(
+    businessId: string,
+    userId: string,
+    evt: { providerRef: string; status: KycOutcome; aml: 'CLEAR' | 'IN_REVIEW' | 'FLAGGED' | null },
+  ) {
+    const decision = await this.provider
+      .getDecision(evt.providerRef)
+      .catch((e) => {
+        this.logger.warn(`getDecision(${evt.providerRef}) failed: ${e?.message}`);
+        return null;
+      });
+    const kybOutcome: KycOutcome = decision?.status ?? evt.status;
+    await this.transitionBusiness(businessId, userId, kycOutcomeToStatus(kybOutcome), evt.providerRef);
+
+    const amlOutcome = decision?.aml ?? evt.aml;
+    if (amlOutcome) {
+      await this.recordBusinessAml(
+        businessId,
+        userId,
+        'KYC_SESSION',
+        amlOutcome,
+        decision?.amlSummary ?? null,
+        evt.providerRef,
+        decision?.raw ?? { fromWebhook: true },
+      );
+    }
+    return { ok: true, entity: 'business' as const, kyb: kybOutcome, aml: amlOutcome ?? null };
+  }
+
+  private async transitionBusiness(
+    businessId: string,
+    userId: string,
+    to: KycStatus,
+    providerRef?: string,
+  ) {
+    const b = await this.prisma.businessProfile.findUniqueOrThrow({ where: { id: businessId } });
+    const changed = b.kybStatus !== to;
+    await this.prisma.$transaction([
+      this.prisma.businessProfile.update({
+        where: { id: businessId },
+        data: { kybStatus: to, kybProviderRef: providerRef ?? b.kybProviderRef },
+      }),
+      ...(changed
+        ? [
+            this.prisma.kycStatusEvent.create({
+              data: { userId, businessId, fromStatus: b.kybStatus, toStatus: to, providerRef },
+            }),
+          ]
+        : []),
+    ]);
+  }
+
+  private async recordBusinessAml(
+    businessId: string,
+    userId: string,
+    source: 'KYC_SESSION' | 'STANDALONE',
+    outcome: 'CLEAR' | 'IN_REVIEW' | 'FLAGGED',
+    summary: AmlSummary | null,
+    providerRef: string | undefined,
+    raw: unknown,
+  ) {
+    const status = amlOutcomeToStatus(outcome) as AmlStatus;
+    await this.prisma.$transaction([
+      this.prisma.businessProfile.update({
+        where: { id: businessId },
+        data: { amlStatus: status, amlScreenedAt: new Date() },
+      }),
+      this.prisma.amlScreening.create({
+        data: {
+          userId,
+          businessId,
+          source,
+          status,
+          providerRef,
+          totalHits: summary?.totalHits ?? 0,
+          topRiskScore: summary?.topRiskScore ?? null,
+          datasets: summary?.datasets ?? [],
+          raw: raw as object,
+        },
+      }),
+    ]);
+  }
 
   private async resolveUser(vendorData: string | null, providerRef: string) {
     if (vendorData) {
