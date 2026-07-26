@@ -7,6 +7,7 @@ function setup(
     webhookEvt?: any;
     decision?: any;
     threshold?: number;
+    business?: any; // when set, the webhook resolves this business by kybProviderRef
   } = {},
 ) {
   const user = opts.user ?? {
@@ -41,6 +42,17 @@ function setup(
     kycStatusEvent: { create: jest.fn().mockResolvedValue({}) },
     amlScreening: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]) },
     platformParam: { findUnique: jest.fn().mockResolvedValue({ value: opts.threshold ?? 200 }) },
+    businessProfile: {
+      findFirst: jest.fn().mockResolvedValue(opts.business ?? null),
+      findUnique: jest.fn().mockResolvedValue(opts.business ?? null),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(
+        opts.business ?? { id: 'biz1', userId: 'u1', kybStatus: 'PENDING', amlStatus: 'NOT_SCREENED' },
+      ),
+      upsert: jest.fn().mockResolvedValue(
+        opts.business ?? { id: 'biz1', userId: 'u1', kybStatus: 'NOT_REQUIRED', amlStatus: 'NOT_SCREENED' },
+      ),
+      update: jest.fn().mockResolvedValue({}),
+    },
     $transaction: jest.fn((arr: Promise<unknown>[]) => Promise.all(arr)),
   } as any;
 
@@ -130,6 +142,86 @@ describe('KycService eligibility + gates', () => {
     const { svc } = setup({ user: { id: 'u1', kycStatus: 'NOT_REQUIRED', amlStatus: 'NOT_SCREENED' }, threshold: 200 });
     await expect(svc.assertBackerFundingAllowed('u1', 0, 100)).resolves.toBeUndefined();
     await expect(svc.assertBackerFundingAllowed('u1', 150, 100)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('KycService business (KYB)', () => {
+  const biz = (over: any = {}) => ({
+    id: 'biz1',
+    userId: 'u1',
+    kybStatus: 'PENDING',
+    amlStatus: 'NOT_SCREENED',
+    kybProviderRef: 'sess1',
+    ...over,
+  });
+
+  it('routes a webhook whose ref matches a business to the BusinessProfile', async () => {
+    const { svc, prisma } = setup({
+      business: biz(),
+      decision: {
+        providerRef: 'sess1',
+        status: 'VERIFIED',
+        aml: 'CLEAR',
+        amlSummary: { totalHits: 0, topRiskScore: 0, datasets: [] },
+        raw: {},
+      },
+    });
+    const res = await svc.handleWebhook('{}', {});
+    expect(res).toMatchObject({ entity: 'business', kyb: 'VERIFIED', aml: 'CLEAR' });
+    // Business status updated, not the user's KYC.
+    const bizUpdate = prisma.businessProfile.update.mock.calls.find((c: any[]) => c[0].data.kybStatus);
+    expect(bizUpdate[0].data.kybStatus).toBe('VERIFIED');
+    // AML record attached to the business.
+    expect(prisma.amlScreening.create.mock.calls[0][0].data).toMatchObject({
+      businessId: 'biz1',
+      source: 'KYC_SESSION',
+      status: 'CLEAR',
+    });
+    // The user KYC path was not touched.
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('businessEligibility is true only when KYB VERIFIED + AML CLEAR', async () => {
+    const eligible = setup({ business: biz({ kybStatus: 'VERIFIED', amlStatus: 'CLEAR' }) });
+    expect((await eligible.svc.businessEligibility('u1')).eligible).toBe(true);
+
+    const pending = setup({ business: biz({ kybStatus: 'VERIFIED', amlStatus: 'NOT_SCREENED' }) });
+    const e = await pending.svc.businessEligibility('u1');
+    expect(e.eligible).toBe(false);
+    expect(e.reasons).toContain('AML screening is required');
+  });
+
+  it('businessEligibility reports unregistered when no business exists', async () => {
+    const { svc } = setup(); // business defaults to null
+    const e = await svc.businessEligibility('u1');
+    expect(e).toMatchObject({ registered: false, eligible: false });
+  });
+
+  it('assertBusinessFundsEligible throws unless KYB+AML clear', async () => {
+    const notCleared = setup({ business: biz({ kybStatus: 'VERIFIED', amlStatus: 'FLAGGED' }) });
+    await expect(notCleared.svc.assertBusinessFundsEligible('u1')).rejects.toBeInstanceOf(ForbiddenException);
+
+    const cleared = setup({ business: biz({ kybStatus: 'VERIFIED', amlStatus: 'CLEAR' }) });
+    await expect(cleared.svc.assertBusinessFundsEligible('u1')).resolves.toBeUndefined();
+  });
+
+  it('startBusinessSession upserts the business and starts a KYB session', async () => {
+    const { svc, provider, prisma } = setup();
+    const res = await svc.startBusinessSession('u1', { legalName: 'Acme NG Ltd', country: 'NG' });
+    expect(prisma.businessProfile.upsert).toHaveBeenCalled();
+    expect(provider.startVerification).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: 'BUSINESS_VERIFICATION', userId: 'u1' }),
+    );
+    expect(res.purpose).toBe('BUSINESS_VERIFICATION');
+  });
+
+  it('screenBusinessAml screens as a company and stores a business record', async () => {
+    const { svc, provider, prisma } = setup({ business: biz() });
+    provider.screenAml.mockResolvedValue({ status: 'FLAGGED', totalHits: 1, topRiskScore: 100, datasets: ['Sanctions'], raw: {} });
+    const r = await svc.screenBusinessAml('u1', { fullName: 'Acme NG Ltd' });
+    expect(provider.screenAml).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'company' }));
+    expect(r.status).toBe('FLAGGED');
+    expect(prisma.amlScreening.create.mock.calls[0][0].data).toMatchObject({ businessId: 'biz1', source: 'STANDALONE' });
   });
 });
 

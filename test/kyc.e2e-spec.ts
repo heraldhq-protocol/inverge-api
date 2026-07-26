@@ -269,4 +269,78 @@ describe('KYC/AML routes (e2e)', () => {
       expect(kase!.externalReason).not.toMatch(/sanction/i);
     });
   });
+
+  // ─────────────── Business (KYB) ───────────────
+  describe('business (KYB) flow', () => {
+    it('401/403/400 guards on the /kyb surface', async () => {
+      await http().post('/kyb/session').send({ legalName: 'X Ltd' }).expect(401);
+      await http().get('/kyb/status').expect(401);
+      const u = await newUser('kyb-guard');
+      await http().post('/kyb/session').set(auth(u.token)).send({}).expect(400); // legalName required
+      await http()
+        .post('/kyb/session')
+        .set(auth(u.token))
+        .send({ legalName: 'Acme', sneaky: 'x' })
+        .expect(400); // whitelist
+      await http()
+        .post('/kyb/admin/aml-screen')
+        .set(auth(u.token))
+        .send({ userId: u.id, fullName: 'Acme Ltd' })
+        .expect(403); // non-admin
+    });
+
+    it('registers a business, verifies via KYB, and becomes funds-eligible', async () => {
+      const u = await newUser('kyb-complete');
+      const start = await http()
+        .post('/kyb/session')
+        .set(auth(u.token))
+        .send({ legalName: 'Kaduna AgriTech Ltd', registrationNumber: 'RC-12345', country: 'NG' })
+        .expect(201);
+      expect(start.body.purpose).toBe('BUSINESS_VERIFICATION');
+      expect(start.body.businessId).toBeTruthy();
+
+      const pending = await http().get('/kyb/status').set(auth(u.token)).expect(200);
+      expect(pending.body).toMatchObject({ registered: true, kybStatus: 'PENDING' });
+
+      // Simulate completion — KYB includes AML, so the ref triggers a CLEAR AML result.
+      await complete(start.body.providerRef, u.id).expect(200);
+
+      const status = await http().get('/kyb/status').set(auth(u.token)).expect(200);
+      expect(status.body).toMatchObject({ kybStatus: 'VERIFIED', amlStatus: 'CLEAR' });
+
+      const elig = await http().get('/kyb/eligibility').set(auth(u.token)).expect(200);
+      expect(elig.body).toMatchObject({ registered: true, eligible: true });
+
+      // The AML result was recorded against the business (KYC_SESSION source).
+      const screenings = await prisma.amlScreening.findMany({ where: { businessId: start.body.businessId } });
+      expect(screenings.length).toBeGreaterThan(0);
+      expect(screenings[0].source).toBe('KYC_SESSION');
+    });
+
+    it('reports unregistered for a user with no business', async () => {
+      const u = await newUser('kyb-none');
+      const elig = await http().get('/kyb/eligibility').set(auth(u.token)).expect(200);
+      expect(elig.body).toMatchObject({ registered: false, eligible: false });
+    });
+
+    it('admin can AML-screen the business entity (company) and read history', async () => {
+      const u = await newUser('kyb-screened');
+      await http()
+        .post('/kyb/session')
+        .set(auth(u.token))
+        .send({ legalName: 'OFAC Sanction Holdings' })
+        .expect(201);
+      await http()
+        .post('/kyb/admin/aml-screen')
+        .set(auth(admin.token))
+        .send({ userId: u.id, fullName: 'OFAC Sanction Holdings' })
+        .expect(201)
+        .then((r) => expect(r.body.status).toBe('FLAGGED'));
+
+      const status = await http().get('/kyb/status').set(auth(u.token)).expect(200);
+      expect(status.body.amlStatus).toBe('FLAGGED');
+      const history = await http().get(`/kyb/admin/aml/${u.id}`).set(auth(admin.token)).expect(200);
+      expect(history.body[0]).toMatchObject({ source: 'STANDALONE', status: 'FLAGGED' });
+    });
+  });
 });

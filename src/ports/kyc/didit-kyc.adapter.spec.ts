@@ -14,6 +14,7 @@ const cfg = (over: Record<string, any> = {}) =>
         DIDIT_API_KEY: 'test-key',
         DIDIT_KYC_WORKFLOW_ID: 'wf-kyc',
         DIDIT_KYC_AML_WORKFLOW_ID: 'wf-aml',
+        DIDIT_KYB_WORKFLOW_ID: 'wf-kyb',
         DIDIT_WEBHOOK_SECRET: 'shhh',
         DIDIT_CALLBACK_URL: 'https://app/cb',
         ...over,
@@ -117,6 +118,16 @@ describe('DiditKycAdapter.startVerification', () => {
     });
     const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
     expect(body.workflow_id).toBe('wf-kyc');
+  });
+
+  it('uses the KYB workflow for business verification', async () => {
+    const fetchMock = mockFetch({ session_id: 's', url: 'u' });
+    await new DiditKycAdapter(cfg()).startVerification({
+      userId: 'u3',
+      purpose: 'BUSINESS_VERIFICATION',
+    });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+    expect(body.workflow_id).toBe('wf-kyb');
   });
 
   it('throws a clear error when the needed workflow id is missing', async () => {
