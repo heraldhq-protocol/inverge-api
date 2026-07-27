@@ -44,6 +44,7 @@ export class IdeasService {
         askBreakdown: dto.askBreakdown as object,
         roadmapSteps: dto.roadmapSteps as object,
         category: dto.category,
+        region: dto.region ?? null,
         roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
         askAmount: dto.askAmount,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,

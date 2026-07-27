@@ -9,6 +9,7 @@ import { PlatformParamsModule } from './modules/platform-params/platform-params.
 import { AuthModule } from './modules/auth/auth.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { IdeasModule } from './modules/ideas/ideas.module';
+import { FeedModule } from './modules/feed/feed.module';
 import { BoostsModule } from './modules/boosts/boosts.module';
 import { FlatFeeModule } from './modules/flat-fee/flat-fee.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -31,6 +32,7 @@ import { SurveyModule } from './modules/survey/survey.module';
     AuthModule,
     WalletsModule,
     IdeasModule,
+    FeedModule,
     BoostsModule,
     FlatFeeModule,
     KycModule,

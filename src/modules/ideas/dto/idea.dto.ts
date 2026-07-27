@@ -51,6 +51,12 @@ export class CreateIdeaDto {
   @ApiProperty({ enum: IDEA_CATEGORIES })
   @IsIn(IDEA_CATEGORIES) category!: (typeof IDEA_CATEGORIES)[number];
 
+  @ApiPropertyOptional({
+    description: 'Creator-declared region/origin (e.g. "Lagos"). Feeds discovery '
+      + 'personalization (region match / diaspora-origin) — never a validation metric.',
+  })
+  @IsOptional() @IsString() @MaxLength(60) region?: string;
+
   @ApiPropertyOptional({ description: 'Optional free-text roadmap summary' })
   @IsOptional() @IsString() roadmap?: string;
 
