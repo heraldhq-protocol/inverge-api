@@ -46,6 +46,50 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
   // KYC (FR-104)
   'kyc.backerThresholdUSD': 200,
 
+  // ─────────────── Discovery feed & ranking (all illustrative — calibrate on data) ───────────────
+  // Retrieval (Stage 1)
+  'feed.candidatePoolSize': 300, // hard cap on items scored per request
+  // Organic score weights (Stage 2). Behavioural terms are z-scored; quality/trust are 0..1.
+  'feed.weights': {
+    prePledge: 0.3, // z(weighted pre-pledge intent) — strongest behavioural signal
+    velocity: 0.2, // z(smoothed supporter velocity)
+    feedback: 0.15, // z(Bayesian-smoothed feedback rating)
+    quality: 0.15, // qualityScore (0..1), used directly
+    trust: 0.2, // TrustScore (0..1) — thin at launch (KYC + co-sign), ramps with maturity
+  },
+  'feed.dupPenaltyWeight': 0.3, // coefficient on the [0..1] near-duplicate penalty (subtracted)
+  // Bayesian smoothing (kills small-sample noise; higher C = more conservative)
+  'feed.velocity.windowDays': 7, // trailing window for supporter-accrual rate
+  'feed.velocity.bayesC': 5, // pseudo-count shrinking velocity toward the pool mean rate
+  'feed.feedback.bayesC': 5, // pseudo-count shrinking rating toward the prior mean
+  'feed.feedback.priorMean': 3.0, // prior rating (1..5) a no-response idea shrinks toward
+  // Time decay: Final = Personalised / (age_hours + 2)^gravity. Moderate — exploration, not
+  // aggressive decay, handles new-item exposure.
+  'feed.gravity': 1.2,
+  // Personalization (Stage 2 tilt — bounded so a strong item still crosses audiences)
+  'feed.personalization': {
+    min: 0.8,
+    max: 1.5,
+    categoryBonus: 0.25, // multiplier lift when the idea's category matches interest
+    regionBonus: 0.2, // lift when region/origin matches
+    similarityBonus: 0.25, // lift scaled by content similarity to the user's engaged ideas
+    engagedCorpusMax: 10, // cap on engaged ideas compared for content similarity
+  },
+  // Trust score composition (0..1; sums to 1 at full trust). Delivery track record (Phase 2+)
+  // will extend this — under-fed by design at launch.
+  'feed.trustWeights': { kyc: 0.5, kyb: 0.3, cosign: 0.2 },
+  // Exploration lane (Stage 3) — the principled rich-get-richer fix. Reserve a share of
+  // slots for under-exposed items chosen by an upper-confidence-bound bonus. Cannot be bought.
+  'feed.exploration.slotShare': 0.25, // fraction of the page reserved for under-exposed items
+  'feed.exploration.beta': 1.0, // UCB exploration coefficient
+  'feed.exploration.minQuality': 0.4, // quality floor an exploration pick must clear
+  // Policy diversity (Stage 3)
+  'feed.perCreatorCap': 2, // max items from one creator on a page (anti-flood)
+  'feed.categoryMaxShare': 0.5, // max share of the page a single category may occupy
+  // Paid placement (Stage 3 — walled off from Stage 2 scoring; FR-206a/NFR-15)
+  'feed.paid.everyN': 4, // inject one clearly-labelled promoted slot per N organic items
+  'feed.paid.maxSlots': 3, // frequency cap on promoted slots per page
+
   // Stored now, consumed Phase 1/2
   'campaign.applicationFeeNGN': 10000,
   'objection.windowDays': 7,

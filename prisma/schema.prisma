@@ -168,6 +168,15 @@ model User {
   bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
   role           UserRole  @default(USER) // FR-901: gates the /admin surface
 
+  // Discovery-feed personalization (onboarding interests). Explicit preferences take
+  // precedence; the feed falls back to behaviour (categories/regions of engaged ideas)
+  // when these are empty. Bounded multiplier only — never a hard filter (no filter bubble).
+  preferredCategories String[] @default([])
+  preferredRegions    String[] @default([])
+  // Launch trust proxy (e.g. SuperteamNG cohort membership) while delivery history is thin.
+  // Admin-settable; feeds the feed TrustScore, never any validation metric.
+  institutionalCosign Boolean  @default(false)
+
   wallets         WalletAccount[]
   creatorProfile  CreatorProfile?
   business        BusinessProfile?
@@ -291,6 +300,7 @@ model Idea {
   askBreakdown       Json? // indicative breakdown of what the ask buys
   roadmapSteps       Json? // >=2 dated steps [{ date, description }]
   category           String? // software | agriculture | film | arts | ...
+  region             String? // creator-declared region/origin — personalization + "From Lagos" chip
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
@@ -306,6 +316,11 @@ model Idea {
   feedbackScore  Decimal @default(0) @db.Decimal(5, 2)
   feedbackCount  Int     @default(0)
   commentCount   Int     @default(0) // engagement volume from the comments thread (FR-273)
+
+  // Aggregate discovery-feed exposure. Drives the UCB exploration bonus (rich-get-richer
+  // fix): items seen less get a larger bonus that shrinks as exposure accrues. NOT a
+  // validation metric — never touched by boosts, never public.
+  feedImpressions Int @default(0)
 
   // FR-204: creator-declared expected pre-pledge minimum; the gate uses max(platform floor, this).
   creatorPrePledgeTarget Decimal? @db.Decimal(14, 2)
@@ -329,6 +344,7 @@ model Idea {
   @@index([creatorId])
   @@index([status])
   @@index([discoverabilityTier])
+  @@index([category])
 }
 
 // FR-271: audit + coaching output of each quality scoring run (on publish and edit).
