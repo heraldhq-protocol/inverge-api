@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
-import { PlatformParamsService } from "../platform-params/platform-params.service";
-import { jaccard, shingles } from "../../ports/dedup/shingle";
-import type { User } from "../../generated/prisma/client";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PlatformParamsService } from '../platform-params/platform-params.service';
+import { jaccard, shingles } from '../../ports/dedup/shingle';
+import type { User } from '../../generated/prisma/client';
 import {
   computeTrustScore,
   FeedItemSignals,
@@ -16,8 +16,8 @@ import {
   RankedFeedEntry,
   TrustWeights,
   UserInterests,
-} from "./ranking";
-import { FeedQueryDto } from "./dto/feed.dto";
+} from './ranking';
+import { FeedQueryDto } from './dto/feed.dto';
 
 const DAY_MS = 86_400_000;
 
@@ -125,7 +125,8 @@ export class FeedService {
     const organic = rankFeed(signals, p.ranking, take);
 
     // ── Stage 3 (paid half): inject promoted slots — walled off from the organic score ──
-    const promoted = await this.activePromotions(pool, organic, now);
+    // (injectPaid dedupes promoted ids already present in `organic`.)
+    const promoted = await this.activePromotions(pool, now);
     const ranked = injectPaid(organic, promoted, p.paid);
 
     // Best-effort exposure accounting for the UCB exploration bonus (never blocks the response).
@@ -146,8 +147,8 @@ export class FeedService {
     const rows = await this.prisma.idea.findMany({
       where: {
         // Only surfaces that are open + discoverable. LINK_ONLY stays URL-reachable only.
-        status: { in: ["VALIDATING", "THRESHOLD_MET"] },
-        discoverabilityTier: { in: ["DISCOVERABLE", "FEATURED"] },
+        status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
+        discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
         creator: { is: { bannedAt: null } }, // banned creators drop out entirely (FR-216)
         ...(query.category ? { category: query.category } : {}),
         ...(query.excludeIds?.length
@@ -183,17 +184,17 @@ export class FeedService {
         },
         // Latest moderation outcome — exclude items currently held for review.
         moderationCases: {
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 1,
           select: { decision: true },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       take: poolSize,
     });
 
     return rows
-      .filter((r) => r.moderationCases[0]?.decision !== "HELD_FOR_REVIEW")
+      .filter((r) => r.moderationCases[0]?.decision !== 'HELD_FOR_REVIEW')
       .map(
         ({ moderationCases: _drop, ...idea }) => idea as unknown as PoolIdea,
       );
@@ -213,7 +214,7 @@ export class FeedService {
     const [snaps, ideas] = await Promise.all([
       this.prisma.ideaMetricSnapshot.findMany({
         where: { ideaId: { in: ideaIds }, capturedAt: { gte: from } },
-        orderBy: { capturedAt: "asc" },
+        orderBy: { capturedAt: 'asc' },
         select: { ideaId: true, supporterCount: true, capturedAt: true },
       }),
       this.prisma.idea.findMany({
@@ -273,10 +274,10 @@ export class FeedService {
     const c = idea.creator;
     return computeTrustScore(
       {
-        kycVerified: c.kycStatus === "VERIFIED",
+        kycVerified: c.kycStatus === 'VERIFIED',
         kybVerifiedClear:
-          c.business?.kybStatus === "VERIFIED" &&
-          c.business?.amlStatus === "CLEAR",
+          c.business?.kybStatus === 'VERIFIED' &&
+          c.business?.amlStatus === 'CLEAR',
         cosign: c.institutionalCosign,
       },
       w,
@@ -295,12 +296,12 @@ export class FeedService {
   ): Promise<
     Map<
       string,
-      { multiplier: number; matchReason: "region" | "category" | null }
+      { multiplier: number; matchReason: 'region' | 'category' | null }
     >
   > {
     const out = new Map<
       string,
-      { multiplier: number; matchReason: "region" | "category" | null }
+      { multiplier: number; matchReason: 'region' | 'category' | null }
     >();
     if (!user) {
       for (const idea of pool)
@@ -337,7 +338,7 @@ export class FeedService {
     // Ideas the user has engaged (support / pre-pledge) — the behavioural signal source.
     const engagements = await this.prisma.ideaSignal.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       take: 50,
       select: {
         idea: {
@@ -384,7 +385,6 @@ export class FeedService {
   // FEATURED-tier first then most recent. These never touch any organic score.
   private async activePromotions(
     pool: PoolIdea[],
-    organic: RankedFeedEntry[],
     now: Date,
   ): Promise<PromotedCandidate[]> {
     const eligibleIds = new Set(pool.map((i) => i.id));
@@ -393,11 +393,11 @@ export class FeedService {
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
         idea: {
-          discoverabilityTier: { in: ["DISCOVERABLE", "FEATURED"] },
-          status: { in: ["VALIDATING", "THRESHOLD_MET"] },
+          discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
+          status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
         },
       },
-      orderBy: [{ tier: "desc" }, { startsAt: "desc" }],
+      orderBy: [{ tier: 'desc' }, { startsAt: 'desc' }],
       select: { ideaId: true, tier: true },
     });
     const seen = new Set<string>();
@@ -405,7 +405,7 @@ export class FeedService {
     for (const b of boosts) {
       if (seen.has(b.ideaId) || !eligibleIds.has(b.ideaId)) continue;
       seen.add(b.ideaId);
-      promoted.push({ objectType: "idea", id: b.ideaId, boostTier: b.tier });
+      promoted.push({ objectType: 'idea', id: b.ideaId, boostTier: b.tier });
     }
     return promoted;
   }
@@ -503,20 +503,20 @@ export class FeedService {
       paidEveryN,
       paidMaxSlots,
     ] = await Promise.all([
-      this.params.get<OrganicWeights>("feed.weights", {
+      this.params.get<OrganicWeights>('feed.weights', {
         prePledge: 0.3,
         velocity: 0.2,
         feedback: 0.15,
         quality: 0.15,
         trust: 0.2,
       }),
-      this.params.getNumber("feed.dupPenaltyWeight", 0.3),
-      this.params.getNumber("feed.velocity.windowDays", 7),
-      this.params.getNumber("feed.velocity.bayesC", 5),
-      this.params.getNumber("feed.feedback.bayesC", 5),
-      this.params.getNumber("feed.feedback.priorMean", 3),
-      this.params.getNumber("feed.gravity", 1.2),
-      this.params.get<PersonalizationParams>("feed.personalization", {
+      this.params.getNumber('feed.dupPenaltyWeight', 0.3),
+      this.params.getNumber('feed.velocity.windowDays', 7),
+      this.params.getNumber('feed.velocity.bayesC', 5),
+      this.params.getNumber('feed.feedback.bayesC', 5),
+      this.params.getNumber('feed.feedback.priorMean', 3),
+      this.params.getNumber('feed.gravity', 1.2),
+      this.params.get<PersonalizationParams>('feed.personalization', {
         min: 0.8,
         max: 1.5,
         categoryBonus: 0.25,
@@ -524,19 +524,19 @@ export class FeedService {
         similarityBonus: 0.25,
         engagedCorpusMax: 10,
       }),
-      this.params.get<TrustWeights>("feed.trustWeights", {
+      this.params.get<TrustWeights>('feed.trustWeights', {
         kyc: 0.5,
         kyb: 0.3,
         cosign: 0.2,
       }),
-      this.params.getNumber("feed.exploration.slotShare", 0.25),
-      this.params.getNumber("feed.exploration.beta", 1),
-      this.params.getNumber("feed.exploration.minQuality", 0.4),
-      this.params.getNumber("feed.perCreatorCap", 2),
-      this.params.getNumber("feed.categoryMaxShare", 0.5),
-      this.params.getNumber("feed.candidatePoolSize", 300),
-      this.params.getNumber("feed.paid.everyN", 4),
-      this.params.getNumber("feed.paid.maxSlots", 3),
+      this.params.getNumber('feed.exploration.slotShare', 0.25),
+      this.params.getNumber('feed.exploration.beta', 1),
+      this.params.getNumber('feed.exploration.minQuality', 0.4),
+      this.params.getNumber('feed.perCreatorCap', 2),
+      this.params.getNumber('feed.categoryMaxShare', 0.5),
+      this.params.getNumber('feed.candidatePoolSize', 300),
+      this.params.getNumber('feed.paid.everyN', 4),
+      this.params.getNumber('feed.paid.maxSlots', 3),
     ]);
 
     return {

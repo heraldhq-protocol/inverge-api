@@ -97,7 +97,8 @@ export interface RankedFeedEntry {
 
 // ─────────────────────────────── Small stats helpers ───────────────────────────────
 
-export const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+export const clamp = (x: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, x));
 
 export function mean(xs: number[]): number {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
@@ -120,19 +121,32 @@ export function standardizer(pool: number[]): (x: number) => number {
 
 // SmoothedRate = (events + C·m) / (exposure + C). Shrinks a small-sample rate toward the
 // global prior `m`; higher C demands more evidence before an item's own rate is trusted.
-export function bayesianSmooth(events: number, exposure: number, C: number, priorMean: number): number {
+export function bayesianSmooth(
+  events: number,
+  exposure: number,
+  C: number,
+  priorMean: number,
+): number {
   const denom = exposure + C;
   return denom <= 0 ? priorMean : (events + C * priorMean) / denom;
 }
 
 // UCB: items seen less get a larger bonus that shrinks automatically as exposure accrues.
-export function explorationBonus(totalImpressions: number, itemImpressions: number, beta: number): number {
+export function explorationBonus(
+  totalImpressions: number,
+  itemImpressions: number,
+  beta: number,
+): number {
   const total = Math.max(totalImpressions, 1);
   return beta * Math.sqrt(Math.log(total + 1) / (itemImpressions + 1));
 }
 
 // Final = Personalised / (age_hours + 2)^gravity.
-export function timeDecay(personalised: number, ageHours: number, gravity: number): number {
+export function timeDecay(
+  personalised: number,
+  ageHours: number,
+  gravity: number,
+): number {
   return personalised / (Math.max(ageHours, 0) + 2) ** gravity;
 }
 
@@ -180,7 +194,10 @@ export function computeTrustScore(
   f: { kycVerified: boolean; kybVerifiedClear: boolean; cosign: boolean },
   w: TrustWeights,
 ): number {
-  const s = (f.kycVerified ? w.kyc : 0) + (f.kybVerifiedClear ? w.kyb : 0) + (f.cosign ? w.cosign : 0);
+  const s =
+    (f.kycVerified ? w.kyc : 0) +
+    (f.kybVerifiedClear ? w.kyb : 0) +
+    (f.cosign ? w.cosign : 0);
   return clamp(s, 0, 1);
 }
 
@@ -208,19 +225,35 @@ const EPSILON = 0.01;
 
 // Score the whole candidate pool (Stage 2). Returns per-item organic breakdown + the
 // personalised, time-decayed final score, plus a UCB-augmented score for exploration.
-export function scorePool(items: FeedItemSignals[], p: FeedRankingParams): Scored[] {
+export function scorePool(
+  items: FeedItemSignals[],
+  p: FeedRankingParams,
+): Scored[] {
   if (!items.length) return [];
 
   // Bayesian-smooth the rate signals toward pool/prior means.
   const pooledVelocityRate =
     items.reduce((a, i) => a + i.velocityEvents, 0) /
-    Math.max(items.reduce((a, i) => a + i.velocityExposureDays, 0), 1);
+    Math.max(
+      items.reduce((a, i) => a + i.velocityExposureDays, 0),
+      1,
+    );
 
   const smoothedVelocity = items.map((i) =>
-    bayesianSmooth(i.velocityEvents, i.velocityExposureDays, p.velocityBayesC, pooledVelocityRate),
+    bayesianSmooth(
+      i.velocityEvents,
+      i.velocityExposureDays,
+      p.velocityBayesC,
+      pooledVelocityRate,
+    ),
   );
   const smoothedFeedback = items.map((i) =>
-    bayesianSmooth(i.feedbackRatingSum, i.feedbackRatingCount, p.feedbackBayesC, p.feedbackPriorMean),
+    bayesianSmooth(
+      i.feedbackRatingSum,
+      i.feedbackRatingCount,
+      p.feedbackBayesC,
+      p.feedbackPriorMean,
+    ),
   );
 
   // Normalize behavioural signals within the pool (z-score) before combining.
@@ -258,9 +291,16 @@ export function scorePool(items: FeedItemSignals[], p: FeedRankingParams): Score
     const shifted = s.breakdown.organic - minOrganic + EPSILON;
     // The multiplier is already bounded by personalizationMultiplier() upstream; floor at 0
     // defensively so it can only ever lift a (now positive) organic score.
-    const personalised = shifted * Math.max(0, s.item.personalizationMultiplier);
+    const personalised =
+      shifted * Math.max(0, s.item.personalizationMultiplier);
     s.final = timeDecay(personalised, s.item.ageHours, p.gravity);
-    s.ucb = s.final + explorationBonus(totalImpressions, s.item.feedImpressions, p.explorationBeta);
+    s.ucb =
+      s.final +
+      explorationBonus(
+        totalImpressions,
+        s.item.feedImpressions,
+        p.explorationBeta,
+      );
   }
   return scored;
 }
@@ -271,7 +311,10 @@ export function deriveChip(s: Scored): FeedChip {
   const item = s.item;
   // Personalization match takes chip precedence when it actually lifted the score.
   if (item.personalizationMultiplier > 1 && item.matchReason === 'region') {
-    return { code: 'REGION', label: item.region ? `From ${item.region}` : 'From your region' };
+    return {
+      code: 'REGION',
+      label: item.region ? `From ${item.region}` : 'From your region',
+    };
   }
   if (item.personalizationMultiplier > 1 && item.matchReason === 'category') {
     return { code: 'CATEGORY', label: 'Matches your interests' };
@@ -320,15 +363,26 @@ class PolicyState {
   }
 
   place(item: FeedItemSignals): void {
-    this.creatorCount.set(item.creatorId, (this.creatorCount.get(item.creatorId) ?? 0) + 1);
-    if (item.category) this.categoryCount.set(item.category, (this.categoryCount.get(item.category) ?? 0) + 1);
+    this.creatorCount.set(
+      item.creatorId,
+      (this.creatorCount.get(item.creatorId) ?? 0) + 1,
+    );
+    if (item.category)
+      this.categoryCount.set(
+        item.category,
+        (this.categoryCount.get(item.category) ?? 0) + 1,
+      );
   }
 }
 
 // Pull the next candidate that satisfies diversity/dedup; if none does (e.g. a thin pool
 // dominated by one creator/category), fall back to the next available so the page still
 // fills rather than leaving empty slots.
-function pullNext(order: Scored[], used: Set<string>, policy: PolicyState): Scored | null {
+function pullNext(
+  order: Scored[],
+  used: Set<string>,
+  policy: PolicyState,
+): Scored | null {
   let fallback: Scored | null = null;
   for (const s of order) {
     if (used.has(s.item.id)) continue;
@@ -341,7 +395,11 @@ function pullNext(order: Scored[], used: Set<string>, policy: PolicyState): Scor
 // Stage 3 (organic half): build the ranked page. Reserves `explorationSlotShare` of the
 // page for under-exposed items chosen by the UCB score (exposure that cannot be bought),
 // applies category-diversity + per-creator dedup, and attaches explainability chips.
-export function rankFeed(items: FeedItemSignals[], p: FeedRankingParams, take: number): RankedFeedEntry[] {
+export function rankFeed(
+  items: FeedItemSignals[],
+  p: FeedRankingParams,
+  take: number,
+): RankedFeedEntry[] {
   const scored = scorePool(items, p);
   if (!scored.length) return [];
 
@@ -366,7 +424,8 @@ export function rankFeed(items: FeedItemSignals[], p: FeedRankingParams, take: n
 
   for (let pos = 0; pos < n; pos++) {
     // Reserve every `step`-th slot for exploration until the reserved quota is met.
-    const isExplorationSlot = step > 0 && explorationPlaced < reserved && pos % step === 0;
+    const isExplorationSlot =
+      step > 0 && explorationPlaced < reserved && pos % step === 0;
     let pick: Scored | null = null;
     let exploration = false;
 
@@ -386,7 +445,9 @@ export function rankFeed(items: FeedItemSignals[], p: FeedRankingParams, take: n
       objectType: pick.item.objectType,
       id: pick.item.id,
       score: pick.final,
-      chip: exploration ? { code: 'EXPLORE', label: 'New, worth a look' } : deriveChip(pick),
+      chip: exploration
+        ? { code: 'EXPLORE', label: 'New, worth a look' }
+        : deriveChip(pick),
       exploration,
       promoted: false,
       boostTier: null,
@@ -428,7 +489,12 @@ export function injectPaid(
   let qi = 0;
   for (let i = 0; i < organic.length; i++) {
     // Insert a promoted slot before every N-th organic item, up to the frequency cap.
-    if (injected < p.maxSlots && qi < queue.length && i > 0 && i % p.everyN === 0) {
+    if (
+      injected < p.maxSlots &&
+      qi < queue.length &&
+      i > 0 &&
+      i % p.everyN === 0
+    ) {
       const c = queue[qi++];
       out.push({
         objectType: c.objectType,

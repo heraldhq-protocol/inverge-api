@@ -14,7 +14,13 @@ import {
 } from './ranking';
 
 const PARAMS: FeedRankingParams = {
-  weights: { prePledge: 0.3, velocity: 0.2, feedback: 0.15, quality: 0.15, trust: 0.2 },
+  weights: {
+    prePledge: 0.3,
+    velocity: 0.2,
+    feedback: 0.15,
+    quality: 0.15,
+    trust: 0.2,
+  },
   dupPenaltyWeight: 0.3,
   velocityBayesC: 5,
   feedbackBayesC: 5,
@@ -92,7 +98,14 @@ describe('stats helpers', () => {
 });
 
 describe('personalizationMultiplier', () => {
-  const p = { min: 0.8, max: 1.5, categoryBonus: 0.25, regionBonus: 0.2, similarityBonus: 0.25, engagedCorpusMax: 10 };
+  const p = {
+    min: 0.8,
+    max: 1.5,
+    categoryBonus: 0.25,
+    regionBonus: 0.2,
+    similarityBonus: 0.25,
+    engagedCorpusMax: 10,
+  };
 
   it('returns a neutral 1.0 for an anonymous user (no interests, no corpus)', () => {
     const r = personalizationMultiplier(
@@ -142,21 +155,42 @@ describe('personalizationMultiplier', () => {
 describe('computeTrustScore', () => {
   const w = { kyc: 0.5, kyb: 0.3, cosign: 0.2 };
   it('composes and clamps to [0,1]', () => {
-    expect(computeTrustScore({ kycVerified: true, kybVerifiedClear: true, cosign: true }, w)).toBe(1);
-    expect(computeTrustScore({ kycVerified: false, kybVerifiedClear: false, cosign: false }, w)).toBe(0);
-    expect(computeTrustScore({ kycVerified: true, kybVerifiedClear: false, cosign: true }, w)).toBeCloseTo(0.7, 5);
+    expect(
+      computeTrustScore(
+        { kycVerified: true, kybVerifiedClear: true, cosign: true },
+        w,
+      ),
+    ).toBe(1);
+    expect(
+      computeTrustScore(
+        { kycVerified: false, kybVerifiedClear: false, cosign: false },
+        w,
+      ),
+    ).toBe(0);
+    expect(
+      computeTrustScore(
+        { kycVerified: true, kybVerifiedClear: false, cosign: true },
+        w,
+      ),
+    ).toBeCloseTo(0.7, 5);
   });
 });
 
 describe('scorePool', () => {
   it('shifts every organic score to a positive floor before personalization', () => {
-    const pool = [item({ id: 'a', weightedPrePledge: 1000 }), item({ id: 'b', weightedPrePledge: 1, duplicatePenalty: 1 })];
+    const pool = [
+      item({ id: 'a', weightedPrePledge: 1000 }),
+      item({ id: 'b', weightedPrePledge: 1, duplicatePenalty: 1 }),
+    ];
     const scored = scorePool(pool, PARAMS);
     for (const s of scored) expect(s.final).toBeGreaterThan(0);
   });
 
   it('ranks a strong pre-pledge item above a weak one, all else equal', () => {
-    const pool = [item({ id: 'weak', weightedPrePledge: 10 }), item({ id: 'strong', weightedPrePledge: 5000 })];
+    const pool = [
+      item({ id: 'weak', weightedPrePledge: 10 }),
+      item({ id: 'strong', weightedPrePledge: 5000 }),
+    ];
     const scored = scorePool(pool, PARAMS);
     const byId = Object.fromEntries(scored.map((s) => [s.item.id, s.final]));
     expect(byId.strong).toBeGreaterThan(byId.weak);
@@ -165,8 +199,20 @@ describe('scorePool', () => {
   it('blunts a raw-supporter burst on a fresh low-trust item (Bayesian smoothing)', () => {
     // Attacker: huge supporter burst over a tiny window, but no pre-pledge, no trust.
     const pool = [
-      item({ id: 'organic', weightedPrePledge: 2000, velocityEvents: 8, velocityExposureDays: 8, trustScore: 0.8 }),
-      item({ id: 'burst', weightedPrePledge: 0, velocityEvents: 500, velocityExposureDays: 0.1, trustScore: 0 }),
+      item({
+        id: 'organic',
+        weightedPrePledge: 2000,
+        velocityEvents: 8,
+        velocityExposureDays: 8,
+        trustScore: 0.8,
+      }),
+      item({
+        id: 'burst',
+        weightedPrePledge: 0,
+        velocityEvents: 500,
+        velocityExposureDays: 0.1,
+        trustScore: 0,
+      }),
     ];
     const scored = scorePool(pool, PARAMS);
     const byId = Object.fromEntries(scored.map((s) => [s.item.id, s.final]));
@@ -178,21 +224,49 @@ describe('scorePool', () => {
     const clean = item({ id: 'clean', duplicatePenalty: 0 });
     const dup = item({ id: 'dup', duplicatePenalty: 1 });
     const scored = scorePool([clean, dup], PARAMS);
-    const byId = Object.fromEntries(scored.map((s) => [s.item.id, s.breakdown.organic]));
+    const byId = Object.fromEntries(
+      scored.map((s) => [s.item.id, s.breakdown.organic]),
+    );
     expect(byId.clean).toBeGreaterThan(byId.dup);
   });
 });
 
 describe('deriveChip', () => {
   it('labels a region match', () => {
-    const scored = scorePool([item({ region: 'Lagos', personalizationMultiplier: 1.2, matchReason: 'region' })], PARAMS);
-    expect(deriveChip(scored[0])).toMatchObject({ code: 'REGION', label: 'From Lagos' });
+    const scored = scorePool(
+      [
+        item({
+          region: 'Lagos',
+          personalizationMultiplier: 1.2,
+          matchReason: 'region',
+        }),
+      ],
+      PARAMS,
+    );
+    expect(deriveChip(scored[0])).toMatchObject({
+      code: 'REGION',
+      label: 'From Lagos',
+    });
   });
 
   it('labels a feedback-dominant item', () => {
     const pool = [
-      item({ id: 'a', feedbackRatingSum: 50, feedbackRatingCount: 10, weightedPrePledge: 1, trustScore: 0, qualityScore: 0 }),
-      item({ id: 'b', feedbackRatingSum: 2, feedbackRatingCount: 1, weightedPrePledge: 1, trustScore: 0, qualityScore: 0 }),
+      item({
+        id: 'a',
+        feedbackRatingSum: 50,
+        feedbackRatingCount: 10,
+        weightedPrePledge: 1,
+        trustScore: 0,
+        qualityScore: 0,
+      }),
+      item({
+        id: 'b',
+        feedbackRatingSum: 2,
+        feedbackRatingCount: 1,
+        weightedPrePledge: 1,
+        trustScore: 0,
+        qualityScore: 0,
+      }),
     ];
     const scored = scorePool(pool, PARAMS);
     const a = scored.find((s) => s.item.id === 'a')!;
@@ -205,20 +279,45 @@ describe('rankFeed policy layer', () => {
     // 6 strong items from one creator + plenty of distinct-creator filler, so the cap is
     // satisfiable without leaving the page short.
     const pool = Array.from({ length: 6 }, (_, i) =>
-      item({ id: `x${i}`, creatorId: 'flooder', weightedPrePledge: 1000 - i, category: `cat${i}` }),
+      item({
+        id: `x${i}`,
+        creatorId: 'flooder',
+        weightedPrePledge: 1000 - i,
+        category: `cat${i}`,
+      }),
     );
-    for (let i = 0; i < 8; i++) pool.push(item({ id: `o${i}`, creatorId: `other${i}`, category: `z${i}` }));
+    for (let i = 0; i < 8; i++)
+      pool.push(
+        item({ id: `o${i}`, creatorId: `other${i}`, category: `z${i}` }),
+      );
     const page = rankFeed(pool, PARAMS, 6);
-    const flooder = page.filter((e) => pool.find((p) => p.id === e.id)!.creatorId === 'flooder');
+    const flooder = page.filter(
+      (e) => pool.find((p) => p.id === e.id)!.creatorId === 'flooder',
+    );
     expect(flooder.length).toBeLessThanOrEqual(PARAMS.perCreatorCap);
   });
 
   it('reserves exploration slots for under-exposed items', () => {
     // 8 heavily-exposed strong items + 1 fresh under-exposed one that would not rank organically.
     const pool = Array.from({ length: 8 }, (_, i) =>
-      item({ id: `pop${i}`, creatorId: `c${i}`, category: `k${i}`, weightedPrePledge: 5000, feedImpressions: 100_000 }),
+      item({
+        id: `pop${i}`,
+        creatorId: `c${i}`,
+        category: `k${i}`,
+        weightedPrePledge: 5000,
+        feedImpressions: 100_000,
+      }),
     );
-    pool.push(item({ id: 'newbie', creatorId: 'cN', category: 'kN', weightedPrePledge: 1, feedImpressions: 0, qualityScore: 0.6 }));
+    pool.push(
+      item({
+        id: 'newbie',
+        creatorId: 'cN',
+        category: 'kN',
+        weightedPrePledge: 1,
+        feedImpressions: 0,
+        qualityScore: 0.6,
+      }),
+    );
     const page = rankFeed(pool, PARAMS, 8);
     const newbie = page.find((e) => e.id === 'newbie');
     expect(newbie).toBeDefined();
@@ -228,9 +327,23 @@ describe('rankFeed policy layer', () => {
 
   it('never spends an exploration slot on a below-quality-floor item', () => {
     const pool = Array.from({ length: 6 }, (_, i) =>
-      item({ id: `p${i}`, creatorId: `c${i}`, category: `k${i}`, weightedPrePledge: 4000, feedImpressions: 50_000 }),
+      item({
+        id: `p${i}`,
+        creatorId: `c${i}`,
+        category: `k${i}`,
+        weightedPrePledge: 4000,
+        feedImpressions: 50_000,
+      }),
     );
-    pool.push(item({ id: 'lowq', creatorId: 'cL', category: 'kL', feedImpressions: 0, qualityScore: 0.1 }));
+    pool.push(
+      item({
+        id: 'lowq',
+        creatorId: 'cL',
+        category: 'kL',
+        feedImpressions: 0,
+        qualityScore: 0.1,
+      }),
+    );
     const page = rankFeed(pool, PARAMS, 6);
     const lowq = page.find((e) => e.id === 'lowq');
     // lowq may or may not appear organically, but must never be marked an exploration pick.
@@ -239,7 +352,13 @@ describe('rankFeed policy layer', () => {
 
   it('is deterministic for the same input', () => {
     const pool = Array.from({ length: 10 }, (_, i) =>
-      item({ id: `d${i}`, creatorId: `c${i}`, category: `k${i}`, weightedPrePledge: 100 * i, feedImpressions: 1000 * i }),
+      item({
+        id: `d${i}`,
+        creatorId: `c${i}`,
+        category: `k${i}`,
+        weightedPrePledge: 100 * i,
+        feedImpressions: 1000 * i,
+      }),
     );
     const a = rankFeed(pool, PARAMS, 10).map((e) => e.id);
     const b = rankFeed(pool, PARAMS, 10).map((e) => e.id);
@@ -274,19 +393,31 @@ describe('injectPaid (Stage 3 — walled off)', () => {
   });
 
   it('never modifies organic scores or order — organic is recomputable with paid removed', () => {
-    const out = injectPaid(organic, [{ objectType: 'idea', id: 'ad1', boostTier: 'FEATURED' }], { everyN: 4, maxSlots: 3 });
+    const out = injectPaid(
+      organic,
+      [{ objectType: 'idea', id: 'ad1', boostTier: 'FEATURED' }],
+      { everyN: 4, maxSlots: 3 },
+    );
     const organicBack = out.filter((e) => !e.promoted);
     expect(organicBack).toEqual(organic); // identical objects, same order, untouched scores
   });
 
   it('does not double-place an item already present organically', () => {
-    const out = injectPaid(organic, [{ objectType: 'idea', id: 'o3', boostTier: 'BASIC' }], { everyN: 4, maxSlots: 3 });
+    const out = injectPaid(
+      organic,
+      [{ objectType: 'idea', id: 'o3', boostTier: 'BASIC' }],
+      { everyN: 4, maxSlots: 3 },
+    );
     expect(out.filter((e) => e.id === 'o3')).toHaveLength(1);
     expect(out.some((e) => e.promoted)).toBe(false);
   });
 
   it('promoted slots carry a zero organic score (outside the score space)', () => {
-    const out = injectPaid(organic, [{ objectType: 'idea', id: 'ad1', boostTier: 'FEATURED' }], { everyN: 4, maxSlots: 3 });
+    const out = injectPaid(
+      organic,
+      [{ objectType: 'idea', id: 'ad1', boostTier: 'FEATURED' }],
+      { everyN: 4, maxSlots: 3 },
+    );
     expect(out.find((e) => e.promoted)!.score).toBe(0);
   });
 });
