@@ -77,6 +77,14 @@ With `KYC_PROVIDER=stub`, `GET /kyc/dev-complete?ref=<ref>&user=<id>` simulates 
 - **FR-204** — the validation gate blocks idea→campaign conversion until thresholds clear; thresholds are admin-tunable at runtime via `PATCH /admin/params` (audited).
 - **FR-1007** — AML tipping-off: a sanctions-related hold shows a generic external reason; full detail stays internal.
 
+## Open backlog
+
+`docs/web-ui-api-gaps.md` — additive gaps raised by the `inverge-web` product screens (idea feed, idea
+detail, campaign detail), with proposed shapes, the invariants each must respect, and a suggested
+order. Items 1 and 2, public creator identity and a comment author projection, currently **block web
+work that is otherwise ready to build**. `AGENTS.md` carries the repo conventions and the Prisma v7 /
+Windows gotchas.
+
 ## Module map
 
 `auth` (+ admin RBAC guard) · `wallets` (+ fee-payer skeleton) · `ideas` · `boosts` · `flat-fee` · `kyc` (KYC/AML **+ KYB**) · `metrics` (pre-pledge weighting, snapshots, insights) · `moderation` (policy harness + dedup) · `quality` (FR-271 scoring) · `survey` (surveys + comments) · `sync` (idea→campaign) · `platform-params` (+ audit) · `admin` · `notifications` · `queue` · `ports` (adapters) · `prisma`
