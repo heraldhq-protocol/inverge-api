@@ -7,7 +7,10 @@
 > Source of the requirement, in `inverge-web`: `docs/ideas-campaigns-brief.md` (build spec),
 > `docs/campaign-data-contract.md` §4 (the same list from the consumer's side, with the provisional
 > campaign shapes), `docs/pitch-narrative-playbook.md` §3 (why the content gaps matter).
-> Web branch: `feat/ideas-campaigns-ui`.
+> Web branch: `feat/ideas-campaigns-ui`; campaign surfaces on `feat/campaign-ui-and-flow`.
+>
+> Items 12–15 were added on 2026-07-31 while building the campaign catalogue, campaign detail in depth
+> and the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11). None of them is P0.
 >
 > **P0 items block web work that is otherwise ready to build.** P1 unblocks screens that have a
 > documented fallback. P2 is real but deferrable.
@@ -202,6 +205,62 @@ Creator dashboard covers the need until then.
 
 ---
 
+## P1 — campaign surfaces
+
+Raised 2026-07-31 by the campaign catalogue, campaign detail and the creator campaign flow. Each has a
+fallback that works today and stops working at scale, except item 15, which leaves the flow ending in a
+draft nobody can read back.
+
+### 12. Platform escrow aggregates (FR-801)
+
+FR-801 requires a public dashboard showing total value escrowed, released and refunded, plus counts of
+active, completed and refunded campaigns, and FR-803 requires those figures to come from the indexer
+rather than backend records. Nothing serves them today, so the web catalogue sums them from the campaign
+list it already fetched. That is correct while there are four campaigns and wrong the moment the list
+paginates.
+
+`GET /platform/escrow` (or a block on an existing stats route), read-only, derived from `OnChainEvent`:
+
+```ts
+{ heldUsd: string; releasedUsd: string; refundedUsd: string;
+  counts: { active: number; completed: number; refunded: number } }
+```
+
+Same FR-803 rule as item 7: indexer-derived, never summed from `Contribution` rows.
+
+### 13. Campaign list filters and sort
+
+`GET /campaigns?status=&category=&region=&sort=` with `sort` in
+`closing-soon | newest | most-backed | most-delivered`, matching the feed's query idiom so the two
+discovery surfaces do not diverge. Without it the web app fetches every campaign and filters in
+`campaigns-api.ts`.
+
+One product rule to preserve server-side: **`FAILED` campaigns are never excluded from a default list.**
+A visible failure is the proof the refund guarantee works, so hiding one would undercut the only claim
+the product makes. Filtering them out must require an explicit `status=` filter.
+
+### 14. Creator campaign history on the public creator projection
+
+Extends item 1. Per campaign the creator has run: `title`, `slug`, `status`, `milestonesReleased`,
+`milestoneTotal`. The web Creator tab renders an outcome label derived from those counts
+(`All 4 stages delivered`, `3 of 4 stages delivered`) rather than a self-reported fulfilment flag, which
+is the one place the Kickstarter reference is deliberately inverted.
+
+Two invariants carry over from item 1: `activeStrikes` stays internal and must not be inferable from this
+payload, and a demoted creator projects as their current tier with no marker of the demotion.
+
+### 15. Campaign submission and owner visibility
+
+`POST /campaigns/:id/submit` (FR-304 curation entry, gated on the FR-311 application fee) plus
+`GET /campaigns?mine=true` returning the owner's `DRAFT` and `IN_REVIEW` campaigns. Today
+`POST /ideas/:id/convert` creates a `DRAFT` that neither the creator nor anyone else can then read,
+so the campaign builder's last step has nowhere to go and the created draft is invisible.
+
+The web builder is built to stop cleanly at a saved draft, so this is not blocking — it is the difference
+between a flow that ends in a dead end and one that ends in a queue.
+
+---
+
 ## Explicitly not asks
 
 Recorded so nobody "helpfully" adds them:
@@ -225,3 +284,6 @@ Recorded so nobody "helpfully" adds them:
 1 → 2 (same projection work, and together they unblock two web stages) → 4 → 5 → 3 → 6 → 7 → the P2s.
 
 Items 1 and 2 are one piece of work with one migration and are worth doing as a single change set.
+
+The campaign-surface items slot in behind 6, since none of them means anything until campaign reads
+exist: 6 → 13 → 14 (rides on 1) → 7 → 12 → 15.
