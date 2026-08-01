@@ -9,7 +9,7 @@
 > campaign shapes), `docs/pitch-narrative-playbook.md` §3 (why the content gaps matter).
 > Web branch: `feat/ideas-campaigns-ui`; campaign surfaces on `feat/campaign-ui-and-flow`.
 >
-> Items 12–15 were added on 2026-07-31 while building the campaign catalogue, campaign detail in depth
+> Items 12–18 were added on 2026-07-31 while building the campaign catalogue, campaign detail in depth
 > and the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11). None of them is P0.
 >
 > **P0 items block web work that is otherwise ready to build.** P1 unblocks screens that have a
