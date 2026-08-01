@@ -9,11 +9,44 @@
 > campaign shapes), `docs/pitch-narrative-playbook.md` §3 (why the content gaps matter).
 > Web branch: `feat/ideas-campaigns-ui`; campaign surfaces on `feat/campaign-ui-and-flow`.
 >
-> Items 12–18 were added on 2026-07-31 while building the campaign catalogue, campaign detail in depth
-> and the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11). None of them is P0.
+> Items 12–19 were added 2026-07-31/08-01 while building the campaign catalogue, campaign detail and
+> the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11, and
+> `docs/campaign-data-contract.md` §2 for the shapes the web is built against). None of them is P0.
 >
 > **P0 items block web work that is otherwise ready to build.** P1 unblocks screens that have a
 > documented fallback. P2 is real but deferrable.
+
+---
+
+## The list at a glance
+
+| # | Ask | Priority | Blocks / unblocks |
+|---|---|---|---|
+| 1 | Public creator identity (`displayName`, `avatarUrl`, `bio`, `links`) | **P0** | The card, the creator panel, the campaign header. Four surfaces on one gap |
+| 2 | Comment author projection on `GET /ideas/:id/comments` | **P0** | The discussion thread cannot render at all |
+| 3 | Media on an idea (`coverImageUrl`, then upload) | P1 | Image-led cards. Deterministic cover meanwhile |
+| 4 | Owner filter on `GET /ideas` (`mine=true`, including `DRAFT`) | P1 | Creator dashboard, and step 1 of the campaign builder |
+| 5 | Public gate progress on `GET /ideas/:id` | P1 | The FR-204 breakdown without exposing creator-only insights |
+| 6 | `GET /campaigns` and `GET /campaigns/:id` | P1 | **Every campaign screen.** All of them run on fixtures today |
+| 7 | Public receipts feed per campaign (`OnChainEvent`) | P1 | Receipt timeline and the campaign timeline tab |
+| 12 | Platform escrow aggregates (FR-801) | P1 | The escrow band on the catalogue. Summed client-side meanwhile |
+| 13 | Campaign list filters and sort | P1 | Server-side catalogue filtering |
+| 14 | Creator campaign history on the creator projection | P1 | The Creator tab's track record |
+| 15 | `POST /campaigns/:id/submit` plus owner visibility | P1 | The end of the creator flow. Today a draft nobody can read back |
+| 16 | Campaign media (`videoUrl` **required**, poster, cover) | P1 | The above-the-fold player and every card thumbnail |
+| 17 | A create path for a campaign with no backing idea | P1 | The standalone path in the builder |
+| 18 | The escrow split, as a shared and documented rule | P1 | Nothing renders differently. It stops three implementations disagreeing about money |
+| 19 | Reward tiers | P1 | The Rewards tab and step 4 of the builder |
+| 8 | Idea-level `risks` field | P2 | Coaching, and backer context in objection voting |
+| 9 | One-line `summary` on `Idea` | P2 | OpenGraph text, share copy |
+| 10 | Objection threshold and window as readable params | P2 | Rendering the rule instead of hard-coding 30% and 7 days |
+| 11 | Public aggregate support view | P2 | A public community tab |
+
+**What the web is running on meanwhile.** Every campaign surface reads from
+`inverge-web/src/lib/campaigns/campaigns-api.ts`, which returns fixtures behind one `USE_FIXTURES`
+flag. Nothing in the campaign domain calls this API at all — not even `POST /ideas/:id/convert`, which
+is live and correct. That is deliberate: the screens were built as UI first, against the written
+contract, so the swap when item 6 lands is one file rather than a rewrite of every component.
 
 ---
 
@@ -169,42 +202,6 @@ Phase 2 indexer runs. Worth defining now so the receipt timeline is not designed
 
 ---
 
-## P2 — real, deferrable
-
-### 8. Idea-level `risks` field
-
-Kickstarter mandates a "Risks and Challenges" section on every project and the practitioner guidance
-is that specificity there signals competence. Our **campaigns** have the equivalent; our **ideas have
-nothing**.
-
-Optional `risks` text on `Idea`, prompted as "What is most likely to go wrong, and what would you do
-about it?", and scored by `QualityScorerPort` for presence and specificity as **coaching only** —
-FR-271a is explicit that quality scoring never rejects. It also gives backers useful context later in
-objection voting: a creator who named a risk up front and then hit it is in a different position from
-one who did not.
-
-### 9. One-line `summary` on `Idea`
-
-For OpenGraph text, campaign headers and share copy. Deliberately low priority: the web cards lead
-with `problem`, which for a validation product is the better default, and an unfalsifiable tagline is
-not something the quality scorer should reward.
-
-### 10. Objection threshold and window as readable params
-
-The web app should render the actual rule rather than hard-coding "30%" and "7 days". Expose the
-relevant `PlatformParam` values read-only (they are already admin-tunable and audited) so the copy
-tracks configuration.
-
-### 11. Public aggregate support view
-
-Geography of support, and first-time versus returning supporters, is the diaspora-to-home story the
-PRD is built on, and `insights` already computes most of it for the creator. A public version needs
-its own endpoint **and its own privacy pass**: aggregate only, minimum bucket sizes so a city with two
-supporters cannot identify them, and nothing that reverses into an individual's pre-pledge amount.
-Creator dashboard covers the need until then.
-
----
-
 ## P1 — campaign surfaces
 
 Raised 2026-07-31 by the campaign catalogue, campaign detail and the creator campaign flow. Each has a
@@ -332,6 +329,42 @@ as item 1 applies on write.
 
 ---
 
+## P2 — real, deferrable
+
+### 8. Idea-level `risks` field
+
+Kickstarter mandates a "Risks and Challenges" section on every project and the practitioner guidance
+is that specificity there signals competence. Our **campaigns** have the equivalent; our **ideas have
+nothing**.
+
+Optional `risks` text on `Idea`, prompted as "What is most likely to go wrong, and what would you do
+about it?", and scored by `QualityScorerPort` for presence and specificity as **coaching only** —
+FR-271a is explicit that quality scoring never rejects. It also gives backers useful context later in
+objection voting: a creator who named a risk up front and then hit it is in a different position from
+one who did not.
+
+### 9. One-line `summary` on `Idea`
+
+For OpenGraph text, campaign headers and share copy. Deliberately low priority: the web cards lead
+with `problem`, which for a validation product is the better default, and an unfalsifiable tagline is
+not something the quality scorer should reward.
+
+### 10. Objection threshold and window as readable params
+
+The web app should render the actual rule rather than hard-coding "30%" and "7 days". Expose the
+relevant `PlatformParam` values read-only (they are already admin-tunable and audited) so the copy
+tracks configuration.
+
+### 11. Public aggregate support view
+
+Geography of support, and first-time versus returning supporters, is the diaspora-to-home story the
+PRD is built on, and `insights` already computes most of it for the creator. A public version needs
+its own endpoint **and its own privacy pass**: aggregate only, minimum bucket sizes so a city with two
+supporters cannot identify them, and nothing that reverses into an individual's pre-pledge amount.
+Creator dashboard covers the need until then.
+
+---
+
 ## Explicitly not asks
 
 Recorded so nobody "helpfully" adds them:
@@ -352,9 +385,26 @@ Recorded so nobody "helpfully" adds them:
 
 ## Suggested order
 
-1 → 2 (same projection work, and together they unblock two web stages) → 4 → 5 → 3 → 6 → 7 → the P2s.
+**Ideas first, because two of them are P0 and most of the rest is downstream:**
+
+> 1 → 2 → 4 → 5 → 3
 
 Items 1 and 2 are one piece of work with one migration and are worth doing as a single change set.
+Item 4 is on the campaign path too: it is what step 1 of the builder needs in order to list a creator's
+own ideas.
 
-The campaign-surface items slot in behind 6, since none of them means anything until campaign reads
-exist: 6 → 13 → 14 (rides on 1) → 7 → 12 → 15.
+**Then campaigns, and item 6 gates all of them** — nothing else here means anything until a campaign
+can be read:
+
+> 6 → 19 → 16 → 13 → 14 → 7 → 12 → 15 → 17
+
+19 and 16 sit directly behind 6 because both are columns on `Campaign` rather than new endpoints:
+doing them in the same migration as the read shape avoids a second one. 13 is performance. 14 rides on
+1 and cannot ship before it. 7 and 12 both wait on the Phase 2 indexer and are the same work seen at
+two scales, so do them together.
+
+**Item 18 is not code.** It is a decision to settle before the escrow programme hard-codes a different
+split. It costs nothing today and is expensive the moment a tranche has been released against the
+wrong base.
+
+**Then the P2s**, in whatever order suits.

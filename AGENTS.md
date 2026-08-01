@@ -6,10 +6,22 @@ README does not: the open backlog and the gotchas that have cost time in this re
 
 ## Open work
 
-- **`docs/web-ui-api-gaps.md`** — additive API gaps raised by the `inverge-web` product screens, with
-  proposed shapes, the invariants each must respect, the tests each needs, and a suggested order.
-  Items 1 and 2 (public creator identity, comment author projection) are **blocking web work that is
-  otherwise ready to build**. Start there if you are picking up backend work with no other steer.
+- **`docs/web-ui-api-gaps.md`** — nineteen additive API gaps raised by the `inverge-web` product
+  screens, with proposed shapes, the invariants each must respect, the tests each needs, an
+  at-a-glance table and a suggested order. Items 1 and 2 (public creator identity, comment author
+  projection) are **blocking web work that is otherwise ready to build**. Start there if you are
+  picking up backend work with no other steer.
+- **The campaign surfaces are built and running on fixtures.** `inverge-web` has a campaign catalogue,
+  a seven-tab campaign detail page and a five-step creator flow, none of which call this API — not
+  even `POST /ideas/:id/convert`, which is live. They are built against a written contract
+  (`inverge-web/docs/campaign-data-contract.md`), so item 6 turns them on by changing one file. Two
+  things in that contract are worth reading before you implement anything campaign-shaped:
+  - **Milestone state is derived, not stored** (contract §3), and
+  - **the escrow split uses two different bases** (contract §2a, gap item 18): the working-capital
+    tranche is a share of `targetAmount`, every milestone tranche is a share of
+    `totalRaised - upfront`, and the two sum to exactly `totalRaised`. Pegging the upfront to the
+    raise pays a campaign that overfunded ten times over more before verification than its whole plan
+    was worth. Settle this before the escrow programme hard-codes something else.
 - KYC/AML follow-ups (prod webhook registration, FR-103/104 gate call-sites on campaigns and
   contributions, ongoing AML monitoring, admin IN_REVIEW review actions, geo/wallet L1 gates) are
   tracked outside this repo in the session backlog, not here.
