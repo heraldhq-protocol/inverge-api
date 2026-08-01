@@ -303,6 +303,33 @@ If the API or the on-chain programme derives these too, all three must agree. Pu
 — the same treatment as milestone state in item 6 — and consider returning the derived amounts so the
 client is not a second implementation.
 
+### 19. Reward tiers
+
+Optional per FR-301, and `ConvertIdeaDto` accepts no rewards field today, so a creator can define tiers
+in the web builder and nothing can store them.
+
+```ts
+type RewardTier = {
+  id: string;
+  title: string;
+  description: string;
+  amount: string;            // minimum pledge, USD
+  estimatedDelivery: string; // ISO; rendered as a month
+  limitedQuantity: number | null;  // null = unlimited
+  claimed: number;
+  items: { label: string; quantity: number }[];
+  shipping: 'WORLDWIDE' | 'REGION_ONLY' | 'NOTHING_TO_SHIP';
+};
+```
+
+**The invariant that matters more than the shape: a reward must never touch escrow.** It cannot gate a
+tranche, cannot accelerate one, and is not what a milestone claim is judged against — the evidence
+definition is. Keep rewards out of the release path entirely, or the objection mechanism ends up
+adjudicating late t-shirts instead of undelivered work.
+
+`title` and `description` are user-supplied free text on a public surface, so the same moderation rule
+as item 1 applies on write.
+
 ---
 
 ## Explicitly not asks
@@ -318,8 +345,8 @@ Recorded so nobody "helpfully" adds them:
 - **Do not add view or impression counts to any public response.** `feedImpressions` drives the UCB
   exploration bonus and is not a validation metric; publishing it invites exactly the
   impression-gaming the flat-fee pricing model exists to avoid (PRD §6).
-- **Do not add reward tiers, add-ons or stretch goals** to satisfy a reference screenshot. Rewards are
-  optional in FR-301 and out of launch scope; stretch goals are excluded permanently.
+- **Do not add add-ons or stretch goals.** Add-ons are a shop's upsell mechanic; stretch goals are
+  excluded permanently. Reward *tiers* are no longer on this list — see item 19.
 
 ---
 
