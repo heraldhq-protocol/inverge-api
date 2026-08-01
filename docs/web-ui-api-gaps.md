@@ -259,6 +259,50 @@ so the campaign builder's last step has nowhere to go and the created draft is i
 The web builder is built to stop cleanly at a saved draft, so this is not blocking — it is the difference
 between a flow that ends in a dead end and one that ends in a queue.
 
+### 16. Campaign media
+
+`videoUrl`, `videoPosterUrl` and `coverImageUrl` on `Campaign`, plus upload paths. **The video is
+required to publish a campaign**, which is a deliberate asymmetry with ideas: publishing an idea is
+free and must stay frictionless, but a campaign asks strangers for money and the reference's
+highest-converting element is a creator explaining the plan in their own voice.
+
+Same moderation consequence as item 3, and worse: video is a policy surface the text-only classifier
+does not cover at all, on the surface where money changes hands. Constrain to trusted hosts, or hold
+first upload behind review, or treat video moderation as its own piece of work — but do not ship an
+unmoderated public video field.
+
+The web client already accepts all three fields and falls back to a deterministic cover, so this is a
+data change rather than a UI change when it lands.
+
+### 17. Campaigns with no backing idea
+
+`POST /ideas/:id/convert` is the only create path and it requires an idea that cleared FR-204. The web
+builder also offers a standalone path, for creators who arrive with an audience already, so it needs a
+create path carrying its own `title`, `summary`, `category` and `region`.
+
+Everything else about such a campaign is identical: same milestone rules, same escrow, same curation.
+What it lacks is the validation evidence, and the web UI says so in place rather than presenting the two
+paths as equivalent. Worth deciding explicitly whether curation weighs them differently.
+
+### 18. Derived escrow amounts, or the split as a documented rule
+
+The web app derives what each stage releases from two different bases, and getting it wrong is a money
+bug rather than a rendering one:
+
+```
+upfront = workingCapitalPct%  of  targetAmount          (FR-503a)
+stages  = tranchePct%         of  (totalRaised - upfront)
+```
+
+The upfront is a share of the **target** because it is the only money that moves before anything is
+verified: pegged to the raise, a $1,000 target that raises $20,000 pays out $4,000 against nothing. The
+stages divide the **raise** because a campaign that overfunds is being asked to do more, and the extra
+must be available while the work happens. The two always sum to exactly the amount raised.
+
+If the API or the on-chain programme derives these too, all three must agree. Put it in one pure module
+— the same treatment as milestone state in item 6 — and consider returning the derived amounts so the
+client is not a second implementation.
+
 ---
 
 ## Explicitly not asks
