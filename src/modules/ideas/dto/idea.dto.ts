@@ -73,6 +73,16 @@ export class CreateIdeaDto {
   @IsNumber()
   @IsPositive()
   creatorPrePledgeTarget?: number;
+
+  @ApiPropertyOptional({ description: 'Cover image URL for image-led cards' })
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Risks and challenges section (P2 coaching context)' })
+  @IsOptional()
+  @IsString()
+  risks?: string;
 }
 
 export class UpdateIdeaDto extends PartialType(CreateIdeaDto) {}
@@ -108,4 +118,10 @@ export class ListIdeasQueryDto {
   @Min(1)
   @Max(100)
   take?: number;
+
+  @ApiPropertyOptional({ description: 'If true, returns calling creator\'s own ideas (all statuses including DRAFT)' })
+  @IsOptional()
+  @Type(() => Boolean)
+  mine?: boolean;
 }
+

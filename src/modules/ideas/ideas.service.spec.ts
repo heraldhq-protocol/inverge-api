@@ -49,7 +49,7 @@ describe('IdeasService.create (FR-270/275)', () => {
     expect(data).toMatchObject({ creatorId: 'u1', status: 'DRAFT', targetUser: 'smallholder farmers', category: 'agriculture', creatorPrePledgeTarget: 800 });
     expect(data.roadmap).toContain('2026-Q1'); // derived from roadmapSteps
     expect(q.evaluate).toHaveBeenCalledWith('new-id', false); // coaching, no tier change
-    expect(res).toBe(fresh); // re-fetched
+    expect(res).toMatchObject(fresh); // re-fetched
   });
 
   it('rejects creation over the per-creator concurrency cap (FR-275)', async () => {

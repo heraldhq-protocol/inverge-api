@@ -273,6 +273,10 @@ model CreatorProfile {
   userId             String      @id
   user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   tier               CreatorTier @default(STARTER)
+  displayName        String?
+  avatarUrl          String?
+  bio                String?
+  links              Json?       @default("[]")
   activeStrikes      Int         @default(0)
   completedCampaigns Int         @default(0)
   lifetimeRaised     Decimal     @default(0) @db.Decimal(14, 2)
@@ -301,6 +305,8 @@ model Idea {
   roadmapSteps       Json? // >=2 dated steps [{ date, description }]
   category           String? // software | agriculture | film | arts | ...
   region             String? // creator-declared region/origin — personalization + "From Lagos" chip
+  coverImageUrl      String? // P1 web UI gap: media on idea
+  risks              String? // P2 web UI gap: risks and challenges section
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
@@ -538,6 +544,10 @@ model Campaign {
   escrowPdaAddress         String?
   totalRaised              Decimal        @default(0) @db.Decimal(14, 2)
   applicationFeeChargeId   String? // FR-311 gate (Phase 1)
+  videoUrl                 String? // P1 item 16: campaign media (required to publish)
+  videoPosterUrl           String?
+  coverImageUrl            String?
+  rewardTiers              Json? // P1 item 19: optional reward tiers
 
   milestones    Milestone[]
   contributions Contribution[]

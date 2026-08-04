@@ -18,6 +18,9 @@ import {
   UpdateIdeaDto,
 } from './dto/idea.dto';
 
+import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+import { buildGateProgress } from '../metrics/insights-compute';
+
 @Injectable()
 export class IdeasService {
   constructor(
@@ -45,6 +48,8 @@ export class IdeasService {
         roadmapSteps: dto.roadmapSteps as object,
         category: dto.category,
         region: dto.region ?? null,
+        coverImageUrl: dto.coverImageUrl ?? null,
+        risks: dto.risks ?? null,
         roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
         askAmount: dto.askAmount,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
@@ -107,17 +112,29 @@ export class IdeasService {
     return this.quality.latestReport(id);
   }
 
-  // Public browse (FR-272/273). Only DISCOVERABLE/FEATURED ideas appear; LINK_ONLY are
-  // reachable by direct URL only. Ordering is behavioural + editorial — never paid:
-  // FEATURED first, then boosted (discovery-only promotion, FR-206a), then recency.
-  async list(query: ListIdeasQueryDto) {
+  // Public browse (FR-272/273) or creator dashboard (mine=true).
+  async list(query: ListIdeasQueryDto, currentUserId?: string) {
     const now = new Date();
-    const ideas = await this.prisma.idea.findMany({
-      where: {
+
+    let whereClause: object;
+    if (query.mine) {
+      if (!currentUserId) {
+        throw new ForbiddenException('Must be logged in to view your ideas');
+      }
+      whereClause = { creatorId: currentUserId };
+    } else {
+      whereClause = {
         status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
         discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
-      },
+      };
+    }
+
+    const ideas = await this.prisma.idea.findMany({
+      where: whereClause,
       include: {
+        creator: {
+          include: { creatorProfile: true },
+        },
         boosts: {
           where: {
             startsAt: { lte: now },
@@ -129,9 +146,11 @@ export class IdeasService {
       skip: query.skip ?? 0,
       take: query.take ?? 50,
     });
+
     return ideas
-      .map(({ boosts, ...idea }) => ({
+      .map(({ boosts, creator, ...idea }) => ({
         ...idea,
+        creator: toPublicCreator(creator),
         promoted: boosts.length > 0,
         boostTier: boosts[0]?.tier ?? null,
       }))
@@ -142,9 +161,44 @@ export class IdeasService {
   }
 
   async get(id: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id } });
+    const idea = await this.prisma.idea.findUnique({
+      where: { id },
+      include: {
+        creator: {
+          include: { creatorProfile: true },
+        },
+      },
+    });
     if (!idea) throw new NotFoundException('Idea not found');
-    return idea;
+
+    const [minSupporters, minWeightedUSD, minPct, minFeedbackCount, minAvgFeedbackRating] = await Promise.all([
+      this.params.getNumber('validation.minSupporters', 50),
+      this.params.getNumber('validation.minWeightedUSD', 2000),
+      this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
+      this.params.getNumber('validation.minFeedbackCount', 10),
+      this.params.getNumber('validation.minAvgFeedbackRating', 3),
+    ]);
+
+    const gateProgress = buildGateProgress({
+      supporterCount: idea.supporterCount ?? 0,
+      weighted: Number(idea.weightedPrePledgeTotal ?? 0),
+      feedbackCount: idea.feedbackCount ?? 0,
+      feedbackScore: Number(idea.feedbackScore ?? 0),
+      askAmount: Number(idea.askAmount ?? 0),
+      creatorTarget: idea.creatorPrePledgeTarget ? Number(idea.creatorPrePledgeTarget) : 0,
+      minSupporters,
+      minWeightedUSD,
+      minPct,
+      minFeedbackCount,
+      minAvgFeedbackRating,
+    });
+
+    const { creator, ...rest } = idea;
+    return {
+      ...rest,
+      creator: toPublicCreator(creator),
+      gateProgress,
+    };
   }
 
   // FR-202: support signal, idempotent per (idea, user).

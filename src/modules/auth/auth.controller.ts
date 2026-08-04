@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   AuthenticatedUser,
@@ -6,6 +6,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { CreateSessionDto } from './dto/create-session.dto';
+import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { PrivyAuthGuard } from './guards/privy-auth.guard';
 
 @ApiTags('auth')
@@ -25,4 +26,16 @@ export class AuthController {
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.auth.me(user.id);
   }
+
+  @Patch('me/profile')
+  @ApiBearerAuth()
+  @UseGuards(PrivyAuthGuard)
+  @ApiOperation({ summary: 'Update creator display profile' })
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateCreatorProfileDto,
+  ) {
+    return this.auth.updateProfile(user.id, dto);
+  }
 }
+

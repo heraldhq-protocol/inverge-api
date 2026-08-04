@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { CreateCommentDto } from './dto/comment.dto';
 
+import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+
 // Free-form comments thread on an idea (distinct from the structured survey). Comments
 // can be liked and replied to. Thread volume feeds Idea.commentCount (engagement metric,
 // FR-273); it does NOT touch the FR-203 validation metrics (feedbackScore etc.).
@@ -31,13 +33,42 @@ export class CommentsService {
   }
 
   // Public: highlighted first, then most-liked, then most-recent. Flat list carrying
-  // parentId + likeCount so the client can nest replies.
-  async list(ideaId: string) {
+  // parentId + likeCount so the client can nest replies. Includes author projection.
+  async list(ideaId: string, currentUserId?: string) {
     await this.exists(ideaId);
-    return this.prisma.ideaComment.findMany({
+    const creatorId = await this.ideaCreator(ideaId);
+    const comments = await this.prisma.ideaComment.findMany({
       where: { ideaId },
+      include: {
+        user: {
+          include: { creatorProfile: true },
+        },
+        likes: currentUserId
+          ? {
+              where: { userId: currentUserId },
+              select: { userId: true },
+            }
+          : false,
+      },
       orderBy: [{ highlighted: 'desc' }, { likeCount: 'desc' }, { createdAt: 'desc' }],
       take: 300,
+    });
+
+    return comments.map((comment) => {
+      const publicCreator = toPublicCreator(comment.user);
+      const isCreator = comment.userId === creatorId;
+      const { user, likes, ...rest } = comment;
+
+      return {
+        ...rest,
+        author: {
+          id: comment.user.id,
+          displayName: publicCreator?.displayName ?? null,
+          avatarUrl: publicCreator?.avatarUrl ?? null,
+          isCreator,
+        },
+        ...(currentUserId ? { likedByMe: Array.isArray(likes) && likes.length > 0 } : {}),
+      };
     });
   }
 

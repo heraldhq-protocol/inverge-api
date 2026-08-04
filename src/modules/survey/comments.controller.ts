@@ -4,6 +4,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto, HighlightCommentDto } from './dto/comment.dto';
@@ -21,8 +22,9 @@ export class CommentsController {
   }
 
   @Get()
-  list(@Param('id') id: string) {
-    return this.comments.list(id);
+  @UseGuards(OptionalPrivyAuthGuard)
+  list(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.comments.list(id, user?.id);
   }
 
   @Post(':commentId/like')
