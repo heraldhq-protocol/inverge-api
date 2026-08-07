@@ -28,6 +28,7 @@ export const envSchema = z.object({
   ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
 
   PRIVY_APP_ID: z.string().optional(),
+  PRIVY_APP_SECRET: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),
   PRIVY_TOKEN_ISSUER: z.string().default('privy.io'),
 

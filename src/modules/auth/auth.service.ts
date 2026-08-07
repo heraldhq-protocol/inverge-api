@@ -47,8 +47,18 @@ export class AuthService {
       });
     }
 
+    const userWithProfile = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: { wallets: true, creatorProfile: true },
+    });
+
+    const requiresOnboarding = !userWithProfile?.creatorProfile?.displayName;
     const sessionToken = await this.sessions.sign(user.id);
-    return { user, sessionToken };
+    return {
+      user: userWithProfile ? { ...userWithProfile, creator: toPublicCreator(userWithProfile) } : user,
+      sessionToken,
+      requiresOnboarding,
+    };
   }
 
   async me(userId: string) {
@@ -57,9 +67,11 @@ export class AuthService {
       include: { wallets: true, creatorProfile: true },
     });
     if (!user) return null;
+    const requiresOnboarding = !user.creatorProfile?.displayName;
     return {
       ...user,
       creator: toPublicCreator(user),
+      requiresOnboarding,
     };
   }
 
