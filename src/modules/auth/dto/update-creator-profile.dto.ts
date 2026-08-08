@@ -29,7 +29,7 @@ export class UpdateCreatorProfileDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsString()
   avatarUrl?: string;
 
   @ApiPropertyOptional()
