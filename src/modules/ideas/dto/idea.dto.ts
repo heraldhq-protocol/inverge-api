@@ -18,7 +18,35 @@ import {
 } from 'class-validator';
 
 export const PLEDGE_CURRENCIES = ['USD', 'NGN'] as const;
-export const IDEA_CATEGORIES = ['software', 'agriculture', 'film', 'arts', 'other'] as const;
+
+export const IDEA_CATEGORIES = [
+  'technology',
+  'software',
+  'fintech',
+  'agritech',
+  'healthtech',
+  'cleantech',
+  'edtech',
+  'logistics',
+  'e-commerce',
+  'web3',
+  'art',
+  'comics',
+  'crafts',
+  'dance',
+  'design',
+  'fashion',
+  'film',
+  'food',
+  'games',
+  'journalism',
+  'music',
+  'photography',
+  'publishing',
+  'theater',
+  'community',
+  'other',
+] as const;
 
 // FR-270: a dated roadmap step. At least two are required, so the form cannot be
 // answered with vague free text.
@@ -83,6 +111,16 @@ export class CreateIdeaDto {
   @IsOptional()
   @IsString()
   risks?: string;
+
+  @ApiPropertyOptional({ description: 'Rich text problem document' })
+  @IsOptional()
+  @IsObject()
+  problemDoc?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Rich text solution document' })
+  @IsOptional()
+  @IsObject()
+  solutionDoc?: Record<string, unknown>;
 }
 
 export class UpdateIdeaDto extends PartialType(CreateIdeaDto) {}

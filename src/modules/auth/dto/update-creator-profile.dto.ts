@@ -24,6 +24,13 @@ export class UpdateCreatorProfileDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @Length(3, 30)
+  @Matches(/^[a-zA-Z0-9_-]+$/, { message: 'Username can only contain letters, numbers, underscores, and dashes' })
+  username?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   @Length(1, 50)
   displayName?: string;
 

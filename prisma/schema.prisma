@@ -273,6 +273,7 @@ model CreatorProfile {
   userId             String      @id
   user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   tier               CreatorTier @default(STARTER)
+  username           String?     @unique
   displayName        String?
   avatarUrl          String?
   bio                String?
@@ -307,6 +308,8 @@ model Idea {
   region             String? // creator-declared region/origin — personalization + "From Lagos" chip
   coverImageUrl      String? // P1 web UI gap: media on idea
   risks              String? // P2 web UI gap: risks and challenges section
+  problemDoc         Json? // Rich text problem document
+  solutionDoc        Json? // Rich text solution document
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed

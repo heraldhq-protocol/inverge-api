@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   AuthenticatedUser,
@@ -27,6 +27,12 @@ export class AuthController {
     return this.auth.me(user.id);
   }
 
+  @Get('check-username')
+  @ApiOperation({ summary: 'Check if a username handle is available' })
+  checkUsername(@Query('username') username: string) {
+    return this.auth.checkUsernameAvailability(username);
+  }
+
   @Patch('me/profile')
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard)
@@ -37,5 +43,10 @@ export class AuthController {
   ) {
     return this.auth.updateProfile(user.id, dto);
   }
-}
 
+  @Get('creators/:idOrUsername')
+  @ApiOperation({ summary: 'Get public creator profile and their projects/backed ideas' })
+  getPublicProfile(@Param('idOrUsername') idOrUsername: string) {
+    return this.auth.getPublicProfile(idOrUsername);
+  }
+}

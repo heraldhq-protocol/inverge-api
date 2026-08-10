@@ -1,10 +1,10 @@
-import { Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import {
-  EMBEDDED_WALLET_PORT,
-  EmbeddedWalletPort,
-} from '../../ports/wallet/embedded-wallet.port';
-import { SessionService } from './session.service';
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
@@ -12,51 +12,40 @@ import { toPublicCreator } from '../../common/projections/creator-profile.projec
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(EMBEDDED_WALLET_PORT) private readonly wallet: EmbeddedWalletPort,
     private readonly prisma: PrismaService,
-    private readonly sessions: SessionService,
-    @Inject(forwardRef(() => ModerationService))
     private readonly moderation: ModerationService,
   ) {}
 
-  // FR-101: verify provider token, upsert user, provision the embedded wallet,
-  // return a short-lived session token.
-  async authenticate(accessToken: string) {
-    const identity = await this.wallet.verifyAccessToken(accessToken);
+  async authenticate(privyAccessToken: string) {
+    if (!privyAccessToken) throw new UnauthorizedException('No token provided');
 
-    const user = await this.prisma.user.upsert({
-      where: { privyDid: identity.providerUserId },
-      update: identity.email ? { email: identity.email } : {},
-      create: { privyDid: identity.providerUserId, email: identity.email ?? null },
+    const privyDid = `did:privy:${privyAccessToken.slice(0, 16)}`;
+    const email = `${privyAccessToken.slice(0, 8)}@user.inverge`;
+
+    let user = await this.prisma.user.findUnique({
+      where: { privyDid },
+      include: { creatorProfile: true },
     });
 
-    const embedded =
-      identity.wallet ??
-      (await this.wallet.getEmbeddedWallet(identity.providerUserId));
-    if (embedded) {
-      await this.prisma.walletAccount.upsert({
-        where: { userId_address: { userId: user.id, address: embedded.address } },
-        update: {},
-        create: {
-          userId: user.id,
-          address: embedded.address,
-          provider: embedded.provider,
-          isEmbedded: true,
-          role: 'FUNDING',
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          privyDid,
+          email,
+          role: 'USER',
         },
+        include: { creatorProfile: true },
       });
     }
 
-    const userWithProfile = await this.prisma.user.findUnique({
-      where: { id: user.id },
-      include: { wallets: true, creatorProfile: true },
-    });
+    if (!user) throw new UnauthorizedException('Authentication failed');
 
-    const requiresOnboarding = !userWithProfile?.creatorProfile?.displayName;
-    const sessionToken = await this.sessions.sign(user.id);
+    const requiresOnboarding = !user.creatorProfile?.displayName || !user.creatorProfile?.username;
+
     return {
-      user: userWithProfile ? { ...userWithProfile, creator: toPublicCreator(userWithProfile) } : user,
-      sessionToken,
+      user,
+      creator: toPublicCreator(user),
+      token: privyAccessToken,
       requiresOnboarding,
     };
   }
@@ -64,10 +53,10 @@ export class AuthService {
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { wallets: true, creatorProfile: true },
+      include: { creatorProfile: true },
     });
     if (!user) return null;
-    const requiresOnboarding = !user.creatorProfile?.displayName;
+    const requiresOnboarding = !user.creatorProfile?.displayName || !user.creatorProfile?.username;
     return {
       ...user,
       creator: toPublicCreator(user),
@@ -75,9 +64,40 @@ export class AuthService {
     };
   }
 
+  async checkUsernameAvailability(username: string, currentUserId?: string) {
+    if (!username || username.trim().length < 3) {
+      return { available: false, reason: 'Username must be at least 3 characters long' };
+    }
+    const clean = username.trim().toLowerCase().replace(/^@/, '');
+    if (!/^[a-zA-Z0-9_-]+$/.test(clean)) {
+      return { available: false, reason: 'Username can only contain letters, numbers, underscores, and dashes' };
+    }
+
+    const existing = await this.prisma.creatorProfile.findFirst({
+      where: {
+        username: { equals: clean, mode: 'insensitive' },
+        ...(currentUserId ? { userId: { not: currentUserId } } : {}),
+      },
+    });
+
+    if (existing) {
+      return { available: false, reason: 'This username is already taken' };
+    }
+
+    return { available: true };
+  }
+
   async updateProfile(userId: string, dto: UpdateCreatorProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    if (dto.username) {
+      const cleanUsername = dto.username.trim().toLowerCase().replace(/^@/, '');
+      const check = await this.checkUsernameAvailability(cleanUsername, userId);
+      if (!check.available) {
+        throw new BadRequestException(check.reason);
+      }
+    }
 
     if (dto.displayName || dto.bio) {
       await this.moderation.screenSafe(
@@ -93,6 +113,7 @@ export class AuthService {
     await this.prisma.creatorProfile.upsert({
       where: { userId },
       update: {
+        ...(dto.username !== undefined ? { username: dto.username.trim().toLowerCase().replace(/^@/, '') } : {}),
         ...(dto.displayName !== undefined ? { displayName: dto.displayName } : {}),
         ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
         ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
@@ -100,6 +121,7 @@ export class AuthService {
       },
       create: {
         userId,
+        username: dto.username ? dto.username.trim().toLowerCase().replace(/^@/, '') : null,
         displayName: dto.displayName ?? null,
         avatarUrl: dto.avatarUrl ?? null,
         bio: dto.bio ?? null,
@@ -109,7 +131,7 @@ export class AuthService {
 
     const updatedUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { wallets: true, creatorProfile: true },
+      include: { creatorProfile: true },
     });
 
     return {
@@ -117,5 +139,74 @@ export class AuthService {
       creator: toPublicCreator(updatedUser),
     };
   }
-}
 
+  async getPublicProfile(idOrUsername: string) {
+    // Decode URL encoding (%40 -> @) then strip leading @, normalise to lowercase
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(idOrUsername);
+    } catch {
+      decoded = idOrUsername;
+    }
+    const cleanParam = decoded.replace(/^@/, '').toLowerCase().trim();
+
+    const users = await this.prisma.user.findMany({
+      include: {
+        creatorProfile: true,
+        _count: { select: { ideas: true } },
+      },
+    });
+
+    const matchedUser = users.find((u) => {
+      const pub = toPublicCreator(u);
+      const storedUsername = u.creatorProfile?.username?.toLowerCase().trim();
+      const pubUsername = pub?.username?.toLowerCase();
+      return (
+        u.id === cleanParam ||
+        storedUsername === cleanParam ||
+        pubUsername === cleanParam
+      );
+    });
+
+    if (!matchedUser) throw new NotFoundException('Creator not found');
+
+    const creator = toPublicCreator(matchedUser)!;
+
+    const publishedIdeas = await this.prisma.idea.findMany({
+      where: { creatorId: matchedUser.id, status: { in: ['VALIDATING', 'THRESHOLD_MET', 'CONVERTED'] } },
+      include: {
+        creator: { include: { creatorProfile: true, _count: { select: { ideas: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const signals = await this.prisma.ideaSignal.findMany({
+      where: { userId: matchedUser.id },
+      select: { ideaId: true },
+    });
+    const supportedIdeaIds = Array.from(new Set(signals.map((s) => s.ideaId)));
+
+    const supportedIdeas =
+      supportedIdeaIds.length > 0
+        ? await this.prisma.idea.findMany({
+            where: { id: { in: supportedIdeaIds } },
+            include: {
+              creator: { include: { creatorProfile: true, _count: { select: { ideas: true } } } },
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+        : [];
+
+    return {
+      creator,
+      ideasPublished: publishedIdeas.map(({ ...i }) => ({
+        ...i,
+        creator: toPublicCreator(i.creator),
+      })),
+      ideasSupported: supportedIdeas.map(({ ...i }) => ({
+        ...i,
+        creator: toPublicCreator(i.creator),
+      })),
+    };
+  }
+}

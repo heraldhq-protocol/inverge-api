@@ -5,21 +5,25 @@ export type PublicCreatorLink = {
 
 export type PublicCreator = {
   id: string;
+  username: string;
   displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
   links: PublicCreatorLink[];
   tier: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
   completedCampaigns: number;
+  ideasPublished: number;
   identityVerified: boolean;
   memberSince: string;
 };
 
 export type UserWithProfileForProjection = {
   id: string;
+  email?: string | null;
   kycStatus?: string;
   createdAt: Date;
   creatorProfile?: {
+    username?: string | null;
     displayName?: string | null;
     avatarUrl?: string | null;
     bio?: string | null;
@@ -28,6 +32,10 @@ export type UserWithProfileForProjection = {
     completedCampaigns?: number;
     tenureStartedAt?: Date;
   } | null;
+  ideasPublished?: number;
+  _count?: {
+    ideas?: number;
+  };
 };
 
 export function toPublicCreator(
@@ -37,8 +45,14 @@ export function toPublicCreator(
 
   const profile = user.creatorProfile;
 
-  // Invariant: NEVER fall back to user.email for missing displayName.
-  const displayName = profile?.displayName?.trim() || null;
+  const emailName = user.email ? user.email.split('@')[0] : null;
+  const displayName = profile?.displayName?.trim() || emailName || null;
+  // Prefer the explicitly stored username; derive from displayName as fallback.
+  const storedUsername = profile?.username?.trim().toLowerCase() || null;
+  const derivedUsername = displayName
+    ? displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    : null;
+  const username = storedUsername || derivedUsername || user.id;
   const avatarUrl = profile?.avatarUrl?.trim() || null;
   const bio = profile?.bio?.trim() || null;
 
@@ -50,15 +64,18 @@ export function toPublicCreator(
   }
 
   const memberSince = (profile?.tenureStartedAt ?? user.createdAt).toISOString();
+  const ideasPublished = user.ideasPublished ?? user._count?.ideas ?? 0;
 
   return {
     id: user.id,
+    username,
     displayName,
     avatarUrl,
     bio,
     links,
     tier: profile?.tier ?? 'STARTER',
     completedCampaigns: profile?.completedCampaigns ?? 0,
+    ideasPublished,
     identityVerified: user.kycStatus === 'VERIFIED',
     memberSince,
   };
