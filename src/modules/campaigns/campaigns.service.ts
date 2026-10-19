@@ -1,12 +1,15 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
-import { ListCampaignsQueryDto } from './dto/campaign.dto';
+import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
+import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
 
 @Injectable()
 export class CampaignsService {
@@ -162,34 +165,157 @@ export class CampaignsService {
     };
   }
 
-  async submit(userId: string, campaignId: string) {
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
-    });
+  // FR-103 + FR-311: a campaign enters the curation queue only when the creator is
+  // funds-eligible and a successful application fee is linked. Checks run before the
+  // state change and inside the same transaction; an existing fee is reused when a
+  // change-requested campaign is resubmitted (the fee is non-refundable, FR-311).
+  async submit(userId: string, campaignId: string, dto: SubmitCampaignDto) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const campaign = await tx.campaign.findUnique({
+          where: { id: campaignId },
+          select: {
+            id: true,
+            creatorId: true,
+            status: true,
+            reviewStatus: true,
+            applicationFeeChargeId: true,
+            creator: {
+              select: {
+                kycStatus: true,
+                amlStatus: true,
+                business: { select: { kybStatus: true, amlStatus: true } },
+              },
+            },
+          },
+        });
 
-    if (!campaign) throw new NotFoundException('Campaign not found');
-    if (campaign.creatorId !== userId) {
-      throw new ForbiddenException('Not your campaign');
+        if (!campaign) throw new NotFoundException('Campaign not found');
+        if (campaign.creatorId !== userId) {
+          throw new ForbiddenException('Not your campaign');
+        }
+
+        const resubmission =
+          campaign.status === 'IN_REVIEW' &&
+          campaign.reviewStatus === 'CHANGES_REQUESTED';
+
+        if (campaign.status !== 'DRAFT' && !resubmission) {
+          throw new ConflictException(
+            'Only draft or changes-requested campaigns can be submitted for review',
+          );
+        }
+
+        const requestedChargeId = dto.applicationFeeChargeId?.trim();
+        if (
+          requestedChargeId &&
+          campaign.applicationFeeChargeId &&
+          requestedChargeId !== campaign.applicationFeeChargeId
+        ) {
+          throw new BadRequestException(
+            'Campaign is already linked to a different application fee',
+          );
+        }
+
+        const chargeId =
+          requestedChargeId ?? campaign.applicationFeeChargeId ?? null;
+
+        if (chargeId) {
+          const claimedBy = await tx.campaign.findFirst({
+            where: {
+              applicationFeeChargeId: chargeId,
+              id: { not: campaignId },
+            },
+            select: { id: true },
+          });
+          if (claimedBy) {
+            throw new ConflictException(
+              'That application fee is already linked to another campaign',
+            );
+          }
+        }
+
+        const applicationFee = chargeId
+          ? await tx.flatFeeCharge.findUnique({
+              where: { id: chargeId },
+              select: {
+                id: true,
+                userId: true,
+                purpose: true,
+                status: true,
+                metadata: true,
+              },
+            })
+          : null;
+
+        const gates = evaluateCampaignReviewGates({
+          campaignId: campaign.id,
+          creatorId: campaign.creatorId,
+          applicationFeeChargeId: chargeId,
+          creator: {
+            kycStatus: campaign.creator.kycStatus,
+            amlStatus: campaign.creator.amlStatus,
+          },
+          business: campaign.creator.business,
+          applicationFee,
+        });
+
+        if (!gates.eligible) {
+          throw new BadRequestException({
+            message: 'Campaign cannot enter review yet',
+            blockers: gates.blockers,
+          });
+        }
+
+        const submittedAt = new Date();
+        const updated = await tx.campaign.updateMany({
+          where: {
+            id: campaignId,
+            OR: [
+              { status: 'DRAFT' },
+              { status: 'IN_REVIEW', reviewStatus: 'CHANGES_REQUESTED' },
+            ],
+          },
+          data: {
+            status: 'IN_REVIEW',
+            reviewStatus: 'IN_REVIEW',
+            submittedAt,
+            reviewReason: null,
+            reviewedAt: null,
+            reviewedById: null,
+            applicationFeeChargeId: chargeId,
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictException('Campaign is not in a submittable state');
+        }
+
+        const updatedCampaign = await tx.campaign.findUniqueOrThrow({
+          where: { id: campaignId },
+          include: {
+            creator: {
+              include: { creatorProfile: true },
+            },
+          },
+        });
+
+        const { creator, ...rest } = updatedCampaign;
+        return {
+          ...rest,
+          creator: toPublicCreator(creator),
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'That application fee is already linked to another campaign',
+        );
+      }
+      throw error;
     }
-    if (campaign.status !== 'DRAFT') {
-      throw new BadRequestException('Only draft campaigns can be submitted for review');
-    }
-
-    const updated = await this.prisma.campaign.update({
-      where: { id: campaignId },
-      data: { status: 'IN_REVIEW' },
-      include: {
-        creator: {
-          include: { creatorProfile: true },
-        },
-      },
-    });
-
-    const { creator, ...rest } = updated;
-    return {
-      ...rest,
-      creator: toPublicCreator(creator),
-    };
   }
 
   async getPlatformEscrowStats() {

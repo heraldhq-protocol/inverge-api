@@ -19,7 +19,6 @@ export type PublicCreator = {
 
 export type UserWithProfileForProjection = {
   id: string;
-  email?: string | null;
   kycStatus?: string;
   createdAt: Date;
   creatorProfile?: {
@@ -45,8 +44,9 @@ export function toPublicCreator(
 
   const profile = user.creatorProfile;
 
-  const emailName = user.email ? user.email.split('@')[0] : null;
-  const displayName = profile?.displayName?.trim() || emailName || null;
+  // Never derive a public name from the account email: this projection is served on
+  // public creator surfaces. An unset display name stays null until the creator sets one.
+  const displayName = profile?.displayName?.trim() || null;
   // Prefer the explicitly stored username; derive from displayName as fallback.
   const storedUsername = profile?.username?.trim().toLowerCase() || null;
   const derivedUsername = displayName

@@ -1,6 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export const CAMPAIGN_SORT_OPTIONS = [
   'closing-soon',
@@ -50,4 +59,15 @@ export class ListCampaignsQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   mine?: boolean;
+}
+
+export class SubmitCampaignDto {
+  @ApiPropertyOptional({
+    description:
+      'SUCCEEDED APPLICATION_FEE charge id (FR-311). Required when the campaign has not already linked one; re-submission after a change request reuses it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  applicationFeeChargeId?: string;
 }

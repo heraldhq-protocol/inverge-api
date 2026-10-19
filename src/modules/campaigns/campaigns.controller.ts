@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -14,7 +15,10 @@ import {
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { CampaignsService } from './campaigns.service';
-import { ListCampaignsQueryDto } from './dto/campaign.dto';
+import {
+  ListCampaignsQueryDto,
+  SubmitCampaignDto,
+} from './dto/campaign.dto';
 
 @ApiTags('campaigns')
 @Controller('campaigns')
@@ -51,8 +55,9 @@ export class CampaignsController {
   submit(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
+    @Body() dto: SubmitCampaignDto,
   ) {
-    return this.campaigns.submit(user.id, id);
+    return this.campaigns.submit(user.id, id, dto);
   }
 }
 

@@ -4,23 +4,44 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+import { SessionService } from './session.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
+    private readonly sessions: SessionService,
   ) {}
 
   async authenticate(privyAccessToken: string) {
     if (!privyAccessToken) throw new UnauthorizedException('No token provided');
 
-    const privyDid = `did:privy:${privyAccessToken.slice(0, 16)}`;
-    const email = `${privyAccessToken.slice(0, 8)}@user.inverge`;
+    // Stub exchange: real provider verification is not wired yet. Derive a stable,
+    // unique identity from the whole token - truncating it made every e2e caller in
+    // a suite resolve to the same user. `stub:<identity>:<email>` keeps explicit
+    // identities working; bare tokens are hashed into a unique email.
+    const parts = privyAccessToken.split(':');
+    const structured = parts[0] === 'stub' && parts.length >= 2;
+    const identity = structured
+      ? parts.slice(0, 2).join(':')
+      : privyAccessToken;
+    const suppliedEmail = structured ? parts.slice(2).join(':') : undefined;
+    const digest = createHash('sha256')
+      .update(privyAccessToken)
+      .digest('hex')
+      .slice(0, 24);
+
+    const privyDid = `did:privy:${identity}`;
+    const email =
+      suppliedEmail && suppliedEmail.includes('@')
+        ? suppliedEmail
+        : `stub-${digest}@user.inverge`;
 
     let user = await this.prisma.user.findUnique({
       where: { privyDid },
@@ -45,7 +66,9 @@ export class AuthService {
     return {
       user,
       creator: toPublicCreator(user),
-      token: privyAccessToken,
+      // Gap item 25: callers authenticate with an Inverge session JWT, never with the
+      // provider token. The provider token proves identity only at this exchange.
+      sessionToken: await this.sessions.sign(user.id),
       requiresOnboarding,
     };
   }
