@@ -185,6 +185,8 @@ export class KycService {
     return this.prisma.amlScreening.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      // A screening history is an audit view, not an export; bound the page.
+      take: 100,
       select: {
         id: true,
         source: true,
@@ -309,6 +311,7 @@ export class KycService {
     return this.prisma.amlScreening.findMany({
       where: { businessId: b.id },
       orderBy: { createdAt: 'desc' },
+      take: 100,
       select: {
         id: true,
         source: true,

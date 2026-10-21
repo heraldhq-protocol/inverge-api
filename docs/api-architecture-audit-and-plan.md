@@ -878,6 +878,8 @@ Done:
   document and the web's generated types were regenerated.
 - **e2e assertions** for the ideas list read `body.data` (the suites still need `/api/v1` path
   migration before they can run).
+- **Unbounded-read audit.** Active feed promotions are restricted to the candidate pool and capped at
+  200; the insights chart series is limited to 180 days; AML screening history is capped at 100 rows.
 
 Not done in this slice:
 
@@ -886,4 +888,9 @@ Not done in this slice:
   volatile; the cursor design needs to follow the thread ordering.
 - Cursor-aware typed response DTOs, so the OpenAPI entries for these two routes still have no
   response schema.
+- Per-idea recompute reads (all pre-pledges, all survey responses) still load every row for one idea.
+  They are the FR-206a recompute path and are bounded by one idea's participation, not by the platform;
+  batching becomes necessary only at much larger per-idea volume.
+- The nightly snapshot job reads every validating idea in one pass. It is a job, not a request, and is
+  a Stage 4 batching concern.
 - Index migration and `EXPLAIN` evidence (no Postgres reachable).

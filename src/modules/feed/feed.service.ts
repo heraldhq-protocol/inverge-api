@@ -418,6 +418,9 @@ export class FeedService {
     const eligibleIds = new Set(pool.map((i) => i.id));
     const boosts = await this.prisma.ideaBoost.findMany({
       where: {
+        // Only boosts on candidates that survived retrieval can be promoted; the
+        // pool is bounded, so this keeps the query bounded too.
+        ideaId: { in: Array.from(eligibleIds) },
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
         idea: {
@@ -426,6 +429,9 @@ export class FeedService {
         },
       },
       orderBy: [{ tier: 'desc' }, { startsAt: 'desc' }],
+      // Hard bound: a popular window can hold thousands of active boosts, while
+      // the feed has a fixed number of paid slots.
+      take: 200,
       select: { ideaId: true, tier: true },
     });
     const seen = new Set<string>();
