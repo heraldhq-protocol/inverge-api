@@ -1,0 +1,75 @@
+# Inverge API
+
+Versioned REST API for Inverge: idea validation, campaigns, identity, and the
+off-chain projections of a milestone-escrowed crowdfunding system.
+
+**Base URL:** `/api/v1`
+**Contract:** [`openapi.json`](./openapi.json) — generated from the running decorators, committed, and drift-checked in CI.
+**Human reference:** `/docs` (Swagger UI), served by the same process. It exposes the
+same surface as the committed document.
+
+## Contents
+
+| Document | Covers | Status |
+|---|---|---|
+| [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
+| [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
+| [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Target — offset pagination is still live |
+| [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Target — no cache yet |
+| [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Target — no limiter yet |
+| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Target — no analytics yet |
+| [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
+| [webhooks.md](./webhooks.md) | Providers, signatures, idempotency | Partly implemented |
+| [gaps.md](./gaps.md) | Route-by-route coverage against the product | Living |
+
+## Environments
+
+| Environment | Origin | Notes |
+|---|---|---|
+| Local | `http://localhost:3000/api/v1` | `docker compose up -d` for Postgres and Redis, then `pnpm prisma:deploy` |
+| Staging | Deployment-specific | Must set `SESSION_JWT_SECRET`, `DATABASE_URL`, `REDIS_URL` and the credentials for any non-stub provider |
+| Production | Deployment-specific | Same, plus provider credentials. `NODE_ENV=production`. CORS is still permissive and is a Stage 3 fix |
+
+`INVERGE_API_URL` in the web repository is the origin only; it must **not** include
+`/api/v1`. The web app appends the version prefix.
+
+## Versioning and compatibility
+
+- The path carries the major version. Additive fields and new endpoints do not
+  bump it.
+- Breaking changes ship under `/api/v2`, with `Deprecation` and `Sunset` headers on
+  the old route and a minimum two-release overlap.
+- A route is only `implemented` when it appears in `openapi.json` and its service
+  behaviour is covered by a test. Route-level e2e coverage is still partial; the
+  gap matrix is a status report, not a certificate.
+- Everything else is `partial`, `missing`, `blocked` or `deferred` in
+  [gaps.md](./gaps.md).
+- There is no endpoint for a state the system cannot verify. Chain-owned state
+  (escrow balance, tranche release, refund) is never synthesised off-chain.
+
+## Conventions
+
+- JSON only; UTF-8. Timestamps are ISO 8601 UTC (`2026-10-21T12:00:00.000Z`).
+- Money is an object with an explicit currency and integer atomic units or an
+  exact decimal string. A monetary value is never a JSON float.
+- Machine-readable identifiers are `cuid` strings unless documented otherwise.
+- Every response carries `x-request-id`. Send a UUID `x-request-id` to correlate
+  your own traces; anything else is replaced.
+- `Authorization: Bearer <session token>` for authenticated routes. The browser
+  never holds this token directly; the Next.js BFF stores it in an HttpOnly cookie.
+
+## Generating the contract
+
+```bash
+pnpm openapi:emit     # rewrite docs/api/openapi.json
+pnpm openapi:check    # fail when the committed document is stale (CI)
+```
+
+The emitter instantiates the real application module, so decorators are the only
+source of truth. It does not query Postgres or Redis.
+
+## Status of the underlying system
+
+Campaign, milestone, contribution, refund and transparency endpoints do **not**
+exist yet. They depend on an Anchor escrow program and an event indexer that are
+not in either repository. Do not stub them; see [gaps.md](./gaps.md).
