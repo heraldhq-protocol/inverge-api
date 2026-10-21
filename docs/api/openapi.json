@@ -1555,21 +1555,6 @@
         ]
       }
     },
-    "/api/v1/campaigns/escrow/stats": {
-      "get": {
-        "operationId": "CampaignsController_getEscrowStatsAlias",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Get aggregate platform escrow figures (FR-801)",
-        "tags": [
-          "campaigns"
-        ]
-      }
-    },
     "/api/v1/campaigns/{id}": {
       "get": {
         "operationId": "CampaignsController_get",

@@ -62,7 +62,7 @@ exists; **deferred** = planned, not next.
 | Admin review queue | `GET /admin/campaigns` | implemented | — |
 | Admin review detail | `GET /admin/campaigns/{id}` | implemented | — |
 | Admin decision | `POST /admin/campaigns/{id}/review` | implemented | — |
-| Escrow projection | `GET /platform/escrow` | partial | Grouped aggregate, but the duplicate `GET /campaigns/escrow/stats` remains and `OnChainEvent.eventType` has no index |
+| Escrow projection | `GET /platform/escrow` | partial | Grouped aggregate; the duplicate `/campaigns/escrow/stats` alias is removed; `OnChainEvent.eventType` index pending |
 | Contributions | — | blocked | No Anchor program, no indexer, no route |
 | Milestones / tranches | — | blocked | Same |
 | Refunds | — | blocked | Program-owned |

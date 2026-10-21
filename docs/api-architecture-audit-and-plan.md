@@ -880,6 +880,8 @@ Done:
   migration before they can run).
 - **Unbounded-read audit.** Active feed promotions are restricted to the candidate pool and capped at
   200; the insights chart series is limited to 180 days; AML screening history is capped at 100 rows.
+- **Duplicate escrow route removed.** `GET /platform/escrow` is the only escrow projection;
+  `GET /campaigns/escrow/stats` was an alias with the same handler.
 
 Not done in this slice:
 
