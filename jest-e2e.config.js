@@ -9,4 +9,8 @@ module.exports = {
     '^.+\\.ts$': 'ts-jest',
   },
   testTimeout: 30000,
+  // Every suite writes to the same Postgres database and the stub auth provider
+  // derives identities from short token prefixes. Running suites in parallel lets
+  // them collide on users and shared platform params; serialise them instead.
+  maxWorkers: 1,
 };

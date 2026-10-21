@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { CreateCommentDto } from './dto/comment.dto';
 
+import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+
 // Free-form comments thread on an idea (distinct from the structured survey). Comments
 // can be liked and replied to. Thread volume feeds Idea.commentCount (engagement metric,
 // FR-273); it does NOT touch the FR-203 validation metrics (feedbackScore etc.).
@@ -15,34 +17,96 @@ import { CreateCommentDto } from './dto/comment.dto';
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async post(userId: string, ideaId: string, dto: CreateCommentDto) {
-    await this.assertPublished(ideaId);
+  private async resolveIdea(idOrSlug: string) {
+    const idea = await this.prisma.idea.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+      select: { id: true, status: true, creatorId: true },
+    });
+    if (!idea) throw new NotFoundException('Idea not found');
+    return idea;
+  }
+
+  async post(userId: string, ideaIdOrSlug: string, dto: CreateCommentDto) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
+      throw new BadRequestException('Idea is not open for comments');
+    }
+    const ideaId = idea.id;
     if (dto.parentId) {
       const parent = await this.prisma.ideaComment.findUnique({ where: { id: dto.parentId } });
       if (!parent || parent.ideaId !== ideaId) throw new NotFoundException('Parent comment not found');
     }
-    return this.prisma.$transaction(async (tx) => {
-      const comment = await tx.ideaComment.create({
+    const comment = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.ideaComment.create({
         data: { ideaId, userId, body: dto.body, parentId: dto.parentId ?? null },
+        include: {
+          user: {
+            include: { creatorProfile: true },
+          },
+        },
       });
       await this.recountComments(tx, ideaId);
-      return comment;
+      return created;
     });
+
+    const publicCreator = toPublicCreator(comment.user);
+    const isCreator = comment.userId === idea.creatorId;
+    const { user, ...rest } = comment;
+
+    return {
+      ...rest,
+      author: {
+        id: comment.user.id,
+        displayName: publicCreator?.displayName ?? null,
+        avatarUrl: publicCreator?.avatarUrl ?? null,
+        isCreator,
+      },
+    };
   }
 
   // Public: highlighted first, then most-liked, then most-recent. Flat list carrying
-  // parentId + likeCount so the client can nest replies.
-  async list(ideaId: string) {
-    await this.exists(ideaId);
-    return this.prisma.ideaComment.findMany({
+  // parentId + likeCount so the client can nest replies. Includes author projection.
+  async list(ideaIdOrSlug: string, currentUserId?: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    const ideaId = idea.id;
+    const comments = await this.prisma.ideaComment.findMany({
       where: { ideaId },
+      include: {
+        user: {
+          include: { creatorProfile: true },
+        },
+        likes: currentUserId
+          ? {
+              where: { userId: currentUserId },
+              select: { userId: true },
+            }
+          : false,
+      },
       orderBy: [{ highlighted: 'desc' }, { likeCount: 'desc' }, { createdAt: 'desc' }],
       take: 300,
     });
+
+    return comments.map((comment) => {
+      const publicCreator = toPublicCreator(comment.user);
+      const isCreator = comment.userId === idea.creatorId;
+      const { user, likes, ...rest } = comment;
+
+      return {
+        ...rest,
+        author: {
+          id: comment.user.id,
+          displayName: publicCreator?.displayName ?? null,
+          avatarUrl: publicCreator?.avatarUrl ?? null,
+          isCreator,
+        },
+        ...(currentUserId ? { likedByMe: Array.isArray(likes) && likes.length > 0 } : {}),
+      };
+    });
   }
 
-  async like(userId: string, ideaId: string, commentId: string) {
-    await this.load(ideaId, commentId);
+  async like(userId: string, ideaIdOrSlug: string, commentId: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    await this.load(idea.id, commentId);
     return this.prisma.$transaction(async (tx) => {
       await tx.commentLike.upsert({
         where: { commentId_userId: { commentId, userId } },
@@ -53,8 +117,9 @@ export class CommentsService {
     });
   }
 
-  async unlike(userId: string, ideaId: string, commentId: string) {
-    await this.load(ideaId, commentId);
+  async unlike(userId: string, ideaIdOrSlug: string, commentId: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    await this.load(idea.id, commentId);
     return this.prisma.$transaction(async (tx) => {
       await tx.commentLike.deleteMany({ where: { commentId, userId } });
       return this.recountLikes(tx, commentId);
@@ -62,24 +127,25 @@ export class CommentsService {
   }
 
   // Author or the idea's creator may delete (cascades replies + likes).
-  async remove(userId: string, ideaId: string, commentId: string) {
-    const comment = await this.load(ideaId, commentId);
-    const creatorId = await this.ideaCreator(ideaId);
-    if (comment.userId !== userId && creatorId !== userId) {
+  async remove(userId: string, ideaIdOrSlug: string, commentId: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    const comment = await this.load(idea.id, commentId);
+    if (comment.userId !== userId && idea.creatorId !== userId) {
       throw new ForbiddenException('You cannot delete this comment');
     }
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaComment.delete({ where: { id: commentId } });
-      await this.recountComments(tx, ideaId);
+      await this.recountComments(tx, idea.id);
       return { deleted: true };
     });
   }
 
-  async setHighlight(userId: string, ideaId: string, commentId: string, highlighted: boolean) {
-    await this.load(ideaId, commentId);
-    if ((await this.ideaCreator(ideaId)) !== userId) {
+  async setHighlight(userId: string, ideaIdOrSlug: string, commentId: string, highlighted: boolean) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    if (idea.creatorId !== userId) {
       throw new ForbiddenException('Only the idea creator can highlight comments');
     }
+    await this.load(idea.id, commentId);
     return this.prisma.ideaComment.update({ where: { id: commentId }, data: { highlighted } });
   }
 
@@ -97,24 +163,5 @@ export class CommentsService {
     const comment = await this.prisma.ideaComment.findUnique({ where: { id: commentId } });
     if (!comment || comment.ideaId !== ideaId) throw new NotFoundException('Comment not found');
     return comment;
-  }
-
-  private async ideaCreator(ideaId: string): Promise<string> {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId }, select: { creatorId: true } });
-    if (!idea) throw new NotFoundException('Idea not found');
-    return idea.creatorId;
-  }
-
-  private async exists(ideaId: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId }, select: { id: true } });
-    if (!idea) throw new NotFoundException('Idea not found');
-  }
-
-  private async assertPublished(ideaId: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId }, select: { status: true } });
-    if (!idea) throw new NotFoundException('Idea not found');
-    if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
-      throw new BadRequestException('Idea is not open for comments');
-    }
   }
 }

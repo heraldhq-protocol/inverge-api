@@ -18,6 +18,9 @@ import {
   UpdateIdeaDto,
 } from './dto/idea.dto';
 
+import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+import { buildGateProgress } from '../metrics/insights-compute';
+
 @Injectable()
 export class IdeasService {
   constructor(
@@ -27,6 +30,14 @@ export class IdeasService {
     private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
   ) {}
+
+  private async findIdea(idOrSlug: string) {
+    const idea = await this.prisma.idea.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+    });
+    if (!idea) throw new NotFoundException('Idea not found');
+    return idea;
+  }
 
   // FR-201/270: create a structured-pitch DRAFT. FR-275: bounded by the per-creator
   // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
@@ -45,6 +56,10 @@ export class IdeasService {
         roadmapSteps: dto.roadmapSteps as object,
         category: dto.category,
         region: dto.region ?? null,
+        coverImageUrl: dto.coverImageUrl ?? null,
+        risks: dto.risks ?? null,
+        problemDoc: (dto.problemDoc as object) ?? null,
+        solutionDoc: (dto.solutionDoc as object) ?? null,
         roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
         askAmount: dto.askAmount,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
@@ -65,21 +80,23 @@ export class IdeasService {
     return this.get(idea.id);
   }
 
-  async update(userId: string, id: string, dto: UpdateIdeaDto) {
-    const idea = await this.owned(userId, id);
+  async update(userId: string, idOrSlug: string, dto: UpdateIdeaDto) {
+    const idea = await this.owned(userId, idOrSlug);
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Only draft ideas can be edited');
     }
+    const id = idea.id;
     await this.prisma.idea.update({ where: { id }, data: { ...dto } as object });
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
     return this.get(id);
   }
 
-  async publish(userId: string, id: string) {
-    const idea = await this.owned(userId, id);
+  async publish(userId: string, idOrSlug: string) {
+    const idea = await this.owned(userId, idOrSlug);
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Idea is not in draft');
     }
+    const id = idea.id;
     // FR-204a: stamp the start of the validation window at publish.
     await this.prisma.idea.update({
       where: { id },
@@ -103,21 +120,34 @@ export class IdeasService {
   }
 
   // FR-271a: creator-facing coaching for their idea.
-  getQuality(id: string) {
-    return this.quality.latestReport(id);
+  async getQuality(idOrSlug: string) {
+    const idea = await this.findIdea(idOrSlug);
+    return this.quality.latestReport(idea.id);
   }
 
-  // Public browse (FR-272/273). Only DISCOVERABLE/FEATURED ideas appear; LINK_ONLY are
-  // reachable by direct URL only. Ordering is behavioural + editorial — never paid:
-  // FEATURED first, then boosted (discovery-only promotion, FR-206a), then recency.
-  async list(query: ListIdeasQueryDto) {
+  // Public browse (FR-272/273) or creator dashboard (mine=true).
+  async list(query: ListIdeasQueryDto, currentUserId?: string) {
     const now = new Date();
-    const ideas = await this.prisma.idea.findMany({
-      where: {
+
+    let whereClause: object;
+    if (query.mine) {
+      if (!currentUserId) {
+        throw new ForbiddenException('Must be logged in to view your ideas');
+      }
+      whereClause = { creatorId: currentUserId };
+    } else {
+      whereClause = {
         status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
         discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
-      },
+      };
+    }
+
+    const ideas = await this.prisma.idea.findMany({
+      where: whereClause,
       include: {
+        creator: {
+          include: { creatorProfile: true, _count: { select: { ideas: true } } },
+        },
         boosts: {
           where: {
             startsAt: { lte: now },
@@ -129,9 +159,11 @@ export class IdeasService {
       skip: query.skip ?? 0,
       take: query.take ?? 50,
     });
+
     return ideas
-      .map(({ boosts, ...idea }) => ({
+      .map(({ boosts, creator, ...idea }) => ({
         ...idea,
+        creator: toPublicCreator(creator),
         promoted: boosts.length > 0,
         boostTier: boosts[0]?.tier ?? null,
       }))
@@ -141,15 +173,53 @@ export class IdeasService {
       });
   }
 
-  async get(id: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id } });
+  async get(idOrSlug: string) {
+    const idea = await this.prisma.idea.findFirst({
+      where: {
+        OR: [{ id: idOrSlug }, { slug: idOrSlug }],
+      },
+      include: {
+        creator: {
+          include: { creatorProfile: true, _count: { select: { ideas: true } } },
+        },
+      },
+    });
     if (!idea) throw new NotFoundException('Idea not found');
-    return idea;
+
+    const [minSupporters, minWeightedUSD, minPct, minFeedbackCount, minAvgFeedbackRating] = await Promise.all([
+      this.params.getNumber('validation.minSupporters', 50),
+      this.params.getNumber('validation.minWeightedUSD', 2000),
+      this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
+      this.params.getNumber('validation.minFeedbackCount', 10),
+      this.params.getNumber('validation.minAvgFeedbackRating', 3),
+    ]);
+
+    const gateProgress = buildGateProgress({
+      supporterCount: idea.supporterCount ?? 0,
+      weighted: Number(idea.weightedPrePledgeTotal ?? 0),
+      feedbackCount: idea.feedbackCount ?? 0,
+      feedbackScore: Number(idea.feedbackScore ?? 0),
+      askAmount: Number(idea.askAmount ?? 0),
+      creatorTarget: idea.creatorPrePledgeTarget ? Number(idea.creatorPrePledgeTarget) : 0,
+      minSupporters,
+      minWeightedUSD,
+      minPct,
+      minFeedbackCount,
+      minAvgFeedbackRating,
+    });
+
+    const { creator, ...rest } = idea;
+    return {
+      ...rest,
+      creator: toPublicCreator(creator),
+      gateProgress,
+    };
   }
 
   // FR-202: support signal, idempotent per (idea, user).
-  async support(userId: string, id: string) {
-    await this.assertSignalable(id);
+  async support(userId: string, idOrSlug: string) {
+    const idea = await this.assertSignalable(idOrSlug);
+    const id = idea.id;
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
@@ -160,8 +230,9 @@ export class IdeasService {
     });
   }
 
-  async unsupport(userId: string, id: string) {
-    await this.assertSignalable(id);
+  async unsupport(userId: string, idOrSlug: string) {
+    const idea = await this.assertSignalable(idOrSlug);
+    const id = idea.id;
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'SUPPORT' },
@@ -172,8 +243,9 @@ export class IdeasService {
 
   // FR-202: pre-pledge intent — NO funds move. FR-210: normalize to USD; the weighted
   // figure (not this raw amount) is what the graduation gate reads.
-  async prePledge(userId: string, id: string, dto: PrePledgeDto) {
-    await this.assertSignalable(id);
+  async prePledge(userId: string, idOrSlug: string, dto: PrePledgeDto) {
+    const idea = await this.assertSignalable(idOrSlug);
+    const id = idea.id;
     const currency = dto.currency ?? 'USD';
     const amountUsd = await this.metrics.normalizeToUsd(dto.amount, currency);
     return this.prisma.$transaction(async (tx) => {
@@ -194,8 +266,9 @@ export class IdeasService {
   }
 
   // FR-211: withdraw a pre-pledge — a withdrawable signal is a more honest signal.
-  async withdrawPrePledge(userId: string, id: string) {
-    await this.assertSignalable(id);
+  async withdrawPrePledge(userId: string, idOrSlug: string) {
+    const idea = await this.assertSignalable(idOrSlug);
+    const id = idea.id;
     return this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'PRE_PLEDGE' },
@@ -204,23 +277,17 @@ export class IdeasService {
     });
   }
 
-  // Validation signals may only target a PUBLISHED, still-validating idea. This stops a
-  // backer who knows the id from inflating metrics on an unpublished DRAFT, or mutating a
-  // CONVERTED/ARCHIVED idea's frozen figures.
-  private async assertSignalable(id: string) {
-    const idea = await this.prisma.idea.findUnique({
-      where: { id },
-      select: { status: true },
-    });
-    if (!idea) throw new NotFoundException('Idea not found');
+  // Validation signals may only target a PUBLISHED, still-validating idea.
+  private async assertSignalable(idOrSlug: string) {
+    const idea = await this.findIdea(idOrSlug);
     if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
       throw new BadRequestException('Idea is not open for validation signals');
     }
+    return idea;
   }
 
-  private async owned(userId: string, id: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id } });
-    if (!idea) throw new NotFoundException('Idea not found');
+  private async owned(userId: string, idOrSlug: string) {
+    const idea = await this.findIdea(idOrSlug);
     if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
     return idea;
   }

@@ -22,10 +22,23 @@ export class SurveyService {
     private readonly metrics: MetricsService,
   ) {}
 
+  private async resolveIdea(idOrSlug: string) {
+    const idea = await this.prisma.idea.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+      select: { id: true, status: true, creatorId: true },
+    });
+    if (!idea) throw new NotFoundException('Idea not found');
+    return idea;
+  }
+
   // FR-202/203: creator builds/replaces the whole question set. Editable while DRAFT only
   // — locking it at publish keeps responses referencing stable question ids.
-  async setQuestions(userId: string, ideaId: string, dto: SetSurveyDto) {
-    const idea = await this.ownedDraft(userId, ideaId);
+  async setQuestions(userId: string, ideaIdOrSlug: string, dto: SetSurveyDto) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
+    if (idea.status !== 'DRAFT') {
+      throw new BadRequestException('The survey can only be edited while the idea is a draft');
+    }
     const problems = validateQuestionSet(dto.questions as QuestionInput[]);
     if (problems.length) throw new BadRequestException(problems);
 
@@ -46,14 +59,18 @@ export class SurveyService {
   }
 
   // Public: the form backers fill in.
-  async getQuestions(ideaId: string) {
-    await this.exists(ideaId);
-    return this.prisma.surveyQuestion.findMany({ where: { ideaId }, orderBy: { index: 'asc' } });
+  async getQuestions(ideaIdOrSlug: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    return this.prisma.surveyQuestion.findMany({ where: { ideaId: idea.id }, orderBy: { index: 'asc' } });
   }
 
   // FR-202/203: one response per (idea, user); validated against the current questions.
-  async submitResponse(userId: string, ideaId: string, dto: SubmitResponseDto) {
-    await this.assertSignalable(ideaId);
+  async submitResponse(userId: string, ideaIdOrSlug: string, dto: SubmitResponseDto) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
+      throw new BadRequestException('Idea is not open for survey responses');
+    }
+    const ideaId = idea.id;
     const questions = await this.prisma.surveyQuestion.findMany({
       where: { ideaId },
       select: { id: true, type: true, options: true, required: true },
@@ -79,34 +96,12 @@ export class SurveyService {
     });
   }
 
-  async withdrawResponse(userId: string, ideaId: string) {
-    await this.exists(ideaId);
+  async withdrawResponse(userId: string, ideaIdOrSlug: string) {
+    const idea = await this.resolveIdea(ideaIdOrSlug);
+    const ideaId = idea.id;
     return this.prisma.$transaction(async (tx) => {
       await tx.surveyResponse.deleteMany({ where: { ideaId, userId } });
       return this.metrics.recompute(tx, ideaId);
     });
-  }
-
-  private async exists(ideaId: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId }, select: { id: true } });
-    if (!idea) throw new NotFoundException('Idea not found');
-  }
-
-  private async assertSignalable(ideaId: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId }, select: { status: true } });
-    if (!idea) throw new NotFoundException('Idea not found');
-    if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
-      throw new BadRequestException('Idea is not open for survey responses');
-    }
-  }
-
-  private async ownedDraft(userId: string, ideaId: string) {
-    const idea = await this.prisma.idea.findUnique({ where: { id: ideaId } });
-    if (!idea) throw new NotFoundException('Idea not found');
-    if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
-    if (idea.status !== 'DRAFT') {
-      throw new BadRequestException('The survey can only be edited while the idea is a draft');
-    }
-    return idea;
   }
 }

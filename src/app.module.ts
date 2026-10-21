@@ -18,6 +18,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AdminModule } from './modules/admin/admin.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { SurveyModule } from './modules/survey/survey.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -41,6 +42,8 @@ import { SurveyModule } from './modules/survey/survey.module';
     AdminModule,
     ModerationModule,
     SurveyModule,
+    CampaignsModule,
   ],
 })
 export class AppModule {}
+

@@ -2,7 +2,9 @@
 
 Backend for **Inverge** — milestone-escrowed crowdfunding & idea validation on Solana, for African builders.
 
-This repo is **Phase 0: idea validation**. Live today: ideas, a structured pitch + quality scoring, supporter/pre-pledge signals with weighted "estimated interest", creator-built surveys + comments, paid boosts, creator insights, a policy-moderation harness, and full **identity verification (KYC / AML / KYB)** via Didit. Campaign / escrow / milestone tables exist but are **inert** (schema now, logic in Phase 1/2). See `../docs/phase0-refined-plan.md` for the full plan.
+This repo is **Phase 0: idea validation**. Live today: ideas, a structured pitch + quality scoring, supporter/pre-pledge signals with weighted "estimated interest", creator-built surveys + comments, paid boosts, creator insights, a policy-moderation harness, and full **identity verification (KYC / AML / KYB)** via Didit. Campaign / escrow / milestone tables exist but are **inert** (schema now, logic in Phase 1/2) — note
+that the *web* campaign screens are already built against a written contract and waiting on them, see
+**Open backlog**. See `../docs/phase0-refined-plan.md` for the full plan.
 
 ## Stack
 
@@ -76,6 +78,23 @@ With `KYC_PROVIDER=stub`, `GET /kyc/dev-complete?ref=<ref>&user=<id>` simulates 
 - **FR-803** — `OnChainEvent` is written only by the indexer (Phase 2), never by business logic.
 - **FR-204** — the validation gate blocks idea→campaign conversion until thresholds clear; thresholds are admin-tunable at runtime via `PATCH /admin/params` (audited).
 - **FR-1007** — AML tipping-off: a sanctions-related hold shows a generic external reason; full detail stays internal.
+
+## Open backlog
+
+`docs/web-ui-api-gaps.md` — nineteen additive gaps raised by the `inverge-web` product screens (idea
+feed, idea detail, the campaign catalogue, campaign detail and the creator campaign flow), with
+proposed shapes, the invariants each must respect, the tests each needs, an at-a-glance table and a
+suggested order. Items 1 and 2, public creator identity and a comment author projection, currently
+**block web work that is otherwise ready to build**. `AGENTS.md` carries the repo conventions and the
+Prisma v7 / Windows gotchas.
+
+**The campaign UI is built and none of it calls this API.** The web app has a campaign catalogue, a
+seven-tab detail page and a five-step creator flow, all running on fixtures behind one flag, written
+against `inverge-web/docs/campaign-data-contract.md`. Gap item 6 (`GET /campaigns`, `GET
+/campaigns/:id`) turns them on. Before implementing anything campaign-shaped, read that contract's §2a
+on how the money splits — the working-capital tranche is a share of the **target** and every milestone
+tranche is a share of the **raise less that tranche**, and getting it backwards is a money bug rather
+than a rendering one (gap item 18).
 
 ## Module map
 

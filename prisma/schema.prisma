@@ -134,6 +134,24 @@ enum CampaignStatus {
   COMPLETED
 }
 
+// FR-304: curation state, deliberately separate from the funding lifecycle above.
+// APPROVED means "cleared to publish", not "live": publication still has to set the
+// escrow, terms hash and launchedAt. Keeping the two axes apart stops an approved but
+// unpublished campaign from looking fundable.
+enum CampaignReviewStatus {
+  NOT_SUBMITTED
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum CampaignReviewAction {
+  APPROVE
+  REQUEST_CHANGES
+  REJECT
+}
+
 enum ClaimStatus {
   UNDER_REVIEW
   APPROVED
@@ -177,21 +195,23 @@ model User {
   // Admin-settable; feeds the feed TrustScore, never any validation metric.
   institutionalCosign Boolean  @default(false)
 
-  wallets         WalletAccount[]
-  creatorProfile  CreatorProfile?
-  business        BusinessProfile?
-  ideas           Idea[]               @relation("IdeaCreator")
-  signals         IdeaSignal[]
-  surveyResponses SurveyResponse[]
-  comments        IdeaComment[]
-  commentLikes    CommentLike[]
-  boostsPurchased IdeaBoost[]
-  kycEvents       KycStatusEvent[]
-  amlScreenings   AmlScreening[]
-  flatFeeCharges  FlatFeeCharge[]
-  campaigns       Campaign[]           @relation("CampaignCreator")
-  contributions   Contribution[]
-  objections      MilestoneObjection[]
+  wallets           WalletAccount[]
+  creatorProfile    CreatorProfile?
+  business          BusinessProfile?
+  ideas             Idea[]                @relation("IdeaCreator")
+  signals           IdeaSignal[]
+  surveyResponses   SurveyResponse[]
+  comments          IdeaComment[]
+  commentLikes      CommentLike[]
+  boostsPurchased   IdeaBoost[]
+  kycEvents         KycStatusEvent[]
+  amlScreenings     AmlScreening[]
+  flatFeeCharges    FlatFeeCharge[]
+  campaigns         Campaign[]            @relation("CampaignCreator")
+  reviewedCampaigns Campaign[]            @relation("CampaignReviewer")
+  campaignReviews   CampaignReviewEvent[] @relation("CampaignReviewActor")
+  contributions     Contribution[]
+  objections        MilestoneObjection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -273,6 +293,11 @@ model CreatorProfile {
   userId             String      @id
   user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   tier               CreatorTier @default(STARTER)
+  username           String?     @unique
+  displayName        String?
+  avatarUrl          String?
+  bio                String?
+  links              Json?       @default("[]")
   activeStrikes      Int         @default(0)
   completedCampaigns Int         @default(0)
   lifetimeRaised     Decimal     @default(0) @db.Decimal(14, 2)
@@ -301,6 +326,10 @@ model Idea {
   roadmapSteps       Json? // >=2 dated steps [{ date, description }]
   category           String? // software | agriculture | film | arts | ...
   region             String? // creator-declared region/origin — personalization + "From Lagos" chip
+  coverImageUrl      String? // P1 web UI gap: media on idea
+  risks              String? // P2 web UI gap: risks and challenges section
+  problemDoc         Json? // Rich text problem document
+  solutionDoc        Json? // Rich text solution document
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
@@ -309,13 +338,13 @@ model Idea {
 
   // FR-203 public validation metrics — behavioural & unpurchasable.
   // INVARIANT (FR-206a): no boost write path may ever touch these columns.
-  supporterCount Int     @default(0)
-  prePledgeTotal Decimal @default(0) @db.Decimal(14, 2) // raw USD sum (internal/audit)
+  supporterCount         Int     @default(0)
+  prePledgeTotal         Decimal @default(0) @db.Decimal(14, 2) // raw USD sum (internal/audit)
   // FR-207: the public "Estimated interest" figure — Σ min(amountUsd, tierCap) × tierWeight.
   weightedPrePledgeTotal Decimal @default(0) @db.Decimal(14, 2)
-  feedbackScore  Decimal @default(0) @db.Decimal(5, 2)
-  feedbackCount  Int     @default(0)
-  commentCount   Int     @default(0) // engagement volume from the comments thread (FR-273)
+  feedbackScore          Decimal @default(0) @db.Decimal(5, 2)
+  feedbackCount          Int     @default(0)
+  commentCount           Int     @default(0) // engagement volume from the comments thread (FR-273)
 
   // Aggregate discovery-feed exposure. Drives the UCB exploration bonus (rich-get-richer
   // fix): items seen less get a larger bonus that shrinks as exposure accrues. NOT a
@@ -323,19 +352,19 @@ model Idea {
   feedImpressions Int @default(0)
 
   // FR-204: creator-declared expected pre-pledge minimum; the gate uses max(platform floor, this).
-  creatorPrePledgeTarget Decimal? @db.Decimal(14, 2)
+  creatorPrePledgeTarget Decimal?  @db.Decimal(14, 2)
   // FR-204a: validation window / sustainment.
   validatingSince        DateTime? // set when DRAFT → VALIDATING
   windowRenewedAt        DateTime? // window is renewable once
 
-  signals        IdeaSignal[]
+  signals         IdeaSignal[]
   surveyQuestions SurveyQuestion[]
   surveyResponses SurveyResponse[]
-  comments       IdeaComment[]
-  boosts         IdeaBoost[]
-  campaign       Campaign?
+  comments        IdeaComment[]
+  boosts          IdeaBoost[]
+  campaign        Campaign?
   metricSnapshots IdeaMetricSnapshot[]
-  qualityReports IdeaQualityReport[]
+  qualityReports  IdeaQualityReport[]
   moderationCases ModerationCase[]
 
   createdAt DateTime @default(now())
@@ -537,7 +566,21 @@ model Campaign {
   workingCapitalReleasedAt DateTime?
   escrowPdaAddress         String?
   totalRaised              Decimal        @default(0) @db.Decimal(14, 2)
-  applicationFeeChargeId   String? // FR-311 gate (Phase 1)
+  applicationFeeChargeId   String?        @unique // FR-311 gate: one paid application fee per campaign
+  videoUrl                 String? // P1 item 16: campaign media (required to publish)
+  videoPosterUrl           String?
+  coverImageUrl            String?
+  rewardTiers              Json? // P1 item 19: optional reward tiers
+
+  // FR-304 curation state. The funding lifecycle stays in `status`; approving here
+  // does not publish or fund the campaign.
+  reviewStatus CampaignReviewStatus  @default(NOT_SUBMITTED)
+  submittedAt  DateTime?
+  reviewReason String?
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?                 @relation("CampaignReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewEvents CampaignReviewEvent[]
 
   milestones    Milestone[]
   contributions Contribution[]
@@ -549,16 +592,36 @@ model Campaign {
 
   @@index([creatorId])
   @@index([status])
+  @@index([reviewStatus, submittedAt])
+}
+
+// FR-304 / FR-904: append-only record of every curation decision. Application code
+// never updates or deletes these rows; Campaign.reviewStatus projects the latest one.
+// Restrict on the actor keeps an admin attributable for as long as the trail exists.
+model CampaignReviewEvent {
+  id         String               @id @default(cuid())
+  campaignId String
+  campaign   Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  actorId    String
+  actor      User                 @relation("CampaignReviewActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action     CampaignReviewAction
+  fromStatus CampaignReviewStatus
+  toStatus   CampaignReviewStatus
+  reason     String?
+  createdAt  DateTime             @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([createdAt])
 }
 
 model Milestone {
-  id                 String  @id @default(cuid())
+  id                 String   @id @default(cuid())
   campaignId         String
   campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   index              Int
   title              String
-  deliverable        String  @default("")
-  tranchePct         Decimal @db.Decimal(5, 2) // FR-302: sums to 100
+  deliverable        String   @default("")
+  tranchePct         Decimal  @db.Decimal(5, 2) // FR-302: sums to 100
   evidenceDefinition Json // FR-302: proof type + source, immutable once published
 
   claims MilestoneClaim[]

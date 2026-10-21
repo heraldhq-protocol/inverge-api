@@ -21,6 +21,8 @@ import { FeedQueryDto } from './dto/feed.dto';
 
 const DAY_MS = 86_400_000;
 
+import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+
 // Candidate record shape pulled in Stage 1 (retrieval).
 type PoolIdea = {
   id: string;
@@ -31,6 +33,7 @@ type PoolIdea = {
   solution: string;
   category: string | null;
   region: string | null;
+  coverImageUrl: string | null;
   askAmount: unknown;
   status: string;
   discoverabilityTier: string;
@@ -43,9 +46,20 @@ type PoolIdea = {
   feedImpressions: number;
   createdAt: Date;
   creator: {
+    id: string;
     kycStatus: string;
+    createdAt: Date;
     institutionalCosign: boolean;
     business: { kybStatus: string; amlStatus: string } | null;
+    creatorProfile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+      bio: string | null;
+      links: unknown;
+      tier: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
+      completedCampaigns: number;
+      tenureStartedAt: Date;
+    } | null;
   };
 };
 
@@ -175,11 +189,25 @@ export class FeedService {
         qualityScore: true,
         feedImpressions: true,
         createdAt: true,
+        coverImageUrl: true,
         creator: {
           select: {
+            id: true,
             kycStatus: true,
+            createdAt: true,
             institutionalCosign: true,
             business: { select: { kybStatus: true, amlStatus: true } },
+            creatorProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+                bio: true,
+                links: true,
+                tier: true,
+                completedCampaigns: true,
+                tenureStartedAt: true,
+              },
+            },
           },
         },
         // Latest moderation outcome — exclude items currently held for review.
@@ -440,6 +468,7 @@ export class FeedService {
           solution: idea.solution,
           category: idea.category,
           region: idea.region,
+          coverImageUrl: idea.coverImageUrl ?? null,
           askAmount: idea.askAmount,
           status: idea.status,
           discoverabilityTier: idea.discoverabilityTier,
@@ -450,6 +479,7 @@ export class FeedService {
           commentCount: idea.commentCount,
           qualityScore: idea.qualityScore,
           creatorId: idea.creatorId,
+          creator: toPublicCreator(idea.creator),
           // Feed metadata — chip is the honest, surfaced reason (explainability layer).
           promoted: entry.promoted,
           boostTier: entry.boostTier,

@@ -7,10 +7,14 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { Env } from './config/env.validation';
 
+import { json, urlencoded } from 'express';
+
 async function bootstrap() {
   // rawBody: true exposes req.rawBody for webhook signature verification (flat-fee, kyc).
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ limit: '10mb', extended: true }));
   app.use(helmet());
   app.enableCors();
   app.useGlobalPipes(

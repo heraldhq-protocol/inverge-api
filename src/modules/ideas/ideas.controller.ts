@@ -14,6 +14,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import {
   CreateIdeaDto,
@@ -54,8 +55,9 @@ export class IdeasController {
   }
 
   @Get()
-  list(@Query() query: ListIdeasQueryDto) {
-    return this.ideas.list(query);
+  @UseGuards(OptionalPrivyAuthGuard)
+  list(@Query() query: ListIdeasQueryDto, @CurrentUser() user?: AuthenticatedUser) {
+    return this.ideas.list(query, user?.id);
   }
 
   @Get(':id')

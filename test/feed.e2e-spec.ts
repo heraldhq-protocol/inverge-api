@@ -39,7 +39,7 @@ describe('Discovery feed (e2e)', () => {
       { date: '2026-Q1', description: 'pilot 200 farms' },
       { date: '2026-Q2', description: 'lender API live' },
     ],
-    category: 'agriculture',
+    category: 'agritech',
     askAmount: 25000,
     creatorPrePledgeTarget: 800,
     ...over,
@@ -110,7 +110,7 @@ describe('Discovery feed (e2e)', () => {
       creator,
       richPitch({
         title: 'AgriCredit Feed',
-        category: 'agriculture',
+        category: 'agritech',
         region: 'Lagos',
       }),
     );
@@ -147,7 +147,7 @@ describe('Discovery feed (e2e)', () => {
   afterAll(async () => {
     if (prisma)
       await prisma.user.deleteMany({
-        where: { privyDid: { startsWith: PREFIX } },
+        where: { privyDid: { startsWith: `did:privy:stub:${PREFIX}` } },
       });
     if (app) await app.close();
   });
@@ -215,11 +215,11 @@ describe('Discovery feed (e2e)', () => {
         .put('/me/interests')
         .set(auth(backer))
         .send({
-          preferredCategories: ['agriculture'],
+          preferredCategories: ['agritech'],
           preferredRegions: ['Lagos'],
         })
         .expect(200);
-      expect(res.body.preferredCategories).toEqual(['agriculture']);
+      expect(res.body.preferredCategories).toEqual(['agritech']);
       expect(res.body.preferredRegions).toEqual(['Lagos']);
     });
 

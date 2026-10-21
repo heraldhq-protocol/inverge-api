@@ -40,7 +40,7 @@ describe('Ideas routes (e2e)', () => {
       { date: '2026-Q1', description: 'pilot 200 farms' },
       { date: '2026-Q2', description: 'lender API live' },
     ],
-    category: 'agriculture',
+    category: 'agritech',
     askAmount: 25000, creatorPrePledgeTarget: 800,
   };
   // All fields present (passes the DTO) but too thin to clear the quality floor → LINK_ONLY.
@@ -71,7 +71,7 @@ describe('Ideas routes (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (prisma) await prisma.user.deleteMany({ where: { privyDid: { startsWith: PREFIX } } });
+    if (prisma) await prisma.user.deleteMany({ where: { privyDid: { startsWith: `did:privy:stub:${PREFIX}` } } });
     if (app) await app.close();
   });
 
