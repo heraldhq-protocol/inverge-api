@@ -1,11 +1,16 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  EMBEDDED_WALLET_PORT,
+  EmbeddedWalletInfo,
+  EmbeddedWalletPort,
+} from '../../ports/wallet/embedded-wallet.port';
 import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
@@ -17,42 +22,29 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
     private readonly sessions: SessionService,
+    @Inject(EMBEDDED_WALLET_PORT)
+    private readonly wallets: EmbeddedWalletPort,
   ) {}
 
-  async authenticate(privyAccessToken: string) {
-    if (!privyAccessToken) throw new UnauthorizedException('No token provided');
+  async authenticate(providerToken: string, walletAddress?: string) {
+    if (!providerToken) throw new UnauthorizedException('No token provided');
 
-    // Stub exchange: real provider verification is not wired yet. Derive a stable,
-    // unique identity from the whole token - truncating it made every e2e caller in
-    // a suite resolve to the same user. `stub:<identity>:<email>` keeps explicit
-    // identities working; bare tokens are hashed into a unique email.
-    const parts = privyAccessToken.split(':');
-    const structured = parts[0] === 'stub' && parts.length >= 2;
-    const identity = structured
-      ? parts.slice(0, 2).join(':')
-      : privyAccessToken;
-    const suppliedEmail = structured ? parts.slice(2).join(':') : undefined;
-    const digest = createHash('sha256')
-      .update(privyAccessToken)
-      .digest('hex')
-      .slice(0, 24);
-
-    const privyDid = `did:privy:${identity}`;
-    const email =
-      suppliedEmail && suppliedEmail.includes('@')
-        ? suppliedEmail
-        : `stub-${digest}@user.inverge`;
+    // The provider token proves identity only at this exchange; every later call
+    // carries the short-lived Inverge session instead (gap item 25).
+    const identity = await this.wallets.verifyAccessToken(providerToken, {
+      walletAddress,
+    });
 
     let user = await this.prisma.user.findUnique({
-      where: { privyDid },
+      where: { providerUserId: identity.providerUserId },
       include: { creatorProfile: true },
     });
 
     if (!user) {
       user = await this.prisma.user.create({
         data: {
-          privyDid,
-          email,
+          providerUserId: identity.providerUserId,
+          email: identity.email ?? null,
           role: 'USER',
         },
         include: { creatorProfile: true },
@@ -60,6 +52,8 @@ export class AuthService {
     }
 
     if (!user) throw new UnauthorizedException('Authentication failed');
+
+    if (identity.wallet) await this.linkWallet(user.id, identity.wallet);
 
     const requiresOnboarding = !user.creatorProfile?.displayName || !user.creatorProfile?.username;
 
@@ -71,6 +65,24 @@ export class AuthService {
       sessionToken: await this.sessions.sign(user.id),
       requiresOnboarding,
     };
+  }
+
+  /**
+   * Records the wallet the provider attested at sign-in. Stub addresses are
+   * synthetic, so persisting one would present a fake wallet as real.
+   */
+  private async linkWallet(userId: string, wallet: EmbeddedWalletInfo) {
+    if (wallet.provider === 'stub') return;
+    await this.prisma.walletAccount.upsert({
+      where: { userId_address: { userId, address: wallet.address } },
+      update: { provider: wallet.provider, isEmbedded: true },
+      create: {
+        userId,
+        address: wallet.address,
+        provider: wallet.provider,
+        isEmbedded: true,
+      },
+    });
   }
 
   async me(userId: string) {

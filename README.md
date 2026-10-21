@@ -9,7 +9,9 @@ that the *web* campaign screens are already built against a written contract and
 ## Stack
 
 - **NestJS 11** (CommonJS) + **Prisma v7** (driver adapter, `prisma-client` generator, CJS client) + **PostgreSQL** + **Redis/BullMQ** (metric snapshots + async screening)
-- Auth via embedded-wallet provider (Privy reference adapter); short-lived session JWTs
+- Auth via an embedded-wallet provider — **MetaMask Embedded Wallets (Web3Auth)** for the web
+  client, with Privy kept as a legacy adapter — verified server-side against the provider's JWKS;
+  short-lived session JWTs
 - **Hexagonal ports** — every external vendor sits behind a port and is selected by env, so vendors stay swappable. `stub` adapters run fully offline.
 
 ## Vendors are swappable
@@ -18,7 +20,7 @@ The **port is the contract**; the adapter is the vendor. Select per env (`stub` 
 
 | Env | Options | Port |
 |---|---|---|
-| `WALLET_PROVIDER` | `stub` \| `privy` | embedded wallet + token verify |
+| `WALLET_PROVIDER` | `stub` \| `privy` \| `web3auth` | embedded wallet + token verify |
 | `FLATFEE_PROVIDER` | `stub` \| `paystack` | boosts + application fee |
 | `KYC_PROVIDER` | `stub` \| `didit` | identity verification (KYC / AML / KYB) |
 | `NOTIFICATION_PROVIDER` | `stub` \| `herald` | notifications |
@@ -60,7 +62,7 @@ pnpm start:dev                # http://localhost:3000  — OpenAPI docs at /docs
 
 ## Auth in stub mode
 
-No Privy needed for local dev. Exchange a stub token for a session:
+No provider needed for local dev (`WALLET_PROVIDER=stub`). Exchange a stub token for a session:
 
 ```bash
 curl -X POST localhost:3000/auth/session \

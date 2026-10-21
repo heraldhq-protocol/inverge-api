@@ -64,7 +64,7 @@ describe('KYC/AML routes (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (prisma) await prisma.user.deleteMany({ where: { privyDid: { startsWith: `did:privy:stub:${PREFIX}` } } });
+    if (prisma) await prisma.user.deleteMany({ where: { providerUserId: { startsWith: `did:privy:stub:${PREFIX}` } } });
     if (app) await app.close();
   });
 

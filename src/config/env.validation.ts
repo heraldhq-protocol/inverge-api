@@ -10,7 +10,7 @@ export const envSchema = z.object({
   DIRECT_URL: z.string().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
-  WALLET_PROVIDER: z.enum(['stub', 'privy']).default('stub'),
+  WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
   KYC_PROVIDER: z.enum(['stub', 'didit']).default('stub'),
   NOTIFICATION_PROVIDER: z.enum(['stub', 'herald']).default('stub'),
@@ -31,6 +31,14 @@ export const envSchema = z.object({
   PRIVY_APP_SECRET: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),
   PRIVY_TOKEN_ISSUER: z.string().default('privy.io'),
+
+  // MetaMask Embedded Wallets / Web3Auth (WALLET_PROVIDER=web3auth). The client
+  // id is the token audience; without it a token minted for another project
+  // would verify, so it is required at exchange time. No client secret is needed
+  // for JWKS verification — never put one in this service.
+  WEB3AUTH_CLIENT_ID: z.string().optional(),
+  WEB3AUTH_JWKS_URL: z.string().url().default('https://api-auth.web3auth.io/jwks'),
+  WEB3AUTH_TOKEN_ISSUER: z.string().url().default('https://api-auth.web3auth.io'),
 
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
