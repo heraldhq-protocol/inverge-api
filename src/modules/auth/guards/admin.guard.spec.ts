@@ -9,27 +9,27 @@ const guard = (allowlist = '') =>
 
 describe('AdminGuard (FR-901)', () => {
   it('allows a user with the ADMIN role', () => {
-    expect(guard().canActivate(ctxWith({ role: 'ADMIN', privyDid: 'd', email: null }))).toBe(true);
+    expect(guard().canActivate(ctxWith({ role: 'ADMIN', providerUserId: 'd', email: null }))).toBe(true);
   });
 
   it('denies an authenticated USER not in the allowlist', () => {
     expect(() =>
-      guard().canActivate(ctxWith({ role: 'USER', privyDid: 'd', email: 'u@x.com' })),
+      guard().canActivate(ctxWith({ role: 'USER', providerUserId: 'd', email: 'u@x.com' })),
     ).toThrow(ForbiddenException);
   });
 
   it('allows a USER whose email is allowlisted (case-insensitive)', () => {
     expect(
       guard('Boss@X.com , other@y.com').canActivate(
-        ctxWith({ role: 'USER', privyDid: 'd', email: 'boss@x.com' }),
+        ctxWith({ role: 'USER', providerUserId: 'd', email: 'boss@x.com' }),
       ),
     ).toBe(true);
   });
 
-  it('allows a USER whose Privy DID is allowlisted', () => {
+  it('allows a USER whose provider user id is allowlisted', () => {
     expect(
       guard('did:privy:abc').canActivate(
-        ctxWith({ role: 'USER', privyDid: 'did:privy:abc', email: null }),
+        ctxWith({ role: 'USER', providerUserId: 'did:privy:abc', email: null }),
       ),
     ).toBe(true);
   });

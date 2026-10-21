@@ -175,7 +175,7 @@ enum OnChainEventType {
 
 model User {
   id             String    @id @default(cuid())
-  privyDid       String    @unique
+  providerUserId String    @unique // provider-neutral: Web3Auth sub / Privy DID / stub id
   email          String?   @unique
   emailVerified  Boolean   @default(false) // FR-208: EMAIL tier eligibility
   oauthSubject   String?   @unique // FR-212: one social identity ↔ one account (anti-sybil)

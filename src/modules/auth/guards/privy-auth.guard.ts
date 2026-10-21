@@ -7,7 +7,8 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SessionService } from '../session.service';
 
-// Guards routes behind the Privy-backed session (FR-101, NFR-03).
+// Guards routes behind the Inverge session (FR-101, NFR-03). The class name is
+// historical: sessions have been provider-neutral since the Web3Auth migration.
 @Injectable()
 export class PrivyAuthGuard implements CanActivate {
   constructor(

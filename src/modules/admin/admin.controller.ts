@@ -36,7 +36,7 @@ const BOOST_KEYS = {
 const USER_SELECT = {
   id: true,
   email: true,
-  privyDid: true,
+  providerUserId: true,
   role: true,
   kycStatus: true,
   bannedAt: true,
@@ -103,7 +103,7 @@ export class AdminController {
     return this.getBoostPrices();
   }
 
-  // FR-901: list users (search by email / Privy DID, filter by role) to manage access.
+  // FR-901: list users (search by email / provider user id, filter by role) to manage access.
   @Get('users')
   @ApiOperation({ summary: 'List users (searchable) for role management' })
   listUsers(@Query() q: ListUsersQueryDto) {
@@ -115,7 +115,7 @@ export class AdminController {
           ? {
               OR: [
                 { email: { contains: query, mode: 'insensitive' } },
-                { privyDid: { contains: query, mode: 'insensitive' } },
+                { providerUserId: { contains: query, mode: 'insensitive' } },
               ],
             }
           : {}),

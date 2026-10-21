@@ -17,7 +17,7 @@ export class AuthController {
   @Post('session')
   @ApiOperation({ summary: 'Exchange a provider access token for an Inverge session' })
   session(@Body() dto: CreateSessionDto) {
-    return this.auth.authenticate(dto.accessToken);
+    return this.auth.authenticate(dto.accessToken, dto.walletAddress);
   }
 
   @Get('me')
