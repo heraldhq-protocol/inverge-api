@@ -15,6 +15,7 @@ function prismaMock(idea: any = null) {
       create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'new-id', ...data })),
       update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'idea1', ...data })),
       findUnique: jest.fn().mockResolvedValue(idea),
+      findFirst: jest.fn().mockResolvedValue(idea),
       count: jest.fn().mockResolvedValue(0),
     },
     surveyQuestion: { createMany: jest.fn().mockResolvedValue({}) },
@@ -100,7 +101,7 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
 
 describe('IdeasService.getQuality', () => {
   it('returns the latest coaching report', async () => {
-    const { svc, q } = make();
+    const { svc, q } = make({ id: 'idea1' });
     await svc.getQuality('idea1');
     expect(q.latestReport).toHaveBeenCalledWith('idea1');
   });
