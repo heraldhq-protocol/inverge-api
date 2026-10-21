@@ -143,7 +143,21 @@ export class AdminController {
     if (!target) throw new NotFoundException('User not found');
 
     if (target.role !== dto.role) {
-      await this.prisma.user.update({ where: { id }, data: { role: dto.role } });
+      // FR-904: the role change and its audit record commit together. The shared
+      // append-only audit table is keyed by a namespaced key (`auth.user.role`) so
+      // role history is queryable without a second migration and without a table
+      // that only ever holds two columns of real data.
+      await this.prisma.$transaction([
+        this.prisma.user.update({ where: { id }, data: { role: dto.role } }),
+        this.prisma.platformParamAudit.create({
+          data: {
+            key: 'auth.user.role',
+            oldValue: { userId: id, role: target.role },
+            newValue: { userId: id, role: dto.role },
+            changedBy: actor.id,
+          },
+        }),
+      ]);
       this.logger.warn(
         `role change: user=${id} ${target.role} -> ${dto.role} by=${actor.id}`,
       );

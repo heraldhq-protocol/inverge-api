@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -16,6 +17,7 @@ import {
   IsNotEmpty,
   ValidateNested,
 } from 'class-validator';
+import { parseBooleanQuery } from '../../../common/http/boolean-query';
 
 export const PLEDGE_CURRENCIES = ['USD', 'NGN'] as const;
 
@@ -159,7 +161,8 @@ export class ListIdeasQueryDto {
 
   @ApiPropertyOptional({ description: 'If true, returns calling creator\'s own ideas (all statuses including DRAFT)' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
   mine?: boolean;
 }
 

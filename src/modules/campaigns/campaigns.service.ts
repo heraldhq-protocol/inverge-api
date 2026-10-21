@@ -319,10 +319,17 @@ export class CampaignsService {
   }
 
   async getPlatformEscrowStats() {
-    const [events, activeCount, completedCount, refundedCount, activeCampaigns] =
+    // One grouped aggregate instead of loading every indexed event into Node.
+    // The table is append-only (FR-803) and grows with every chain event, so the
+    // previous `findMany` was an unbounded read once the indexer had history.
+    const [eventTotals, activeCount, completedCount, refundedCount, activeCampaigns] =
       await Promise.all([
-        this.prisma.onChainEvent.findMany({
-          select: { eventType: true, amount: true },
+        this.prisma.onChainEvent.groupBy({
+          by: ['eventType'],
+          where: {
+            eventType: { in: ['TRANCHE_RELEASED', 'REFUND_CLAIMED'] },
+          },
+          _sum: { amount: true },
         }),
         this.prisma.campaign.count({ where: { status: 'ACTIVE' } }),
         this.prisma.campaign.count({ where: { status: 'COMPLETED' } }),
@@ -333,17 +340,13 @@ export class CampaignsService {
         }),
       ]);
 
-    let releasedSum = 0;
-    let refundedSum = 0;
+    const sumFor = (eventType: 'TRANCHE_RELEASED' | 'REFUND_CLAIMED') =>
+      Number(
+        eventTotals.find((row) => row.eventType === eventType)?._sum.amount ?? 0,
+      );
 
-    for (const event of events) {
-      const amt = Number(event.amount ?? 0);
-      if (event.eventType === 'TRANCHE_RELEASED') {
-        releasedSum += amt;
-      } else if (event.eventType === 'REFUND_CLAIMED') {
-        refundedSum += amt;
-      }
-    }
+    const releasedSum = sumFor('TRANCHE_RELEASED');
+    const refundedSum = sumFor('REFUND_CLAIMED');
 
     const heldUsd = (Number(activeCampaigns._sum.totalRaised ?? 0) - releasedSum).toFixed(2);
 

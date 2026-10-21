@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -10,6 +10,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { parseBooleanQuery } from '../../../common/http/boolean-query';
 
 export const CAMPAIGN_SORT_OPTIONS = [
   'closing-soon',
@@ -56,7 +57,7 @@ export class ListCampaignsQueryDto {
 
   @ApiPropertyOptional({ description: 'If true, returns calling creator\'s own campaigns (all statuses including DRAFT and IN_REVIEW)' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(parseBooleanQuery)
   @IsBoolean()
   mine?: boolean;
 }
