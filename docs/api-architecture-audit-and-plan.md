@@ -882,6 +882,9 @@ Done:
   200; the insights chart series is limited to 180 days; AML screening history is capped at 100 rows.
 - **Duplicate escrow route removed.** `GET /platform/escrow` is the only escrow projection;
   `GET /campaigns/escrow/stats` was an alias with the same handler.
+- **Production session secret enforced.** Environment validation fails at boot when
+  `NODE_ENV=production` and `SESSION_JWT_SECRET` is still the documented default (or empty).
+  Development keeps the zero-config default.
 
 Not done in this slice:
 

@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 // Provider selection keeps vendors swappable (docs/phase0-refined-plan.md §3).
 // "stub" runs fully offline for local dev.
-export const envSchema = z.object({
+/** The value shipped in the schema so local dev starts without setup. */
+export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
+
+export const envSchema = z
+  .object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
@@ -60,13 +64,27 @@ export const envSchema = z.object({
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
 
-  SESSION_JWT_SECRET: z.string().min(1).default('change-me-in-production'),
+  SESSION_JWT_SECRET: z.string().min(1).default(DEFAULT_SESSION_JWT_SECRET),
 
   // FR-901: break-glass / bootstrap superadmins. Comma-separated emails and/or Privy DIDs
   // that always pass the AdminGuard regardless of their DB role — used to seed the first
   // admin, who then grants others via PATCH /admin/users/:id/role. Empty by default.
   ADMIN_ALLOWLIST: z.string().default(''),
-});
+  })
+  .superRefine((env, ctx) => {
+    // A production boot with the documented default would let anyone forge a
+    // session for any user id. Fail at startup, not silently at runtime.
+    if (
+      env.NODE_ENV === 'production' &&
+      env.SESSION_JWT_SECRET === DEFAULT_SESSION_JWT_SECRET
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_JWT_SECRET'],
+        message: 'SESSION_JWT_SECRET must be set to a real secret in production',
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
