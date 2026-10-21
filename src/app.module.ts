@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { validateEnv } from './config/env.validation';
+import { ApiExceptionFilter } from './common/http/api-exception.filter';
 import { PrismaModule } from './prisma/prisma.module';
 import { PortsModule } from './ports/ports.module';
 import { QueueModule } from './modules/queue/queue.module';
@@ -43,6 +45,11 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     ModerationModule,
     SurveyModule,
     CampaignsModule,
+  ],
+  providers: [
+    // Registered as a provider (not only in main.ts) so e2e applications get the
+    // same error envelope as production.
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })
 export class AppModule {}

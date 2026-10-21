@@ -20,7 +20,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config jest-e2e.config.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "openapi:emit": "ts-node scripts/emit-openapi.ts",
+    "openapi:check": "ts-node scripts/emit-openapi.ts --check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.114.0",

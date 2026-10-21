@@ -1,0 +1,2972 @@
+{
+  "components": {
+    "schemas": {
+      "AmlScreenDto": {
+        "properties": {
+          "dateOfBirth": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
+          "documentNumber": {
+            "type": "string"
+          },
+          "entityType": {
+            "default": "person",
+            "enum": [
+              "person",
+              "company"
+            ],
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "nationality": {
+            "description": "ISO country code (alpha-2 / alpha-3)",
+            "type": "string"
+          },
+          "userId": {
+            "description": "Inverge user id to attach the screening record to",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName"
+        ],
+        "type": "object"
+      },
+      "AnswerDto": {
+        "properties": {
+          "questionId": {
+            "type": "string"
+          },
+          "value": {
+            "description": "number | string | boolean | string[] depending on the question type",
+            "type": "object"
+          }
+        },
+        "required": [
+          "questionId",
+          "value"
+        ],
+        "type": "object"
+      },
+      "BoostPricesDto": {
+        "properties": {
+          "basicDurationDays": {
+            "description": "Basic boost duration (days)",
+            "type": "number"
+          },
+          "basicPriceUSD": {
+            "description": "Basic boost price (USD)",
+            "type": "number"
+          },
+          "featuredDurationDays": {
+            "description": "Featured boost duration (days)",
+            "type": "number"
+          },
+          "featuredPriceUSD": {
+            "description": "Featured boost price (USD)",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "ConvertIdeaDto": {
+        "properties": {
+          "deadline": {
+            "description": "ISO 8601 deadline",
+            "type": "string"
+          },
+          "milestones": {
+            "description": "2–6 milestones (FR-301)",
+            "items": {
+              "$ref": "#/components/schemas/MilestoneInputDto"
+            },
+            "type": "array"
+          },
+          "targetAmount": {
+            "type": "number"
+          },
+          "tokenType": {
+            "enum": [
+              "USDC",
+              "CNGN"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "ALL_OR_NOTHING",
+              "FLEXIBLE_FUNDING"
+            ],
+            "type": "string"
+          },
+          "workingCapitalPct": {
+            "description": "Working-capital tranche %, capped 20–25 (FR-503a)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "tokenType",
+          "targetAmount",
+          "deadline",
+          "milestones"
+        ],
+        "type": "object"
+      },
+      "CreateCommentDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "parentId": {
+            "description": "Reply to another comment (its id); omit for a top-level comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
+      "CreateIdeaDto": {
+        "properties": {
+          "askAmount": {
+            "description": "Intended ask amount (USD)",
+            "type": "number"
+          },
+          "askBreakdown": {
+            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "type": "object"
+          },
+          "category": {
+            "enum": [
+              "technology",
+              "software",
+              "fintech",
+              "agritech",
+              "healthtech",
+              "cleantech",
+              "edtech",
+              "logistics",
+              "e-commerce",
+              "web3",
+              "art",
+              "comics",
+              "crafts",
+              "dance",
+              "design",
+              "fashion",
+              "film",
+              "food",
+              "games",
+              "journalism",
+              "music",
+              "photography",
+              "publishing",
+              "theater",
+              "community",
+              "other"
+            ],
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "description": "Cover image URL for image-led cards",
+            "type": "string"
+          },
+          "creatorPrePledgeTarget": {
+            "description": "Creator-declared expected pre-pledge minimum in USD (FR-204). The gate requires the weighted figure to clear max(platform floor, this).",
+            "type": "number"
+          },
+          "currentAlternative": {
+            "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "problemDoc": {
+            "description": "Rich text problem document",
+            "type": "object"
+          },
+          "region": {
+            "description": "Creator-declared region/origin (e.g. \"Lagos\"). Feeds discovery personalization (region match / diaspora-origin) — never a validation metric.",
+            "type": "string"
+          },
+          "risks": {
+            "description": "Risks and challenges section (P2 coaching context)",
+            "type": "string"
+          },
+          "roadmap": {
+            "description": "Optional free-text roadmap summary",
+            "type": "string"
+          },
+          "roadmapSteps": {
+            "description": "At least two dated roadmap steps",
+            "items": {
+              "$ref": "#/components/schemas/RoadmapStepDto"
+            },
+            "type": "array"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "solutionDoc": {
+            "description": "Rich text solution document",
+            "type": "object"
+          },
+          "targetUser": {
+            "description": "Who specifically has this problem (named user type, not \"everyone\")",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "problem",
+          "solution",
+          "targetUser",
+          "currentAlternative",
+          "askBreakdown",
+          "roadmapSteps",
+          "category",
+          "askAmount"
+        ],
+        "type": "object"
+      },
+      "CreateSessionDto": {
+        "properties": {
+          "accessToken": {
+            "description": "Identity token from the auth/wallet provider (Web3Auth id_token). In stub mode use \"stub:<did>[:<email>]\".",
+            "type": "string"
+          },
+          "walletAddress": {
+            "description": "Solana address to link. Verified against the signed identity token; it is never trusted as given. Omit to sign in without linking a wallet.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken"
+        ],
+        "type": "object"
+      },
+      "CreatorLinkDto": {
+        "properties": {},
+        "type": "object"
+      },
+      "DecideCampaignReviewDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "APPROVE",
+              "REQUEST_CHANGES",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "description": "Required (20-2000 characters) for REQUEST_CHANGES and REJECT; optional note for APPROVE.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "HighlightCommentDto": {
+        "properties": {
+          "highlighted": {
+            "description": "Feature this comment in the idea comments section",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "highlighted"
+        ],
+        "type": "object"
+      },
+      "LinkWalletDto": {
+        "properties": {
+          "address": {
+            "description": "External Solana wallet address",
+            "type": "string"
+          },
+          "ownershipSignature": {
+            "description": "Signature proving ownership of the address",
+            "type": "string"
+          },
+          "role": {
+            "default": "PAYOUT",
+            "enum": [
+              "FUNDING",
+              "PAYOUT"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "ownershipSignature"
+        ],
+        "type": "object"
+      },
+      "MeResponseDto": {
+        "properties": {
+          "creator": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicCreatorDto"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "email": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "requiresOnboarding": {
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "ADMIN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "creator",
+          "requiresOnboarding"
+        ],
+        "type": "object"
+      },
+      "MilestoneInputDto": {
+        "properties": {
+          "deliverable": {
+            "type": "string"
+          },
+          "evidenceDefinition": {
+            "description": "Immutable evidence definition (proof type + source)",
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tranchePct": {
+            "description": "Tranche %; all must sum to 100",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "title",
+          "deliverable",
+          "tranchePct",
+          "evidenceDefinition"
+        ],
+        "type": "object"
+      },
+      "PrePledgeDto": {
+        "properties": {
+          "amount": {
+            "description": "Intent amount — NO funds move (FR-202)",
+            "type": "number"
+          },
+          "currency": {
+            "default": "USD",
+            "description": "FR-210: USD default; NGN normalized to USD at the current fx rate.",
+            "enum": [
+              "USD",
+              "NGN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "type": "object"
+      },
+      "PublicCreatorDto": {
+        "properties": {
+          "avatarUrl": {
+            "nullable": true,
+            "type": "string"
+          },
+          "bio": {
+            "nullable": true,
+            "type": "string"
+          },
+          "completedCampaigns": {
+            "type": "number"
+          },
+          "displayName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ideasPublished": {
+            "type": "number"
+          },
+          "identityVerified": {
+            "type": "boolean"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/PublicCreatorLinkDto"
+            },
+            "type": "array"
+          },
+          "memberSince": {
+            "description": "ISO 8601 timestamp",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "STARTER",
+              "TRUSTED",
+              "ESTABLISHED"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "displayName",
+          "avatarUrl",
+          "bio",
+          "links",
+          "tier",
+          "completedCampaigns",
+          "ideasPublished",
+          "identityVerified",
+          "memberSince"
+        ],
+        "type": "object"
+      },
+      "PublicCreatorLinkDto": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "url"
+        ],
+        "type": "object"
+      },
+      "PurchaseBoostDto": {
+        "properties": {
+          "tier": {
+            "enum": [
+              "BASIC",
+              "FEATURED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier"
+        ],
+        "type": "object"
+      },
+      "RoadmapStepDto": {
+        "properties": {
+          "date": {
+            "description": "ISO date (or period label) for this step",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "description"
+        ],
+        "type": "object"
+      },
+      "ScreenContentDto": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "idea",
+              "campaign"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "Concatenated submission text to screen",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "type": "object"
+      },
+      "SessionResponseDto": {
+        "properties": {
+          "creator": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicCreatorDto"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "requiresOnboarding": {
+            "type": "boolean"
+          },
+          "sessionToken": {
+            "description": "One-hour HS256 session token. The web BFF stores it in an HttpOnly cookie and never returns it to the browser.",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUserDto"
+          }
+        },
+        "required": [
+          "sessionToken",
+          "user",
+          "creator",
+          "requiresOnboarding"
+        ],
+        "type": "object"
+      },
+      "SessionUserDto": {
+        "properties": {
+          "email": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "type": "object"
+      },
+      "SetSurveyDto": {
+        "properties": {
+          "questions": {
+            "description": "1–20 questions; at least one RATING",
+            "items": {
+              "$ref": "#/components/schemas/SurveyQuestionDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "type": "object"
+      },
+      "SetWalletRoleDto": {
+        "properties": {
+          "role": {
+            "enum": [
+              "FUNDING",
+              "PAYOUT"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "StartBusinessDto": {
+        "properties": {
+          "country": {
+            "description": "ISO country of registration",
+            "type": "string"
+          },
+          "legalName": {
+            "description": "Registered legal name of the business",
+            "type": "string"
+          },
+          "registrationNumber": {
+            "description": "Company / registration number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "legalName"
+        ],
+        "type": "object"
+      },
+      "StartSessionDto": {
+        "properties": {
+          "purpose": {
+            "default": "IDEA_VALIDATION",
+            "enum": [
+              "IDEA_VALIDATION",
+              "CAMPAIGN_CREATOR",
+              "BACKER_THRESHOLD",
+              "BUSINESS_VERIFICATION"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SubmitCampaignDto": {
+        "properties": {
+          "applicationFeeChargeId": {
+            "description": "SUCCEEDED APPLICATION_FEE charge id (FR-311). Required when the campaign has not already linked one; re-submission after a change request reuses it.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SubmitResponseDto": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "type": "object"
+      },
+      "SurveyQuestionDto": {
+        "properties": {
+          "index": {
+            "description": "Display order (0-based)",
+            "type": "number"
+          },
+          "options": {
+            "description": "Options for SINGLE_CHOICE / MULTI_CHOICE",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "RATING",
+              "TEXT",
+              "SINGLE_CHOICE",
+              "MULTI_CHOICE",
+              "BOOLEAN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "prompt",
+          "type"
+        ],
+        "type": "object"
+      },
+      "UpdateCreatorProfileDto": {
+        "properties": {
+          "avatarUrl": {
+            "type": "string"
+          },
+          "bio": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorLinkDto"
+            },
+            "type": "array"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateIdeaDto": {
+        "properties": {
+          "askAmount": {
+            "description": "Intended ask amount (USD)",
+            "type": "number"
+          },
+          "askBreakdown": {
+            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "type": "object"
+          },
+          "category": {
+            "enum": [
+              "technology",
+              "software",
+              "fintech",
+              "agritech",
+              "healthtech",
+              "cleantech",
+              "edtech",
+              "logistics",
+              "e-commerce",
+              "web3",
+              "art",
+              "comics",
+              "crafts",
+              "dance",
+              "design",
+              "fashion",
+              "film",
+              "food",
+              "games",
+              "journalism",
+              "music",
+              "photography",
+              "publishing",
+              "theater",
+              "community",
+              "other"
+            ],
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "description": "Cover image URL for image-led cards",
+            "type": "string"
+          },
+          "creatorPrePledgeTarget": {
+            "description": "Creator-declared expected pre-pledge minimum in USD (FR-204). The gate requires the weighted figure to clear max(platform floor, this).",
+            "type": "number"
+          },
+          "currentAlternative": {
+            "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "problemDoc": {
+            "description": "Rich text problem document",
+            "type": "object"
+          },
+          "region": {
+            "description": "Creator-declared region/origin (e.g. \"Lagos\"). Feeds discovery personalization (region match / diaspora-origin) — never a validation metric.",
+            "type": "string"
+          },
+          "risks": {
+            "description": "Risks and challenges section (P2 coaching context)",
+            "type": "string"
+          },
+          "roadmap": {
+            "description": "Optional free-text roadmap summary",
+            "type": "string"
+          },
+          "roadmapSteps": {
+            "description": "At least two dated roadmap steps",
+            "items": {
+              "$ref": "#/components/schemas/RoadmapStepDto"
+            },
+            "type": "array"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "solutionDoc": {
+            "description": "Rich text solution document",
+            "type": "object"
+          },
+          "targetUser": {
+            "description": "Who specifically has this problem (named user type, not \"everyone\")",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateInterestsDto": {
+        "properties": {
+          "preferredCategories": {
+            "items": {
+              "enum": [
+                "technology",
+                "software",
+                "fintech",
+                "agritech",
+                "healthtech",
+                "cleantech",
+                "edtech",
+                "logistics",
+                "e-commerce",
+                "web3",
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "theater",
+                "community",
+                "other"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "preferredRegions": {
+            "description": "Regions/origins of interest (incl. diaspora origin)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateParamsDto": {
+        "properties": {
+          "params": {
+            "description": "Map of platform param keys to new values (partial update).",
+            "example": {
+              "boost.featured.priceNGN": 25000,
+              "validation.minSupporters": 25
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "type": "object"
+      },
+      "UpdateUserRoleDto": {
+        "properties": {
+          "role": {
+            "enum": [
+              "USER",
+              "ADMIN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "UsernameAvailabilityDto": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Milestone-escrowed crowdfunding and idea validation for African builders. Escrow balances and settlement are owned by the Solana program; this API serves off-chain content and indexed projections.",
+    "title": "Inverge API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/admin/boost-prices": {
+      "get": {
+        "operationId": "AdminController_getBoostPrices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminController_setBoostPrices",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoostPricesDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Configure Basic/Featured boost prices + durations (audited)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/campaigns": {
+      "get": {
+        "operationId": "AdminCampaignsController_list",
+        "parameters": [
+          {
+            "description": "Review state to list; ALL returns every campaign.",
+            "in": "query",
+            "name": "reviewStatus",
+            "required": false,
+            "schema": {
+              "default": "IN_REVIEW",
+              "enum": [
+                "IN_REVIEW",
+                "CHANGES_REQUESTED",
+                "APPROVED",
+                "REJECTED",
+                "NOT_SUBMITTED",
+                "ALL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List campaigns by curation state (FR-304)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/campaigns/{id}": {
+      "get": {
+        "operationId": "AdminCampaignsController_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Campaign review detail with FR-103/FR-311 facts and review history",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/campaigns/{id}/review": {
+      "post": {
+        "operationId": "AdminCampaignsController_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideCampaignReviewDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve, request changes or reject a campaign (FR-304)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/moderation/screen": {
+      "post": {
+        "operationId": "ModerationController_screen",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenContentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run the moderation harness (L1 gates → L2 classify → route) on content",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/api/v1/admin/params": {
+      "get": {
+        "operationId": "AdminController_getParams",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminController_patchParams",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateParamsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/params/audit": {
+      "get": {
+        "operationId": "AdminController_audit",
+        "parameters": [
+          {
+            "description": "Filter to one param key",
+            "in": "query",
+            "name": "key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Audit log of platform-param changes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "operationId": "AdminController_listUsers",
+        "parameters": [
+          {
+            "description": "Case-insensitive match on email or Privy DID",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "enum": [
+                "USER",
+                "ADMIN"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List users (searchable) for role management",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/role": {
+      "patch": {
+        "operationId": "AdminController_setUserRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRoleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Grant or revoke a user admin role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/auth/check-username": {
+      "get": {
+        "operationId": "AuthController_checkUsername",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsernameAvailabilityDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Check if a username handle is available",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/creators/{idOrUsername}": {
+      "get": {
+        "operationId": "AuthController_getPublicProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrUsername",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get public creator profile and their projects/backed ideas",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/profile": {
+      "patch": {
+        "operationId": "AuthController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCreatorProfileDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update creator display profile",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/session": {
+      "post": {
+        "operationId": "AuthController_session",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Exchange a provider access token for an Inverge session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/campaigns": {
+      "get": {
+        "operationId": "CampaignsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "enum": [
+                "closing-soon",
+                "newest",
+                "most-backed",
+                "most-delivered"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "If true, returns calling creator's own campaigns (all statuses including DRAFT and IN_REVIEW)",
+            "in": "query",
+            "name": "mine",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List public campaigns or creator campaigns (mine=true)",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/escrow/stats": {
+      "get": {
+        "operationId": "CampaignsController_getEscrowStatsAlias",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get aggregate platform escrow figures (FR-801)",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}": {
+      "get": {
+        "operationId": "CampaignsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get campaign details by ID",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/submit": {
+      "post": {
+        "operationId": "CampaignsController_submit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCampaignDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit draft campaign for curation review",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/feed": {
+      "get": {
+        "operationId": "FeedController_getFeed",
+        "parameters": [
+          {
+            "description": "Object type to rank. Phase 0 serves ideas; campaigns join the same ranked feed from Phase 1+ (the ranker is object-agnostic — see FeedObjectType).",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "default": "ideas",
+              "enum": [
+                "ideas",
+                "campaigns",
+                "all"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated idea ids the client has already seen recently; excluded from this page (stateless \"already seen\" — the feed keeps no per-user seen store).",
+            "in": "query",
+            "name": "excludeIds",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Optional hard category filter (Stage 1 retrieval)",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "enum": [
+                "technology",
+                "software",
+                "fintech",
+                "agritech",
+                "healthtech",
+                "cleantech",
+                "edtech",
+                "logistics",
+                "e-commerce",
+                "web3",
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "theater",
+                "community",
+                "other"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "feed"
+        ]
+      }
+    },
+    "/api/v1/flat-fee/webhook": {
+      "post": {
+        "operationId": "FlatFeeController_webhook",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-paystack-signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "flat-fee"
+        ]
+      }
+    },
+    "/api/v1/ideas": {
+      "get": {
+        "operationId": "IdeasController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "If true, returns calling creator's own ideas (all statuses including DRAFT)",
+            "in": "query",
+            "name": "mine",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ideas"
+        ]
+      },
+      "post": {
+        "operationId": "IdeasController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIdeaDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}": {
+      "get": {
+        "operationId": "IdeasController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ideas"
+        ]
+      },
+      "patch": {
+        "operationId": "IdeasController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIdeaDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/boosts": {
+      "get": {
+        "operationId": "BoostsController_active",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "boosts"
+        ]
+      },
+      "post": {
+        "operationId": "BoostsController_purchase",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseBoostDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "boosts"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/comments": {
+      "get": {
+        "operationId": "CommentsController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "CommentsController_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/comments/{commentId}": {
+      "delete": {
+        "operationId": "CommentsController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/comments/{commentId}/highlight": {
+      "patch": {
+        "operationId": "CommentsController_highlight",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HighlightCommentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/comments/{commentId}/like": {
+      "delete": {
+        "operationId": "CommentsController_unlike",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "CommentsController_like",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/convert": {
+      "post": {
+        "operationId": "SyncController_convert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertIdeaDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/insights": {
+      "get": {
+        "operationId": "InsightsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Creator-only analytics for an idea (chart-ready)",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/pre-pledge": {
+      "delete": {
+        "operationId": "IdeasController_withdrawPrePledge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      },
+      "post": {
+        "operationId": "IdeasController_prePledge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrePledgeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/publish": {
+      "post": {
+        "operationId": "IdeasController_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/quality": {
+      "get": {
+        "operationId": "IdeasController_quality",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/support": {
+      "delete": {
+        "operationId": "IdeasController_unsupport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      },
+      "post": {
+        "operationId": "IdeasController_support",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/survey": {
+      "get": {
+        "operationId": "SurveyController_getQuestions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "survey"
+        ]
+      },
+      "put": {
+        "operationId": "SurveyController_setQuestions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSurveyDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "survey"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/survey/responses": {
+      "delete": {
+        "operationId": "SurveyController_withdraw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "survey"
+        ]
+      },
+      "post": {
+        "operationId": "SurveyController_submit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitResponseDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "survey"
+        ]
+      }
+    },
+    "/api/v1/kyb/admin/aml-screen": {
+      "post": {
+        "operationId": "KybController_adminScreenAml",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmlScreenDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Standalone AML screen of a business entity",
+        "tags": [
+          "kyb"
+        ]
+      }
+    },
+    "/api/v1/kyb/admin/aml/{userId}": {
+      "get": {
+        "operationId": "KybController_adminListScreenings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Business AML screening history (NFR-19 retained)",
+        "tags": [
+          "kyb"
+        ]
+      }
+    },
+    "/api/v1/kyb/eligibility": {
+      "get": {
+        "operationId": "KybController_eligibility",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyb"
+        ]
+      }
+    },
+    "/api/v1/kyb/session": {
+      "post": {
+        "operationId": "KybController_session",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBusinessDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyb"
+        ]
+      }
+    },
+    "/api/v1/kyb/status": {
+      "get": {
+        "operationId": "KybController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyb"
+        ]
+      }
+    },
+    "/api/v1/kyc/admin/aml-screen": {
+      "post": {
+        "operationId": "KycController_adminScreenAml",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmlScreenDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Standalone AML screen for a user (ongoing monitoring)",
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/admin/aml/{userId}": {
+      "get": {
+        "operationId": "KycController_adminListScreenings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "AML screening history for a user (NFR-19 retained)",
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/dev-complete": {
+      "get": {
+        "operationId": "KycController_devComplete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aml",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/eligibility": {
+      "get": {
+        "operationId": "KycController_eligibility",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "default": "IDEA_VALIDATION",
+              "enum": [
+                "IDEA_VALIDATION",
+                "CAMPAIGN_CREATOR",
+                "BACKER_THRESHOLD",
+                "BUSINESS_VERIFICATION"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/session": {
+      "post": {
+        "operationId": "KycController_session",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/status": {
+      "get": {
+        "operationId": "KycController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/kyc/webhook": {
+      "post": {
+        "operationId": "KycController_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "kyc"
+        ]
+      }
+    },
+    "/api/v1/me/interests": {
+      "put": {
+        "operationId": "FeedController_updateInterests",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInterestsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "feed"
+        ]
+      }
+    },
+    "/api/v1/platform/escrow": {
+      "get": {
+        "operationId": "PlatformEscrowController_getEscrowStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get aggregate platform escrow figures (FR-801)",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/api/v1/wallets": {
+      "get": {
+        "operationId": "WalletsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/v1/wallets/link": {
+      "post": {
+        "operationId": "WalletsController_link",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkWalletDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/v1/wallets/{id}/role": {
+      "patch": {
+        "operationId": "WalletsController_setRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetWalletRoleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "wallets"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}

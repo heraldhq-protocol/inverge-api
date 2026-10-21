@@ -139,8 +139,8 @@ describe('Campaign review (e2e)', () => {
     const campaignId = await createCampaign();
 
     const noKyc = await submit(campaignId).expect(400);
-    expect(noKyc.body.blockers.join(' ')).toMatch(/Identity verification/);
-    expect(noKyc.body.blockers.join(' ')).toMatch(/Application fee/);
+    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Identity verification/);
+    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Application fee/);
 
     let campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -154,10 +154,10 @@ describe('Campaign review (e2e)', () => {
     });
 
     const noFee = await submit(campaignId).expect(400);
-    expect(noFee.body.blockers).toContain(
+    expect(noFee.body.error.details.blockers).toContain(
       'Application fee (FR-311) has not been paid',
     );
-    expect(noFee.body.blockers.join(' ')).not.toMatch(/Identity verification/);
+    expect(noFee.body.error.details.blockers.join(' ')).not.toMatch(/Identity verification/);
 
     campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -183,7 +183,7 @@ describe('Campaign review (e2e)', () => {
     const secondCampaign = await createCampaign();
     const reuse = await submit(secondCampaign, feeId);
     expect(reuse.status).toBeGreaterThanOrEqual(400);
-    expect(reuse.body.message).toMatch(/application fee/i);
+    expect(reuse.body.error.message).toMatch(/application fee/i);
   });
 
   it('shows the queue and read-only FR-103/FR-311 facts to an admin', async () => {
@@ -319,7 +319,7 @@ describe('Campaign review (e2e)', () => {
     });
 
     const res = await decide(campaignId, { action: 'APPROVE' }).expect(422);
-    expect(res.body.blockers.join(' ')).toMatch(/declined/);
+    expect(res.body.error.details.blockers.join(' ')).toMatch(/declined/);
 
     const campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },

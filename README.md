@@ -55,30 +55,35 @@ pnpm prisma:generate          # generate the Prisma client
 pnpm prisma:migrate           # create tables (migrate dev)
 pnpm db:seed                  # seed platform params (boost prices, FR-204 thresholds, kyc threshold)
 
-pnpm start:dev                # http://localhost:3000  — OpenAPI docs at /docs
+pnpm start:dev                # http://localhost:3000/api/v1 — OpenAPI docs at /docs
 ```
 
 > Note: `prisma migrate dev` does not always auto-run the seed under Prisma v7 — run `pnpm db:seed` explicitly after the first migration.
+
+The API is versioned in the path. Every route lives under `/api/v1`; the committed
+contract is `docs/api/openapi.json` and the conventions (errors, auth, pagination,
+caching, rate limits) are documented in [`docs/api/README.md`](docs/api/README.md).
+Provider webhook URLs must include the prefix.
 
 ## Auth in stub mode
 
 No provider needed for local dev (`WALLET_PROVIDER=stub`). Exchange a stub token for a session:
 
 ```bash
-curl -X POST localhost:3000/auth/session \
+curl -X POST localhost:3000/api/v1/auth/session \
   -H 'Content-Type: application/json' \
   -d '{"accessToken":"stub:did-alice:alice@example.com"}'
 # -> { user, sessionToken }   then send: Authorization: Bearer <sessionToken>
 ```
 
-With `KYC_PROVIDER=stub`, `GET /kyc/dev-complete?ref=<ref>&user=<id>` simulates a finished verification so the whole flow runs offline.
+With `KYC_PROVIDER=stub`, `GET /api/v1/kyc/dev-complete?ref=<ref>&user=<id>` simulates a finished verification so the whole flow runs offline.
 
 ## Key invariants (enforced structurally)
 
 - **FR-206a** — paid boosts never touch validation metrics. `IdeaBoost` is a separate table; `Idea.{supporterCount,prePledgeTotal,feedbackScore}` are recomputed from signals/survey responses only. No boost code path writes them.
 - **FR-406** — the flat-fee rail (`FlatFeeModule`) is independent of any escrow/on-ramp flow.
 - **FR-803** — `OnChainEvent` is written only by the indexer (Phase 2), never by business logic.
-- **FR-204** — the validation gate blocks idea→campaign conversion until thresholds clear; thresholds are admin-tunable at runtime via `PATCH /admin/params` (audited).
+- **FR-204** - the validation gate blocks idea→campaign conversion until thresholds clear; thresholds are admin-tunable at runtime via `PATCH /api/v1/admin/params` (audited).
 - **FR-1007** — AML tipping-off: a sanctions-related hold shows a generic external reason; full detail stays internal.
 
 ## Open backlog
