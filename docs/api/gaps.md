@@ -25,7 +25,7 @@ exists; **deferred** = planned, not next.
 
 | Feature | Route | Status | Gap |
 |---|---|---|---|
-| Browse ideas | `GET /ideas` | partial | Offset pagination; `?mine=false` now parses correctly |
+| Browse ideas | `GET /ideas` | implemented | Keyset `(createdAt, id)`; `?mine=false` parses correctly |
 | Create idea | `POST /ideas` | implemented | Per-creator cap read per request |
 | Read idea | `GET /ideas/{id}` | implemented | — |
 | Edit idea | `PATCH /ideas/{id}` | implemented | — |
@@ -34,7 +34,7 @@ exists; **deferred** = planned, not next.
 | Pre-pledge | `POST` / `DELETE /ideas/{id}/pre-pledge` | implemented | — |
 | Survey | `GET` / `PUT /ideas/{id}/survey` | implemented | — |
 | Survey responses | `POST` / `DELETE /ideas/{id}/survey/responses` | implemented | — |
-| Comments | `GET` / `POST /ideas/{id}/comments` | implemented | Author projection is a known gap |
+| Comments | `GET` / `POST /ideas/{id}/comments` | implemented | List is bounded at 300 with no cursor; author projection is a known gap |
 | Comment moderation | `DELETE .../comments/{id}`, `PATCH .../highlight` | implemented | — |
 | Comment likes | `POST` / `DELETE .../comments/{id}/like` | implemented | — |
 | Creator insights | `GET /ideas/{id}/insights` | implemented | No cache; computed per request |
@@ -46,8 +46,8 @@ exists; **deferred** = planned, not next.
 
 | Feature | Route | Status | Gap |
 |---|---|---|---|
-| Feed | `GET /feed` | partial | Fixed candidate pool, no cursor, 17 param reads/request |
-| Campaign catalogue | `GET /campaigns` | partial | Offset pagination; no keyset cursor; `most-delivered` sorts the current page only |
+| Feed | `GET /feed` | partial | Fixed candidate pool, no cursor; parameters come from one snapshot |
+| Campaign catalogue | `GET /campaigns` | implemented | Keyset cursor; `most-delivered` removed until a released-claim counter exists |
 | Campaign detail | `GET /campaigns/{id}` | implemented | Deep includes on a card-shaped read |
 | Search | — | missing | No endpoint; `search_performed` analytics would precede it |
 | Topics / categories | — | missing | Taxonomy is fixture-only in the web |

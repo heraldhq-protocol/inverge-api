@@ -10,6 +10,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
+import {
+  asCursorDate,
+  buildPage,
+  clampPageSize,
+  decodeCursor,
+  encodeCursor,
+  filterFingerprint,
+  keysetCondition,
+} from '../../common/http/pagination';
 
 @Injectable()
 export class CampaignsService {
@@ -41,34 +50,81 @@ export class CampaignsService {
       };
     }
 
-    let orderBy: object = { createdAt: 'desc' };
-    if (query.sort === 'closing-soon') {
-      orderBy = { deadline: 'asc' };
-    } else if (query.sort === 'most-backed') {
-      orderBy = { totalRaised: 'desc' };
-    } else if (query.sort === 'newest') {
-      orderBy = { createdAt: 'desc' };
-    }
+    // Each sort is a total order: `id` breaks ties so a page boundary can never
+    // repeat or drop a campaign with the same timestamp or raised amount.
+    const sort = query.sort ?? 'newest';
+    const sortConfig: {
+      orderBy: Prisma.CampaignOrderByWithRelationInput[];
+      field: 'createdAt' | 'deadline' | 'totalRaised';
+      direction: 'asc' | 'desc';
+    } = (() => {
+      switch (sort) {
+        case 'closing-soon':
+          return {
+            orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+            field: 'deadline',
+            direction: 'asc',
+          };
+        case 'most-backed':
+          return {
+            orderBy: [{ totalRaised: 'desc' }, { id: 'desc' }],
+            field: 'totalRaised',
+            direction: 'desc',
+          };
+        default:
+          return {
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            field: 'createdAt',
+            direction: 'desc',
+          };
+      }
+    })();
+
+    const limit = clampPageSize(query.limit);
+    const fingerprint = filterFingerprint({
+      route: 'campaigns.list',
+      mine: Boolean(query.mine),
+      viewer: query.mine ? (currentUserId ?? null) : null,
+      status: query.status ?? null,
+      category: query.category ?? null,
+      region: query.region ?? null,
+      sort,
+    });
+    const cursor = query.cursor
+      ? decodeCursor(query.cursor, fingerprint)
+      : null;
 
     const campaigns = await this.prisma.campaign.findMany({
-      where: whereClause,
+      where: cursor
+        ? {
+            AND: [
+              whereClause,
+              keysetCondition(sortConfig.field, sortConfig.direction, cursor, (value) =>
+                sortConfig.field === 'totalRaised' ? value : asCursorDate(value),
+              ),
+            ],
+          }
+        : whereClause,
       include: {
         creator: {
           include: { creatorProfile: true },
         },
         idea: true,
+        // A card only needs the milestone count and whether each one was
+        // released. Loading every milestone field for every row was excess.
         milestones: {
-          include: {
+          select: {
+            id: true,
             claims: {
               orderBy: { submittedAt: 'desc' },
               take: 1,
+              select: { status: true },
             },
           },
         },
       },
-      orderBy,
-      skip: query.skip ?? 0,
-      take: query.take ?? 50,
+      orderBy: sortConfig.orderBy,
+      take: limit + 1,
     });
 
     const result = campaigns.map((campaign) => {
@@ -88,13 +144,16 @@ export class CampaignsService {
       };
     });
 
-    if (query.sort === 'most-delivered') {
-      result.sort(
-        (a, b) => b.milestoneSummary.released - a.milestoneSummary.released,
-      );
-    }
+    return buildPage(result, limit, (campaign) => {
+      const sortValue =
+        sort === 'closing-soon'
+          ? campaign.deadline.toISOString()
+          : sort === 'most-backed'
+            ? campaign.totalRaised.toString()
+            : campaign.createdAt.toISOString();
 
-    return result;
+      return encodeCursor(sortValue, campaign.id, fingerprint);
+    });
   }
 
   async get(id: string, currentUserId?: string) {

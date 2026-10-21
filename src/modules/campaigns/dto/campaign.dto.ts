@@ -11,29 +11,36 @@ import {
   MinLength,
 } from 'class-validator';
 import { parseBooleanQuery } from '../../../common/http/boolean-query';
+import {
+  DISCOVERY_MAX_PAGE_SIZE,
+  DISCOVERY_PAGE_SIZE,
+} from '../../../common/http/pagination';
 
 export const CAMPAIGN_SORT_OPTIONS = [
   'closing-soon',
   'newest',
   'most-backed',
-  'most-delivered',
 ] as const;
 
 export class ListCampaignsQueryDto {
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  skip?: number;
-
-  @ApiPropertyOptional({ default: 50 })
+  @ApiPropertyOptional({
+    default: DISCOVERY_PAGE_SIZE,
+    maximum: DISCOVERY_MAX_PAGE_SIZE,
+    description: 'Page size. Discovery pages omit an exact total.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
-  take?: number;
+  @Max(DISCOVERY_MAX_PAGE_SIZE)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Opaque nextCursor from the previous page. Do not construct or edit it.',
+  })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -20,6 +20,15 @@ import {
 
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { buildGateProgress } from '../metrics/insights-compute';
+import {
+  asCursorDate,
+  buildPage,
+  clampPageSize,
+  decodeCursor,
+  encodeCursor,
+  filterFingerprint,
+  keysetCondition,
+} from '../../common/http/pagination';
 
 @Injectable()
 export class IdeasService {
@@ -142,8 +151,25 @@ export class IdeasService {
       };
     }
 
+    const limit = clampPageSize(query.limit);
+    const fingerprint = filterFingerprint({
+      route: 'ideas.list',
+      mine: Boolean(query.mine),
+      viewer: query.mine ? (currentUserId ?? null) : null,
+    });
+    const cursor = query.cursor
+      ? decodeCursor(query.cursor, fingerprint)
+      : null;
+
     const ideas = await this.prisma.idea.findMany({
-      where: whereClause,
+      where: cursor
+        ? {
+            AND: [
+              whereClause,
+              keysetCondition('createdAt', 'desc', cursor, asCursorDate),
+            ],
+          }
+        : whereClause,
       include: {
         creator: {
           include: { creatorProfile: true, _count: { select: { ideas: true } } },
@@ -155,22 +181,22 @@ export class IdeasService {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
-      skip: query.skip ?? 0,
-      take: query.take ?? 50,
+      // Newest first with an id tie-breaker: the order must be total, or a page
+      // boundary can repeat or skip an idea created in the same millisecond.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     });
 
-    return ideas
-      .map(({ boosts, creator, ...idea }) => ({
-        ...idea,
-        creator: toPublicCreator(creator),
-        promoted: boosts.length > 0,
-        boostTier: boosts[0]?.tier ?? null,
-      }))
-      .sort((a, b) => {
-        const feat = Number(b.discoverabilityTier === 'FEATURED') - Number(a.discoverabilityTier === 'FEATURED');
-        return feat !== 0 ? feat : Number(b.promoted) - Number(a.promoted);
-      });
+    const rows = ideas.map(({ boosts, creator, ...idea }) => ({
+      ...idea,
+      creator: toPublicCreator(creator),
+      promoted: boosts.length > 0,
+      boostTier: boosts[0]?.tier ?? null,
+    }));
+
+    return buildPage(rows, limit, (idea) =>
+      encodeCursor(idea.createdAt.toISOString(), idea.id, fingerprint),
+    );
   }
 
   async get(idOrSlug: string) {

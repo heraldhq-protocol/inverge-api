@@ -856,3 +856,34 @@ Not done in this slice:
 - e2e authorization matrix: the unit-level guard assertion runs, but the e2e suite still needs
   Postgres and Redis.
 
+
+## 17. Delivery log — Stage 2, slice 2 (2026-10-21)
+
+Cursor pagination for discovery collections.
+
+Done:
+
+- **Shared keyset helper.** `src/common/http/pagination.ts` owns the page envelope
+  (`{ data, page: { limit, nextCursor, hasMore, total, totalKind } }`), the opaque cursor, the
+  filter fingerprint and the `(sortValue, id)` comparison. A cursor is bound to the query that
+  produced it; reusing it with different filters is `400 INVALID_CURSOR`.
+- **`GET /ideas`** pages on `(createdAt desc, id desc)`. The featured/promoted re-sort is gone: it
+  reordered only the current page. `promoted` and `boostTier` are still returned.
+- **`GET /campaigns`** pages on `(createdAt, id)`, `(deadline, id)` or `(totalRaised, id)`. List rows
+  now select only the milestone fields the summary needs instead of every milestone column.
+- **`most-delivered` removed.** It counted approved claims and sorted after the page was cut. It now
+  fails validation rather than returning a misleading order; restoring it needs a denormalized
+  released-claim counter.
+- **`skip`/`take` replaced by `limit`/`cursor`** on both routes (default 24, max 50). The OpenAPI
+  document and the web's generated types were regenerated.
+- **e2e assertions** for the ideas list read `body.data` (the suites still need `/api/v1` path
+  migration before they can run).
+
+Not done in this slice:
+
+- Feed cursors: the ranker's output has no stable sort value yet. The candidate pool stays bounded.
+- Comment cursors: the list is bounded at 300 but ordered by highlighted/like count, which is
+  volatile; the cursor design needs to follow the thread ordering.
+- Cursor-aware typed response DTOs, so the OpenAPI entries for these two routes still have no
+  response schema.
+- Index migration and `EXPLAIN` evidence (no Postgres reachable).

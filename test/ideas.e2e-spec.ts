@@ -161,7 +161,7 @@ describe('Ideas routes (e2e)', () => {
   describe('public browse', () => {
     it('lists the published idea', async () => {
       const res = await http().get('/ideas').expect(200);
-      expect(res.body.some((i: any) => i.id === ideaId)).toBe(true);
+      expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
     });
     it('404 for an unknown idea', async () => {
       await http().get('/ideas/does-not-exist').expect(404);
@@ -324,7 +324,7 @@ describe('Ideas routes (e2e)', () => {
       await http().get(`/ideas/${lowId}`).expect(200);
       // ...but absent from browse (FR-272)
       const list = await http().get('/ideas').expect(200);
-      expect(list.body.some((i: any) => i.id === lowId)).toBe(false);
+      expect(list.body.data.some((i: any) => i.id === lowId)).toBe(false);
       // ...and boost is blocked (FR-274)
       await http().post(`/ideas/${lowId}/boosts`).set(auth(creator)).send({ tier: 'BASIC' }).expect(400);
     });
@@ -373,7 +373,7 @@ describe('Ideas routes (e2e)', () => {
       expect(await weighted()).toBe(before); // metrics never moved through the whole boost flow
 
       const list = await http().get('/ideas').expect(200);
-      expect(list.body.find((i: any) => i.id === ideaId).promoted).toBe(true);
+      expect(list.body.data.find((i: any) => i.id === ideaId).promoted).toBe(true);
     });
   });
 });
