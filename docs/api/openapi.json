@@ -2062,6 +2062,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page. Omitting it starts at page one.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

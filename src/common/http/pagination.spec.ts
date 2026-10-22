@@ -4,9 +4,11 @@ import {
   buildPage,
   clampPageSize,
   decodeCursor,
+  decodeCursorValues,
   DISCOVERY_MAX_PAGE_SIZE,
   DISCOVERY_PAGE_SIZE,
   encodeCursor,
+  encodeCursorValues,
   filterFingerprint,
   keysetCondition,
   stableStringify,
@@ -95,6 +97,31 @@ describe('cursor round trip', () => {
       .toString('base64url');
 
     expect(codeOf(() => decodeCursor(body, fingerprint))).toBe('INVALID_CURSOR');
+  });
+});
+
+describe('compound cursor', () => {
+  const fingerprint = filterFingerprint({ route: 'ideas.comments' });
+
+  it('round-trips several sort values plus the id', () => {
+    const cursor = encodeCursorValues(
+      ['true', '3', '2026-10-21T12:00:00.000Z'],
+      'cm1',
+      fingerprint,
+    );
+
+    expect(decodeCursorValues(cursor, fingerprint, 3)).toEqual({
+      values: ['true', '3', '2026-10-21T12:00:00.000Z'],
+      id: 'cm1',
+    });
+  });
+
+  it('rejects a cursor decoded with the wrong number of sort values', () => {
+    const cursor = encodeCursorValues(['true', '3', '2026-10-21T12:00:00.000Z'], 'cm1', fingerprint);
+
+    expect(codeOf(() => decodeCursorValues(cursor, fingerprint, 2))).toBe(
+      'INVALID_CURSOR',
+    );
   });
 });
 

@@ -253,7 +253,41 @@ describe('Ideas routes (e2e)', () => {
       replyId = r.body.id;
       expect(r.body.parentId).toBe(commentId);
       const list = await http().get(`/api/v1/ideas/${ideaId}/comments`).expect(200);
-      expect(list.body.map((x: any) => x.id)).toEqual(expect.arrayContaining([commentId, replyId]));
+      expect(list.body.data.map((x: any) => x.id)).toEqual(expect.arrayContaining([commentId, replyId]));
+    });
+
+    it('paginates the thread with an opaque cursor and rejects a malformed one', async () => {
+      const third = await http()
+        .post(`/api/v1/ideas/${ideaId}/comments`)
+        .set(auth(backerA))
+        .send({ body: 'A second reply.', parentId: commentId })
+        .expect(201);
+
+      const first = await http()
+        .get(`/api/v1/ideas/${ideaId}/comments?limit=2`)
+        .expect(200);
+      expect(first.body.data).toHaveLength(2);
+      expect(first.body.page).toMatchObject({
+        limit: 2,
+        hasMore: true,
+        total: null,
+        totalKind: 'omitted',
+      });
+
+      const second = await http()
+        .get(
+          `/api/v1/ideas/${ideaId}/comments?limit=2&cursor=${encodeURIComponent(first.body.page.nextCursor)}`,
+        )
+        .expect(200);
+      expect(second.body.page.hasMore).toBe(false);
+
+      const ids = [...first.body.data, ...second.body.data].map((x: any) => x.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids).toEqual(expect.arrayContaining([commentId, replyId, third.body.id]));
+
+      await http()
+        .get(`/api/v1/ideas/${ideaId}/comments?cursor=not-a-cursor`)
+        .expect(400);
     });
 
     it('404s a reply to a comment on another idea / missing parent', async () => {
@@ -269,8 +303,8 @@ describe('Ideas routes (e2e)', () => {
       expect(res.body.likeCount).toBe(0);
     });
 
-    it('feeds the idea commentCount metric (comment + reply = 2)', async () => {
-      expect(await commentCount()).toBe(2);
+    it('feeds the idea commentCount metric (comment + two replies = 3)', async () => {
+      expect(await commentCount()).toBe(3);
     });
 
     it('only the idea creator can highlight a comment', async () => {

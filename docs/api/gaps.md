@@ -34,7 +34,7 @@ exists; **deferred** = planned, not next.
 | Pre-pledge | `POST` / `DELETE /ideas/{id}/pre-pledge` | implemented | — |
 | Survey | `GET` / `PUT /ideas/{id}/survey` | implemented | — |
 | Survey responses | `POST` / `DELETE /ideas/{id}/survey/responses` | implemented | — |
-| Comments | `GET` / `POST /ideas/{id}/comments` | implemented | List is bounded at 300 with no cursor; author projection is a known gap |
+| Comments | `GET` / `POST /ideas/{id}/comments` | implemented | Keyset `(highlighted, likeCount, createdAt, id)`; engagement keys are mutable between pages; desire for immutable scrolling needs a recency sort |
 | Comment moderation | `DELETE .../comments/{id}`, `PATCH .../highlight` | implemented | — |
 | Comment likes | `POST` / `DELETE .../comments/{id}/like` | implemented | — |
 | Creator insights | `GET /ideas/{id}/insights` | implemented | No cache; computed per request |

@@ -1020,3 +1020,33 @@ Deferred, with reasons: view/search/campaign-step events need the web server cal
 contribution events need the indexer; there is no creator read route or admin
 aggregation trigger yet; notifications read model and webhook inbox are the remaining
 Stage 4 slices.
+
+## 21. Delivery log - Stage 2 leftover, cursor pagination (2026-10-22)
+
+- **Composite cursors.** `encodeCursor`/`decodeCursor` are now thin wrappers over
+  `encodeCursorValues`/`decodeCursorValues`; the payload stays backward compatible
+  (`k` is an array, id last) and supports two to six entries. A cursor decoded with
+  the wrong number of sort values is `400 INVALID_CURSOR`.
+- **Comment thread.** `GET /api/v1/ideas/:id/comments` accepts `limit` (default 50,
+  max 100) and `cursor`. The keyset is `(highlighted, likeCount, createdAt, id)` all
+  descending; the fingerprint binds the cursor to the idea and sort. `highlighted`
+  descending is expressed as "all unhighlighted rows" after a highlighted cursor
+  because Prisma's `BoolFilter` has no `lt`. Response shape is now `{ data, page }`.
+- **Mutable engagement keys.** A like or highlight between requests can move a comment
+  across the cursor; the id tie-breaker still prevents duplicates in a stable page.
+  This is documented rather than hidden. Immutable scrolling needs a recency sort.
+- **Feed cursor: deliberately not added.** `GET /feed` re-ranks a fresh candidate pool
+  in memory with `rankFeed`; there is no stored sort value to keyset on. A cursor over
+  a recomputed rank would duplicate and skip rows whenever impressions change. The
+  stateless `excludeIds` contract (bounded at 200) remains the pagination mechanism
+  until a persisted ranked snapshot exists. This is a decision, not an omission.
+- **Typed list DTOs: deferred.** The campaign list currently returns the full `Idea`
+  record (`idea: true`), and the idea list returns every scalar. An accurate response
+  DTO therefore means deciding the card projection first; emitting a subset schema
+  while the API returns more would make the contract lie. The envelope and item
+  schemas are recorded in `docs/api/gaps.md` and `docs/api/pagination-filtering.md`.
+
+Verification: 27 pagination cases (including compound cursor round-trip and arity
+rejection), 6 comment-cursor cases (round-trip, fingerprint mismatch, malformed
+boolean/count, both keyset shapes), typecheck clean, `ideas.e2e-spec.ts` 50/50 with a
+new two-page thread walk and malformed-cursor rejection.

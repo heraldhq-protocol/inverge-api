@@ -29,7 +29,7 @@ export type ListPage<T> = {
 
 type CursorBody = {
   v: 1;
-  k: [string, string];
+  k: string[];
   f: string;
 };
 
@@ -38,9 +38,14 @@ export type Cursor = {
   id: string;
 };
 
+export type CompositeCursor = {
+  values: string[];
+  id: string;
+};
+
 export type KeysetDirection = 'asc' | 'desc';
 
-function invalidCursor(): BadRequestException {
+export function invalidCursor(): BadRequestException {
   return new BadRequestException({
     code: 'INVALID_CURSOR',
     message: 'The cursor is invalid or belongs to a different query. Restart from the first page.',
@@ -79,11 +84,26 @@ export function encodeCursor(
   id: string,
   fingerprint: string,
 ): string {
-  const body: CursorBody = { v: 1, k: [sortValue, id], f: fingerprint };
+  return encodeCursorValues([sortValue], id, fingerprint);
+}
+
+/**
+ * Encodes a compound sort key (all values are strings in the payload) plus the
+ * unique id. The id is always last, so a caller cannot forget the tie-breaker.
+ */
+export function encodeCursorValues(
+  values: string[],
+  id: string,
+  fingerprint: string,
+): string {
+  if (values.length === 0 || values.length > 5) {
+    throw new Error('a cursor carries one to five sort values');
+  }
+  const body: CursorBody = { v: 1, k: [...values, id], f: fingerprint };
   return Buffer.from(JSON.stringify(body), 'utf8').toString('base64url');
 }
 
-export function decodeCursor(cursor: string, fingerprint: string): Cursor {
+function decodeBody(cursor: string, fingerprint: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
@@ -95,14 +115,35 @@ export function decodeCursor(cursor: string, fingerprint: string): Cursor {
 
   const body = parsed as Record<string, unknown>;
   if (body.v !== 1) throw invalidCursor();
-  if (!Array.isArray(body.k) || body.k.length !== 2) throw invalidCursor();
+  if (!Array.isArray(body.k) || body.k.length < 2 || body.k.length > 6) {
+    throw invalidCursor();
+  }
   if (typeof body.f !== 'string' || body.f !== fingerprint) throw invalidCursor();
 
-  const [sortValue, id] = body.k;
-  if (typeof sortValue !== 'string' || sortValue.length === 0) throw invalidCursor();
-  if (typeof id !== 'string' || id.length === 0) throw invalidCursor();
+  const values = body.k;
+  if (values.some((value) => typeof value !== 'string' || value.length === 0)) {
+    throw invalidCursor();
+  }
+  return values as string[];
+}
 
-  return { sortValue, id };
+export function decodeCursor(cursor: string, fingerprint: string): Cursor {
+  const { values, id } = decodeCursorValues(cursor, fingerprint, 1);
+  return { sortValue: values[0], id };
+}
+
+export function decodeCursorValues(
+  cursor: string,
+  fingerprint: string,
+  valueCount: number,
+): CompositeCursor {
+  const payload = decodeBody(cursor, fingerprint);
+  if (payload.length !== valueCount + 1) throw invalidCursor();
+
+  return {
+    values: payload.slice(0, valueCount),
+    id: payload[valueCount],
+  };
 }
 
 /** Parses a cursor's ISO timestamp, rejecting a payload that was never ours. */
