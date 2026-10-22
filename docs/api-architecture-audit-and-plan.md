@@ -1070,16 +1070,15 @@ new two-page thread walk and malformed-cursor rejection.
 - **Privacy.** `data` is template input only. No IP, user agent, session, email,
   wallet or KYC payload is stored by this model.
 
-Verification: 10 unit cases and a 7-case e2e suite. The e2e suite is written but
-not executed in this session: PostgreSQL was stopped on the host and the service
-could not be started without elevation. Migration
-`20261022234500_notifications` is committed but unapplied; `migrate status` will
-show it after the advertising migration is applied (and the advertising migration
-remains user-owned and pending). Typecheck, `nest build` and the OpenAPI emitter
-are clean; `openapi.json` includes the four routes and their response DTOs.
+Verification: 10 unit cases and a 6-case e2e suite, both passing. The e2e suite ran
+against a disposable PostgreSQL 16 container with every migration applied (see
+25), not the stopped Windows dev service. Migration
+`20261022234500_notifications` applies cleanly. Typecheck, `nest build` and the
+OpenAPI emitter are clean; `openapi.json` includes the four routes and their
+response DTOs.
 
-Remaining Stage 4 slices: webhook inbox/idempotency, creator analytics reads, and
-view/search/campaign-step/contribution emitters.
+Remaining Stage 4 slices: creator analytics reads and
+view/search/campaign-step/contribution emitters. The webhook inbox is in 23.
 
 ## 23. Stage 4c - webhook inbox and replay policy (2026-10-22)
 
@@ -1103,8 +1102,7 @@ view/search/campaign-step/contribution emitters.
 Verification: 7 unit cases (claim and apply, ignored result, unique-race fallback,
 processed replay, in-flight duplicate, failed apply, hash fallback). The existing
 flat-fee and KYC suites (34 cases) still pass; payment behaviour is unchanged apart
-from the receipt. Migration `20261022235500_webhook_inbox` is committed but
-unapplied for the same PostgreSQL outage noted in 22.
+from the receipt. Migration `20261022235500_webhook_inbox` applies cleanly on a fresh database; the full e2e run is recorded in 25.
 
 ## 24. Stage 3 verification against real Redis (2026-10-22)
 
@@ -1122,3 +1120,36 @@ unapplied for the same PostgreSQL outage noted in 22.
   it reintroduces the boot-hang the lazy client was designed to avoid.
 
 Verification: `redis.e2e-spec.ts` 4/4. The suite is skipped unless `REDIS_E2E=true`.
+
+## 25. Stage 6 - fresh-schema verification and CI e2e (2026-10-23)
+
+The local Windows PostgreSQL service was stopped and could not be started without
+elevation, so verification used a disposable `postgres:16-alpine` container on port
+55432. The developer database was not touched.
+
+- **All migrations apply on a clean database.** `migrate deploy` applied all 19
+  migrations, including the advertising and analytics migrations and the two new
+  Stage 4 migrations. The seed inserted 41 platform parameters.
+- **Drift found and fixed.** The first clean boot returned `500` on
+  `POST /auth/session`: `CreatorProfile.username` did not exist. A diff of the
+  migrated database against `prisma/schema.prisma` found eleven columns that had
+  been added with `db push` and never migrated (`Campaign` media/reward fields,
+  `CreatorProfile` public-profile fields, `Idea` rich-text/media fields).
+  Migration `20261023000500_schema_drift` adds exactly that diff; a second diff is
+  empty. Without this, a production deploy would have failed on first sign-in.
+- **Full e2e on the clean schema.** 111 passed, 6 skipped (the live-AI opt-in and
+  the Redis opt-in), 9 suites passed and 2 skipped. `notifications.e2e-spec.ts`
+  passed 6/6. The opt-in Redis suite passed 4/4 against `redis:7-alpine`.
+- **CI now runs e2e.** A second job starts PostgreSQL 17 and Redis 7, runs
+  `prisma migrate deploy`, seeds, runs the full e2e suite and then the Redis-backed
+  suite with `REDIS_E2E=true`. The existing verify job still runs unit, typecheck,
+  build and OpenAPI drift.
+- **Emitter isolation.** `scripts/emit-openapi.ts` now pins `QUEUE_ENABLED=false`
+  and `REDIS_ENABLED=false` before importing `AppModule`, so the contract gate
+  cannot dial Redis or register a BullMQ worker.
+
+Remaining before production: start the local PostgreSQL service and apply the
+pending migrations to the developer database; point Paystack and Didit dashboards
+at the `/api/v1` callbacks; run the workflow on GitHub (it has not executed there
+yet); and collect real `EXPLAIN`/latency numbers for the hot list queries - no
+performance figures are claimed here.

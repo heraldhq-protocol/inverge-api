@@ -58,7 +58,7 @@ exists; **deferred** = planned, not next.
 |---|---|---|---|
 | Create campaign | — | missing | Creator flow is fixtures; only convert/submit exist |
 | Submit for review | `POST /campaigns/{id}/submit` | implemented | Requires KYC + fee; correct |
-| Own campaigns | `GET /campaigns?mine=true` | partial | Boolean coercion bug |
+| Own campaigns | `GET /campaigns?mine=true` | implemented | - |
 | Admin review queue | `GET /admin/campaigns` | implemented | — |
 | Admin review detail | `GET /admin/campaigns/{id}` | implemented | — |
 | Admin decision | `POST /admin/campaigns/{id}/review` | implemented | — |

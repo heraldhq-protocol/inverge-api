@@ -64,10 +64,10 @@ responses in it. The row has no IP address, user agent or session identifier.
   first, unread filter and badge, invalid boolean, cursor walk, idempotent
   single read, cross-user `404`, read-all.
 
-The e2e suite needs the `20261022234500_notifications` migration applied. It was
-not applied in the local dev database during this change because the PostgreSQL
-service was stopped; run `prisma migrate deploy` (or apply only this migration)
-before running it.
+The e2e suite needs the `20261022234500_notifications` migration applied. It passed
+6/6 against a disposable PostgreSQL 16 container with every committed migration
+applied; the local Windows developer database still needs `prisma migrate deploy`
+after its service is started.
 
 ## Deferred
 

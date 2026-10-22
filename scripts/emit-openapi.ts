@@ -33,6 +33,12 @@ function stable(value: unknown): unknown {
 async function main(): Promise<void> {
   const check = process.argv.includes('--check');
 
+  // The emitter only needs the module graph. Registering BullMQ queues or opening
+  // a Redis connection would make a contract check depend on infrastructure, so
+  // pin both off before AppModule is imported (the flags are read at import time).
+  process.env.QUEUE_ENABLED ??= 'false';
+  process.env.REDIS_ENABLED ??= 'false';
+
   // ConfigModule validates the environment at import time. Only DATABASE_URL is
   // required; the placeholder is never dialled because no query runs here.
   process.env.DATABASE_URL ??=
