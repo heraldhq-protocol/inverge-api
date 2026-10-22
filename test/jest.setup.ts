@@ -8,6 +8,10 @@ process.env.WALLET_PROVIDER = 'stub';
 // is optional at runtime; with these flags the app boots, serves and degrades
 // exactly as it would on a box where Redis is down. Queue registration is
 // disabled at module-definition time (a BullMQ Worker dials Redis on boot).
-process.env.REDIS_ENABLED = 'false';
+//
+// `REDIS_E2E=true` opts one run into the Redis-backed suite. The flag is read
+// here, before `AppModule` is imported, because module metadata evaluates it.
+const redisE2e = process.env.REDIS_E2E === 'true';
+process.env.REDIS_ENABLED = redisE2e ? 'true' : 'false';
 process.env.QUEUE_ENABLED = 'false';
-process.env.RATE_LIMIT_ENABLED = 'false';
+process.env.RATE_LIMIT_ENABLED = redisE2e ? 'true' : 'false';

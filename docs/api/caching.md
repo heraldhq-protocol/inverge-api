@@ -66,3 +66,19 @@ a chain or provider read before a financial action.
 `src/common/cache/cache.service.spec.ts` covers hit/miss, single-flight, rejected
 loaders, generation bumps, malformed values, TTL jitter, a disabled store and a
 Redis outage. The full e2e suite runs with Redis disabled, proving the fallback path.
+
+The opt-in `test/redis.e2e-spec.ts` runs the same cache against a real server:
+single-flight on concurrent misses, a generation bump, the Lua token bucket and a
+green readiness probe. Start Redis, then:
+
+```powershell
+$env:REDIS_E2E = "true"
+node ./node_modules/jest/bin/jest.js --config jest-e2e.config.js `
+  test/redis.e2e-spec.ts --runInBand --forceExit
+```
+
+The suite is skipped without `REDIS_E2E=true`, so CI stays infrastructure-free.
+On a cold connection the first command can exceed the 250 ms command timeout and
+open the 5 s breaker. That is the intended degradation path; auth, financial and
+admin policies fail closed during that window, and readiness reports `degraded`
+without failing (Postgres remains the only hard dependency).

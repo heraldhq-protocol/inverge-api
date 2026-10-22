@@ -1050,3 +1050,75 @@ Verification: 27 pagination cases (including compound cursor round-trip and arit
 rejection), 6 comment-cursor cases (round-trip, fingerprint mismatch, malformed
 boolean/count, both keyset shapes), typecheck clean, `ideas.e2e-spec.ts` 50/50 with a
 new two-page thread walk and malformed-cursor rejection.
+
+## 22. Stage 4b - notification read model and dispatch queue (2026-10-22)
+
+- **Read model.** `Notification` (`userId`, `template`, `data`, `dedupeKey`,
+  `readAt`, `dispatchedAt`, attempts, last error) with indexes on
+  `(userId, createdAt DESC)` and `(userId, readAt)`.
+- **Routes.** `GET /api/v1/me/notifications` (keyset `(createdAt, id)`,
+  `unreadOnly`), `GET .../unread-count`, `PATCH .../{id}/read` and
+  `POST .../read-all`. All require a session, use the `dashboard` limiter, and
+  scope every query by the signed-in user. A foreign id is `404`.
+- **Persist-then-dispatch.** `notify()` inserts first, then enqueues
+  `notification-dispatch` with a stable `jobId` and five exponential-backoff
+  attempts. If enqueueing fails, it dispatches inline once. With
+  `QUEUE_ENABLED=false` the queue is not registered and inline dispatch is the
+  only path. The domain action never fails because delivery failed.
+- **Dedupe.** `WAITLIST_CONVERSION` carries
+  `WAITLIST_CONVERSION:<campaignId>:<userId>`; a `P2002` is a no-op.
+- **Privacy.** `data` is template input only. No IP, user agent, session, email,
+  wallet or KYC payload is stored by this model.
+
+Verification: 10 unit cases and a 7-case e2e suite. The e2e suite is written but
+not executed in this session: PostgreSQL was stopped on the host and the service
+could not be started without elevation. Migration
+`20261022234500_notifications` is committed but unapplied; `migrate status` will
+show it after the advertising migration is applied (and the advertising migration
+remains user-owned and pending). Typecheck, `nest build` and the OpenAPI emitter
+are clean; `openapi.json` includes the four routes and their response DTOs.
+
+Remaining Stage 4 slices: webhook inbox/idempotency, creator analytics reads, and
+view/search/campaign-step/contribution emitters.
+
+## 23. Stage 4c - webhook inbox and replay policy (2026-10-22)
+
+- **Durable receipt.** `WebhookReceipt` stores `provider`, `dedupeKey`,
+  `payloadHash`, `eventType`, status, attempts, lock and error. The raw body is
+  never stored, so KYC documents and account data do not enter the table.
+- **Normalized keys.** Paystack uses `PAYSTACK:<reference>:<status>`; Didit uses
+  `DIDIT:<session>:<status>:<aml>`. A later distinct outcome is a new event; a
+  provider retry of the same outcome is the same row.
+- **Claim, do not lock the world.** A compare-and-set `updateMany` moves
+  `PENDING`/`FAILED`/stale `PROCESSING` to `PROCESSING`; one concurrent retry
+  applies, the rest return `{ inProgress: true }`. `PROCESSED`/`IGNORED` return
+  `{ replayed: true }` without reapplying. A thrown apply records `FAILED` and
+  rethrows so the provider retries.
+- **Order.** Signature verification stays in the provider adapter and runs before
+  the inbox, so unauthenticated traffic cannot fill the table. The inbox runs
+  before the domain effect; domain idempotency remains the second line of defence.
+- **Stale locks.** A crashed worker leaves `PROCESSING`; a retry can reclaim it
+  after five minutes.
+
+Verification: 7 unit cases (claim and apply, ignored result, unique-race fallback,
+processed replay, in-flight duplicate, failed apply, hash fallback). The existing
+flat-fee and KYC suites (34 cases) still pass; payment behaviour is unchanged apart
+from the receipt. Migration `20261022235500_webhook_inbox` is committed but
+unapplied for the same PostgreSQL outage noted in 22.
+
+## 24. Stage 3 verification against real Redis (2026-10-22)
+
+- Added opt-in `test/redis.e2e-spec.ts` (`REDIS_E2E=true`) and made
+  `test/jest.setup.ts` honour it; the default e2e run still pins Redis and the
+  limiter off.
+- Against a real `redis:7-alpine` container: two concurrent misses coalesce to one
+  loader call, the second read hits, a generation bump invalidates the namespace,
+  the Lua token bucket allows two and refuses the third, and readiness reports
+  `redis: up`.
+- Observed cold-start behaviour: the first command can exceed the 250 ms command
+  timeout on Docker Desktop for Windows and open the 5 s breaker. This is the
+  documented degradation path; auth/financial/admin policies fail closed during
+  it and readiness stays `degraded`. Eager connection warming is not added because
+  it reintroduces the boot-hang the lazy client was designed to avoid.
+
+Verification: `redis.e2e-spec.ts` 4/4. The suite is skipped unless `REDIS_E2E=true`.
