@@ -24,7 +24,7 @@ traffic. Limits are per policy, not a global quota.
 | `username` | `GET /auth/check-username` | IP | 20/min | 5 | local bucket |
 | `signals` | support, pre-pledge, likes, interests, other writes | user id | 30/min | 10 | local bucket |
 | `comments` | comments and survey responses | user id | 10/min | 3 | local bucket |
-| `dashboard` | `/ideas/:id/insights`, `/auth/me`, `mine=true` | user id | 60/min | 20 | local bucket |
+| `dashboard` | `/ideas/:id/insights`, `/auth/me`, `/auth/capabilities`, `mine=true` | user id | 60/min | 20 | local bucket |
 | `financial` | `POST /ideas/:id/boosts` | user id | 5/min | 2 | **fail closed (503)** |
 | `webhook` | `/flat-fee/webhook`, `/kyc/webhook` | IP | 300/min | 60 | process (signature is authoritative) |
 | `admin` | every `/admin/**` route | user id | 60/min | 10 | **fail closed (503)** |

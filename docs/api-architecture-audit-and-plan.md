@@ -954,3 +954,34 @@ Not done in this slice:
 - Web Stage 5 is not started: the web repository is currently on `main`, while the API
   client/generated-types work lives on `feat/web3auth-auth`, with user-owned dirty files
   in both trees.
+
+## 19. Stage 5 prerequisite - account capabilities (2026-10-22)
+
+The web must not derive permissions from a local flag. `GET /api/v1/auth/capabilities`
+is the single projection it reads for navigation and disabled states.
+
+- **Authenticated, never cached.** The response mixes KYC/AML state with the role, so
+  it bypasses the cache module and carries `asOf` instead of a TTL.
+- **Minimal projection.** It selects role, ban marker, KYC/AML status and the two
+  profile fields needed for onboarding. Provider references, wallets, email and the
+  provider subject are not selected.
+- **Flags mirror enforcement.** `submitCampaigns` is true only when
+  `isFundsEligible` holds, the same bar `evaluateCampaignReviewGates` applies at
+  submit time. `reviewCampaigns`, `moderateContent` and `managePlatform` are true only
+  for `ADMIN`. Idea creation, support, pre-pledges and boosts are authenticated but
+  not eligibility-gated today, so they stay true; the projection does not invent a
+  stricter rule the routes do not enforce.
+- **Separate facts.** `accountActive` reports a ban and `verification.blockers`
+  lists human-readable KYC/AML reasons. The UI combines them; the API does not merge
+  a suspension into a verification flag.
+- **Onboarding.** `requiresOnboarding` is true until both display name and username
+  exist, matching `GET /auth/me`.
+
+Verification: 8 pure-function cases (`src/modules/auth/capabilities.spec.ts`) and 4
+e2e cases (`test/auth.e2e-spec.ts`) covering the unauthenticated response, blockers,
+a live KYC/role change without caching, and the absence of provider identifiers.
+
+Open: ban state is not enforced on authenticated writes anywhere yet, so
+`accountActive` is advisory for the UI; the boost purchase path has no KYC/AML gate;
+and the web has not consumed the route. These are recorded in the gap report rather
+than papered over here.

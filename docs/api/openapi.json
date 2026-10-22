@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "AccountCapabilitiesDto": {
+        "properties": {
+          "accountActive": {
+            "type": "boolean"
+          },
+          "asOf": {
+            "description": "ISO 8601 timestamp",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilityFlagsDto"
+          },
+          "requiresOnboarding": {
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "ADMIN"
+            ],
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/CapabilityVerificationDto"
+          }
+        },
+        "required": [
+          "role",
+          "accountActive",
+          "requiresOnboarding",
+          "verification",
+          "capabilities",
+          "asOf"
+        ],
+        "type": "object"
+      },
       "AmlScreenDto": {
         "properties": {
           "dateOfBirth": {
@@ -71,6 +107,68 @@
             "type": "number"
           }
         },
+        "type": "object"
+      },
+      "CapabilityFlagsDto": {
+        "properties": {
+          "createIdeas": {
+            "type": "boolean"
+          },
+          "managePlatform": {
+            "type": "boolean"
+          },
+          "moderateContent": {
+            "type": "boolean"
+          },
+          "prePledge": {
+            "type": "boolean"
+          },
+          "purchaseBoosts": {
+            "type": "boolean"
+          },
+          "reviewCampaigns": {
+            "type": "boolean"
+          },
+          "submitCampaigns": {
+            "type": "boolean"
+          },
+          "supportIdeas": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "createIdeas",
+          "supportIdeas",
+          "prePledge",
+          "purchaseBoosts",
+          "submitCampaigns",
+          "reviewCampaigns",
+          "moderateContent",
+          "managePlatform"
+        ],
+        "type": "object"
+      },
+      "CapabilityVerificationDto": {
+        "properties": {
+          "blockers": {
+            "description": "Human-readable reasons funds-eligibility is not met; empty when eligible.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "fundsEligible": {
+            "type": "boolean"
+          },
+          "identityVerified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identityVerified",
+          "fundsEligible",
+          "blockers"
+        ],
         "type": "object"
       },
       "ConvertIdeaDto": {
@@ -1327,6 +1425,34 @@
         "summary": "Grant or revoke a user admin role",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/v1/auth/capabilities": {
+      "get": {
+        "description": "Presentation only. Every route re-checks ownership, role and eligibility on the server.",
+        "operationId": "AuthController_capabilities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCapabilitiesDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What the signed-in account may do, for UI gating",
+        "tags": [
+          "auth"
         ]
       }
     },

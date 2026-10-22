@@ -15,6 +15,10 @@ import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { SessionService } from './session.service';
+import {
+  AccountCapabilities,
+  buildAccountCapabilities,
+} from './capabilities';
 
 /** Public-profile lists are summaries; a full list needs a paginated route. */
 const PROFILE_IDEA_LIMIT = 24;
@@ -104,6 +108,37 @@ export class AuthService {
       creator: toPublicCreator(user),
       requiresOnboarding,
     };
+  }
+
+  /**
+   * Account-level capabilities for UI gating. Deliberately selects only the facts the
+   * projection needs; KYC provider references, wallets and the provider subject never
+   * leave the server through this route.
+   */
+  async capabilities(userId: string): Promise<AccountCapabilities> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        bannedAt: true,
+        kycStatus: true,
+        amlStatus: true,
+        creatorProfile: { select: { displayName: true, username: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return buildAccountCapabilities(
+      {
+        role: user.role,
+        bannedAt: user.bannedAt,
+        kycStatus: user.kycStatus,
+        amlStatus: user.amlStatus,
+        displayName: user.creatorProfile?.displayName ?? null,
+        username: user.creatorProfile?.username ?? null,
+      },
+      new Date(),
+    );
   }
 
   async checkUsernameAvailability(username: string, currentUserId?: string) {

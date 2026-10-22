@@ -91,7 +91,8 @@ exists; **deferred** = planned, not next.
 
 | Feature | Route | Status | Gap |
 |---|---|---|---|
-| Health / readiness | — | missing | No probe; orchestrators cannot tell live from ready |
+| Health / readiness | `GET /health/live`, `GET /health/ready` | implemented | Outside the version prefix; Redis down reports `degraded`, Postgres down fails readiness |
+| Account capabilities | `GET /auth/capabilities` | implemented | UI projection of role, verification and onboarding; not cached; see plan §19 |
 | Interests | `PUT /me/interests` | implemented | — |
 | Analytics ingestion | — | missing | Server-side events only when built |
 | Notification list / read | — | missing | No notification routes |
@@ -100,9 +101,13 @@ exists; **deferred** = planned, not next.
 
 ## Duplicate and dead surfaces
 
-- `GET /platform/escrow` and `GET /campaigns/escrow/stats` call the same service
-  method. Keep one; the other should be removed or made an alias with a documented
-  deprecation.
+- `GET /campaigns/escrow/stats` was removed; `GET /platform/escrow` is the only
+  escrow projection. It now adds `asOf`.
+- Banned accounts are excluded from the feed and metrics but authenticated write
+  routes do not reject them. `accountActive` is therefore advisory for the UI until a
+  guard enforces it.
+- The boost purchase path has no KYC/AML gate. `submitCampaigns` reflects the gate
+  that does exist; `purchaseBoosts` reflects current behaviour, not an endorsement.
 - No route is currently consumed by the web except `/auth/session`, `/auth/me`,
   `/auth/check-username` and `/auth/me/profile`. Treat the rest as contract-first,
   not as proof of UI integration.

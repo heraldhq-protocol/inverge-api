@@ -85,7 +85,7 @@ export function resolveRateLimitPolicy(
 
   if (path === '/auth/check-username') return 'username';
   if (path === '/auth/session') return 'auth';
-  if (path === '/auth/me') return 'dashboard';
+  if (path === '/auth/me' || path === '/auth/capabilities') return 'dashboard';
 
   if (path.startsWith('/admin')) return 'admin';
 
