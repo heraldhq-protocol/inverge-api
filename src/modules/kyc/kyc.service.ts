@@ -4,10 +4,12 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Env } from '../../config/env.validation';
+import { WebhookInboxService } from '../../common/webhooks/webhook-inbox.service';
 import {
   AmlScreeningParams,
   AmlSummary,
@@ -15,6 +17,7 @@ import {
   KycOutcome,
   KycProviderPort,
   KycPurpose,
+  KycWebhookEvent,
 } from '../../ports/kyc/kyc-provider.port';
 import { AmlStatus, KycStatus } from '../../generated/prisma/client';
 import {
@@ -41,6 +44,7 @@ export class KycService {
     @Inject(KYC_PROVIDER_PORT) private readonly provider: KycProviderPort,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    @Optional() private readonly inbox?: WebhookInboxService,
   ) {}
 
   async status(userId: string) {
@@ -83,7 +87,23 @@ export class KycService {
     const evt = this.provider.parseWebhook(rawBody, headers);
     if (!evt) throw new BadRequestException('Invalid or unverifiable webhook');
 
-    // A KYB session's ref is stored on the business, not a user — route it there first.
+    if (!this.inbox) return this.applyWebhook(evt);
+
+    return this.inbox.run(
+      {
+        provider: 'DIDIT',
+        rawBody,
+        // Session id is the provider's own reference, already stored on the
+        // user/business. Status and AML outcome distinguish later decisions.
+        dedupeKey: `DIDIT:${evt.providerRef}:${evt.status}:${evt.aml ?? 'NONE'}`,
+        eventType: evt.status,
+      },
+      () => this.applyWebhook(evt),
+    );
+  }
+
+  private async applyWebhook(evt: KycWebhookEvent) {
+    // A KYB session's ref is stored on the business, not a user - route it there first.
     const business = await this.prisma.businessProfile.findFirst({
       where: { kybProviderRef: evt.providerRef },
     });

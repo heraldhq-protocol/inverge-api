@@ -75,11 +75,11 @@ exists; **deferred** = planned, not next.
 | KYC session | `POST /kyc/session` | implemented | — |
 | KYC status | `GET /kyc/status` | implemented | — |
 | KYC eligibility | `GET /kyc/eligibility` | implemented | Gate call-sites are incomplete |
-| KYC webhook | `POST /kyc/webhook` | implemented | Production webhook registration is outstanding |
+| KYC webhook | `POST /kyc/webhook` | implemented | Durable `WebhookReceipt` replay guard; production webhook registration is outstanding |
 | KYB | `POST /kyb/session`, `GET /kyb/status` | implemented | — |
 | AML screening | `POST /kyc/admin/aml-screen`, `GET /kyc/admin/aml/{userId}` | implemented | Ongoing monitoring is not automated |
 | Business AML | `POST /kyb/admin/aml-screen`, `GET /kyb/admin/aml/{userId}` | implemented | — |
-| Application fee webhook | `POST /flat-fee/webhook` | implemented | — |
+| Application fee webhook | `POST /flat-fee/webhook` | implemented | Durable `WebhookReceipt` replay guard; payment behaviour unchanged |
 | Moderation harness | `POST /admin/moderation/screen` | implemented | — |
 | Platform parameters | `GET` / `PATCH /admin/params` | implemented | Reads share a 5 s process snapshot; a write invalidates it |
 | Parameter audit | `GET /admin/params/audit` | implemented | — |
@@ -95,7 +95,7 @@ exists; **deferred** = planned, not next.
 | Account capabilities | `GET /auth/capabilities` | implemented | UI projection of role, verification and onboarding; not cached; see plan §19 |
 | Interests | `PUT /me/interests` | implemented | — |
 | Product analytics | no public route | partial | Server-side `IDEA_SIGNAL` only; nightly roll-up and retention run when `QUEUE_ENABLED=true`; creator reads and view/search events are deferred (see [product-analytics.md](./product-analytics.md)) |
-| Notification list / read | — | missing | No notification routes |
+| Notification list / read | `GET /me/notifications`, `GET .../unread-count`, `PATCH .../{id}/read`, `POST .../read-all` | implemented | Delivery is best-effort past the adapter call; no user preferences or admin replay |
 | Outbound webhooks | — | deferred | No subscription product |
 | Real-time stream | — | deferred | Decision recorded in [realtime.md](./realtime.md) |
 

@@ -128,6 +128,8 @@ export class SyncService {
         toUserId: s.userId,
         template: 'WAITLIST_CONVERSION',
         data: { ideaId, campaignId },
+        // A retried sync must not send the same conversion alert twice.
+        dedupeKey: `WAITLIST_CONVERSION:${campaignId}:${s.userId}`,
       });
     }
   }

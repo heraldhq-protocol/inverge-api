@@ -414,6 +414,18 @@
         ],
         "type": "object"
       },
+      "MarkAllNotificationsReadDto": {
+        "properties": {
+          "updated": {
+            "description": "Rows moved from unread to read.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "type": "object"
+      },
       "MeResponseDto": {
         "properties": {
           "creator": {
@@ -476,6 +488,112 @@
           "deliverable",
           "tranchePct",
           "evidenceDefinition"
+        ],
+        "type": "object"
+      },
+      "NotificationDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "Template parameters. Never contains secrets or free text.",
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "readAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "template": {
+            "example": "WAITLIST_CONVERSION",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "template",
+          "data",
+          "readAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "NotificationListDto": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationDto"
+            },
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfoDto"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object"
+      },
+      "NotificationReadDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "readAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "readAt"
+        ],
+        "type": "object"
+      },
+      "PageInfoDto": {
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "limit": {
+            "example": 24,
+            "type": "number"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor for the next page, or null at the end.",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Only present when the route can answer it cheaply.",
+            "nullable": true,
+            "type": "number"
+          },
+          "totalKind": {
+            "enum": [
+              "exact",
+              "estimated",
+              "omitted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "limit",
+          "nextCursor",
+          "hasMore",
+          "total",
+          "totalKind"
         ],
         "type": "object"
       },
@@ -801,6 +919,17 @@
           "index",
           "prompt",
           "type"
+        ],
+        "type": "object"
+      },
+      "UnreadNotificationCountDto": {
+        "properties": {
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
         ],
         "type": "object"
       },
@@ -2996,6 +3125,152 @@
         ],
         "tags": [
           "feed"
+        ]
+      }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "operationId": "NotificationsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page. Omitting it starts at page one.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unreadOnly",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the signed-in user’s notifications",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/notifications/read-all": {
+      "post": {
+        "operationId": "NotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllNotificationsReadDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark every unread notification read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/notifications/unread-count": {
+      "get": {
+        "operationId": "NotificationsController_unreadCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadNotificationCountDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Count unread notifications (badge)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationReadDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark one notification read (idempotent)",
+        "tags": [
+          "notifications"
         ]
       }
     },

@@ -14,10 +14,11 @@ same surface as the committed document.
 |---|---|---|
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
-| [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Target — offset pagination is still live |
-| [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Target — no cache yet |
-| [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Target — no limiter yet |
-| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Target - no analytics yet |
+| [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
+| [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
+| [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |
+| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Implemented for server-side signal events |
+| [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe | Implemented |
 | [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
 | [webhooks.md](./webhooks.md) | Providers, signatures, idempotency | Partly implemented |
@@ -29,7 +30,7 @@ same surface as the committed document.
 |---|---|---|
 | Local | `http://localhost:3000/api/v1` | `docker compose up -d` for Postgres and Redis, then `pnpm prisma:deploy` |
 | Staging | Deployment-specific | Must set `SESSION_JWT_SECRET`, `DATABASE_URL`, `REDIS_URL` and the credentials for any non-stub provider |
-| Production | Deployment-specific | Same, plus provider credentials. `NODE_ENV=production`. CORS is still permissive and is a Stage 3 fix |
+| Production | Deployment-specific | Same, plus provider credentials. `NODE_ENV=production`. CORS is an explicit allowlist; set `CORS_ORIGINS` |
 
 `INVERGE_API_URL` in the web repository is the origin only; it must **not** include
 `/api/v1`. The web app appends the version prefix.

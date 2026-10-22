@@ -1,14 +1,14 @@
 # Webhooks
 
-Status: **partly implemented**. Two provider callbacks exist; there is no outbound
-webhook product, no retry queue and no delivery log.
+Status: **partly implemented**. Two provider callbacks exist with a durable inbox
+and replay policy. There is no outbound webhook product or delivery log.
 
 ## Inbound (implemented)
 
 | Provider | Route (v1) | Verification | Idempotency |
 |---|---|---|---|
-| Paystack (application fees) | `POST /api/v1/flat-fee/webhook` | `x-paystack-signature` HMAC over the raw body | Provider reference |
-| Didit (KYC/AML/KYB) | `POST /api/v1/kyc/webhook` | HMAC over the raw body, headers passed to the adapter | Provider session/decision id |
+| Paystack (application fees) | `POST /api/v1/flat-fee/webhook` | `x-paystack-signature` HMAC over the raw body | `WebhookReceipt` on `PAYSTACK:<reference>:<status>` |
+| Didit (KYC/AML/KYB) | `POST /api/v1/kyc/webhook` | HMAC over the raw body, headers passed to the adapter | `WebhookReceipt` on `DIDIT:<session>:<status>:<aml>` |
 
 Both handlers read `req.rawBody`, which is why the application is created with
 `rawBody: true`. A signature computed over re-serialised JSON is not a signature;
@@ -34,6 +34,30 @@ the raw bytes are the only valid input.
 These routes moved to `/api/v1` in the same change that introduced the prefix.
 Provider dashboards must be updated to the new URL before deploying; a callback to
 the old path will 404 and the provider will retry until it gives up.
+
+### Durable inbox (implemented)
+
+Both handlers call `WebhookInboxService.run()` **after** signature verification
+and **before** applying the event. The receipt is the unit of replay:
+
+| Column | Why |
+|---|---|
+| `provider`, `dedupeKey` | Unique per normalized event. Paystack uses the charge reference and status; Didit uses session, status and AML outcome. |
+| `payloadHash` | SHA-256 of the raw body for support correlation. The body itself is never stored, so KYC documents and account data never enter the table. |
+| `eventType` | Normalized status only. |
+| `status` | `PENDING` → `PROCESSING` → `PROCESSED` or `IGNORED`; a thrown apply sets `FAILED`. |
+| `attempts`, `lastError`, `lockedAt` | Retry and crash diagnostics. The error is truncated to 500 characters. |
+
+The claim is a compare-and-set `updateMany`: exactly one concurrent retry moves
+the row to `PROCESSING`; the others return `{ inProgress: true }` without applying.
+A row already `PROCESSED` or `IGNORED` returns `{ replayed: true }` without
+reapplying. A `FAILED` row can be retried by the next provider delivery. A
+`PROCESSING` row whose worker died is reclaimable after five minutes.
+
+The unique `(provider, dedupeKey)` constraint is the concurrency backstop; a
+create race falls back to the existing row. Effects must still be idempotent at the
+domain layer — the inbox prevents double-apply, it does not replace the domain
+checks.
 
 ## Outbound (not built)
 

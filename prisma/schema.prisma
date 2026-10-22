@@ -213,6 +213,7 @@ model User {
   contributions     Contribution[]
   objections        MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
+  notifications          Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -912,4 +913,58 @@ model AdvertisementEvent {
   @@index([creativeId, occurredAt])
   @@index([placementId, occurredAt])
   @@index([receivedAt])
+}
+
+// Persisted in-app notification. The row is the durable record; delivery to an
+// external channel is a separate, retryable step. `dedupeKey` makes a repeated
+// domain event (for example a replayed campaign conversion) idempotent.
+model Notification {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template         String
+  data             Json?
+  dedupeKey        String?   @unique
+  readAt           DateTime?
+  dispatchedAt     DateTime?
+  dispatchAttempts Int       @default(0)
+  lastDispatchError String?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+}
+
+// Durable receipt for a verified provider callback. The raw body is never stored:
+// only a hash plus the normalized event type and minimum routing metadata. A
+// duplicate retry returns without reapplying; a failed event can be retried.
+enum WebhookProvider {
+  PAYSTACK
+  DIDIT
+}
+
+enum WebhookReceiptStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+model WebhookReceipt {
+  id          String               @id @default(cuid())
+  provider    WebhookProvider
+  dedupeKey   String
+  payloadHash String
+  eventType   String?
+  status      WebhookReceiptStatus @default(PENDING)
+  attempts    Int                  @default(0)
+  receivedAt  DateTime             @default(now())
+  processedAt DateTime?
+  lockedAt    DateTime?
+  lastError   String?
+
+  @@unique([provider, dedupeKey])
+  @@index([provider, receivedAt])
+  @@index([status, lockedAt])
 }
