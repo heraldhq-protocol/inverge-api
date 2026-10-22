@@ -114,13 +114,11 @@ exists; **deferred** = planned, not next.
 
 ## Known contract gaps
 
-- **Error responses are not in the spec yet.** The envelope is implemented and documented in
-  [errors.md](./errors.md), but no `ErrorResponse` component is attached to routes. A generated client
-  can therefore type a success response but not a failure. Adding the shared component per controller
-  is Stage 2.
 - **Response schemas are thin outside auth.** Only `POST /auth/session`, `GET /auth/me`,
   `GET /auth/check-username` and the creator projection declare a response DTO. Other handlers return
-  service objects with no declared type, so the spec lists the status but not the shape.
+  service objects with no declared type, so the spec lists the status but not the shape. The error
+  envelope is the exception: every operation declares it as a `default` response (see
+  [errors.md](./errors.md)).
 - **Request bodies are typed** for routes that use DTOs (ideas, campaigns, survey, admin), because the
   DTOs already carried `@ApiProperty` decorators.
 

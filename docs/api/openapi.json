@@ -377,6 +377,41 @@
         ],
         "type": "object"
       },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "Stable `SCREAMING_SNAKE_CASE` code a client may branch on.",
+                "example": "CAMPAIGN_NOT_FOUND",
+                "type": "string"
+              },
+              "details": {
+                "description": "Optional validation entries or route-specific context. Shape depends on the failure; clients must narrow before use."
+              },
+              "message": {
+                "description": "Human text. May change; do not parse it.",
+                "type": "string"
+              },
+              "requestId": {
+                "description": "Matches the `x-request-id` response header.",
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
       "HighlightCommentDto": {
         "properties": {
           "highlighted": {
@@ -1167,6 +1202,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1194,6 +1239,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1251,6 +1306,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1280,6 +1345,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1319,6 +1394,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1349,6 +1434,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1369,6 +1464,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1396,6 +1501,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1444,6 +1559,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1505,6 +1630,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1544,6 +1679,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1572,6 +1717,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1608,6 +1763,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "Check if a username handle is available",
@@ -1632,6 +1797,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "Get public creator profile and their projects/backed ideas",
@@ -1654,6 +1829,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1683,6 +1868,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1720,6 +1915,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "Exchange a provider access token for an Inverge session",
@@ -1802,6 +2007,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "List public campaigns or creator campaigns (mine=true)",
@@ -1826,6 +2041,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "Get campaign details by ID",
@@ -1860,6 +2085,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1956,6 +2191,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -1984,6 +2229,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2028,6 +2283,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2050,6 +2315,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2078,6 +2353,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2109,6 +2394,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2137,6 +2432,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2168,6 +2473,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2216,6 +2531,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2247,6 +2572,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2283,6 +2618,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2329,6 +2674,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2365,6 +2720,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2399,6 +2764,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2437,6 +2812,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2465,6 +2850,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2494,6 +2889,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2530,6 +2935,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2558,6 +2973,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2586,6 +3011,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2609,6 +3044,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2635,6 +3080,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2663,6 +3118,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -2694,6 +3159,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2722,6 +3197,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2758,6 +3243,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2787,6 +3282,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2816,6 +3321,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2836,6 +3351,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2865,6 +3390,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2884,6 +3419,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2913,6 +3458,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2942,6 +3497,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -2995,6 +3560,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -3025,6 +3600,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3054,6 +3639,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3073,6 +3668,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3092,6 +3697,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "tags": [
@@ -3116,6 +3731,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3171,6 +3796,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3198,6 +3833,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3225,6 +3870,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3261,6 +3916,16 @@
               }
             },
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3281,6 +3946,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "summary": "Get aggregate platform escrow figures (FR-801)",
@@ -3296,6 +3971,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3325,6 +4010,16 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [
@@ -3363,6 +4058,16 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
         "security": [

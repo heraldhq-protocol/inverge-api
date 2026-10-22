@@ -1153,3 +1153,20 @@ pending migrations to the developer database; point Paystack and Didit dashboard
 at the `/api/v1` callbacks; run the workflow on GitHub (it has not executed there
 yet); and collect real `EXPLAIN`/latency numbers for the hot list queries - no
 performance figures are claimed here.
+
+## 26. Stage 2 close-out - error envelope in the contract (2026-10-23)
+
+- **One shared component.** `attachErrorEnvelope()` in `src/openapi.ts` adds
+  `components.schemas.ErrorResponse` and attaches it as the `default` response of
+  every operation. The runtime `ApiExceptionFilter` is global, so this is accurate
+  for all 67 operations; a handler that already declares `default` keeps it.
+- **Why post-process instead of decorating every handler.** Per-route
+  `@ApiResponse` would have to be repeated on dozens of methods and would still
+  not describe the statuses a route cannot return. A single transformation keeps
+  the envelope in one place and is exercised by four unit cases.
+- **Generated clients can type failures.** The schema carries `code`, `message`,
+  `requestId` and optional `details`; `details` is intentionally unconstrained
+  because validation arrays and domain `blockers` differ.
+
+Verification: 4 unit cases; `openapi.json` regenerated (705 added lines, every
+operation covered); `tsc --noEmit`, unit suite, build and `openapi:check` pass.

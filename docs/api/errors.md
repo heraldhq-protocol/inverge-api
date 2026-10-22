@@ -51,6 +51,14 @@ A route may supply a more specific code (for example `CAMPAIGN_NOT_FOUND`) by
 throwing an `HttpException` whose response object includes `code`. Until every
 service adopts explicit codes, the status default applies.
 
+## In the contract
+
+`docs/api/openapi.json` declares an `ErrorResponse` schema and attaches it as the
+`default` response of every operation. A generated client can therefore type a
+failure instead of only a success. `default` is used rather than enumerating
+`400`/`401`/`403`/... per route because the filter is global and the set of
+statuses a given route can return differs; the envelope itself does not.
+
 ## Validation errors
 
 `ValidationPipe` rejects unknown fields (`forbidNonWhitelisted: true`). Each failed
