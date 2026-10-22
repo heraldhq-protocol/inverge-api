@@ -3,9 +3,11 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import {
   nextReviewStatus,
@@ -55,7 +57,10 @@ const QUEUE_CAMPAIGN_SELECT = {
 // references; writes append an immutable event and move the review state only.
 @Injectable()
 export class CampaignReviewService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly cache?: CacheService,
+  ) {}
 
   async listQueue(query: ListCampaignReviewQueueDto) {
     const reviewStatus = query.reviewStatus ?? 'IN_REVIEW';
@@ -218,7 +223,7 @@ export class CampaignReviewService {
 
     const reason = normalizeReviewReason(dto.reason);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const campaign = await tx.campaign.findUnique({
         where: { id: campaignId },
         select: {
@@ -322,5 +327,8 @@ export class CampaignReviewService {
         event,
       };
     });
+    this.cache?.bumpEventually('campaigns');
+    this.cache?.bumpEventually('campaign');
+    return result;
   }
 }

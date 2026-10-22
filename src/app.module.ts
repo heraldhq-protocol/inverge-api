@@ -4,6 +4,9 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { validateEnv } from './config/env.validation';
 import { ApiExceptionFilter } from './common/http/api-exception.filter';
+import { CacheModule } from './common/cache/cache.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { TelemetryModule } from './common/telemetry/telemetry.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PortsModule } from './ports/ports.module';
 import { QueueModule } from './modules/queue/queue.module';
@@ -30,6 +33,11 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     PrismaModule,
     PortsModule,
     PlatformParamsModule,
+    CacheModule,
+    // Telemetry registers the metrics/log interceptors before the limiter so a
+    // rejected request still produces a metric and a log line.
+    TelemetryModule,
+    RateLimitModule,
     QueueModule,
     // Phase 0 domain
     AuthModule,

@@ -3,8 +3,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SetSurveyDto, SubmitResponseDto } from './dto/survey.dto';
 import {
@@ -20,6 +22,7 @@ export class SurveyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
+    @Optional() private readonly cache?: CacheService,
   ) {}
 
   private async resolveIdea(idOrSlug: string) {
@@ -86,7 +89,7 @@ export class SurveyService {
     const { normalized, problems } = validateAnswers(refs, dto.answers as Answer[]);
     if (problems.length) throw new BadRequestException(problems);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.surveyResponse.upsert({
         where: { ideaId_userId: { ideaId, userId } },
         update: { answers: normalized as object },
@@ -94,14 +97,24 @@ export class SurveyService {
       });
       return this.metrics.recompute(tx, ideaId);
     });
+    this.invalidateIdea();
+    return result;
   }
 
   async withdrawResponse(userId: string, ideaIdOrSlug: string) {
     const idea = await this.resolveIdea(ideaIdOrSlug);
     const ideaId = idea.id;
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.surveyResponse.deleteMany({ where: { ideaId, userId } });
       return this.metrics.recompute(tx, ideaId);
     });
+    this.invalidateIdea();
+    return result;
+  }
+
+  /** Feedback count/score appear on the idea detail and list projections. */
+  private invalidateIdea(): void {
+    this.cache?.bumpEventually('idea');
+    this.cache?.bumpEventually('ideas');
   }
 }

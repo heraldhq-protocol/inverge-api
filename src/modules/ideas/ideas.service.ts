@@ -3,8 +3,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { QualityService } from '../quality/quality.service';
 import { ModerationService } from '../moderation/moderation.service';
@@ -38,6 +40,7 @@ export class IdeasService {
     private readonly quality: QualityService,
     private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
+    @Optional() private readonly cache?: CacheService,
   ) {}
 
   private async findIdea(idOrSlug: string) {
@@ -86,6 +89,7 @@ export class IdeasService {
       })),
     });
     await this.quality.evaluate(idea.id, false);
+    this.cache?.bumpEventually('ideas');
     return this.get(idea.id);
   }
 
@@ -97,6 +101,7 @@ export class IdeasService {
     const id = idea.id;
     await this.prisma.idea.update({ where: { id }, data: { ...dto } as object });
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
+    this.cache?.bumpEventually('ideas');
     return this.get(id);
   }
 
@@ -113,6 +118,7 @@ export class IdeasService {
     });
     // FR-272: score and set the discoverability tier (auto-promote if it clears the floor).
     await this.quality.evaluate(id, true);
+    this.cache?.bumpEventually('ideas');
     const fresh = await this.get(id);
     // FR-1004: screen on publish — advisory + non-blocking (records a ModerationCase).
     await this.moderation.screenSafe(
@@ -161,92 +167,113 @@ export class IdeasService {
       ? decodeCursor(query.cursor, fingerprint)
       : null;
 
-    const ideas = await this.prisma.idea.findMany({
-      where: cursor
-        ? {
-            AND: [
-              whereClause,
-              keysetCondition('createdAt', 'desc', cursor, asCursorDate),
-            ],
-          }
-        : whereClause,
-      include: {
-        creator: {
-          include: { creatorProfile: true, _count: { select: { ideas: true } } },
-        },
-        boosts: {
-          where: {
-            startsAt: { lte: now },
-            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    const loadPage = async () => {
+      const ideas = await this.prisma.idea.findMany({
+        where: cursor
+          ? {
+              AND: [
+                whereClause,
+                keysetCondition('createdAt', 'desc', cursor, asCursorDate),
+              ],
+            }
+          : whereClause,
+        include: {
+          creator: {
+            include: { creatorProfile: true, _count: { select: { ideas: true } } },
+          },
+          boosts: {
+            where: {
+              startsAt: { lte: now },
+              OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            },
           },
         },
-      },
-      // Newest first with an id tie-breaker: the order must be total, or a page
-      // boundary can repeat or skip an idea created in the same millisecond.
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-    });
+        // Newest first with an id tie-breaker: the order must be total, or a page
+        // boundary can repeat or skip an idea created in the same millisecond.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+      });
 
-    const rows = ideas.map(({ boosts, creator, ...idea }) => ({
-      ...idea,
-      creator: toPublicCreator(creator),
-      promoted: boosts.length > 0,
-      boostTier: boosts[0]?.tier ?? null,
-    }));
+      const rows = ideas.map(({ boosts, creator, ...idea }) => ({
+        ...idea,
+        creator: toPublicCreator(creator),
+        promoted: boosts.length > 0,
+        boostTier: boosts[0]?.tier ?? null,
+      }));
 
-    return buildPage(rows, limit, (idea) =>
-      encodeCursor(idea.createdAt.toISOString(), idea.id, fingerprint),
-    );
+      return buildPage(rows, limit, (idea) =>
+        encodeCursor(idea.createdAt.toISOString(), idea.id, fingerprint),
+      );
+    };
+
+    // A creator's own list is personalised and must never be shared between
+    // callers. Public pages are cache-aside for 20 s; the filter fingerprint and
+    // cursor are part of the key (see filterFingerprint).
+    if (query.mine) return loadPage();
+    return this.cache
+      ? this.cache.getOrSet(
+          'ideas',
+          `${fingerprint}:${limit}:${query.cursor ?? 'first'}`,
+          20,
+          loadPage,
+        )
+      : loadPage();
   }
 
   async get(idOrSlug: string) {
-    const idea = await this.prisma.idea.findFirst({
-      where: {
-        OR: [{ id: idOrSlug }, { slug: idOrSlug }],
-      },
-      include: {
-        creator: {
-          include: { creatorProfile: true, _count: { select: { ideas: true } } },
+    const loadIdea = async () => {
+      const idea = await this.prisma.idea.findFirst({
+        where: {
+          OR: [{ id: idOrSlug }, { slug: idOrSlug }],
         },
-      },
-    });
-    if (!idea) throw new NotFoundException('Idea not found');
+        include: {
+          creator: {
+            include: { creatorProfile: true, _count: { select: { ideas: true } } },
+          },
+        },
+      });
+      if (!idea) throw new NotFoundException('Idea not found');
 
-    const [minSupporters, minWeightedUSD, minPct, minFeedbackCount, minAvgFeedbackRating] = await Promise.all([
-      this.params.getNumber('validation.minSupporters', 50),
-      this.params.getNumber('validation.minWeightedUSD', 2000),
-      this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
-      this.params.getNumber('validation.minFeedbackCount', 10),
-      this.params.getNumber('validation.minAvgFeedbackRating', 3),
-    ]);
+      const [minSupporters, minWeightedUSD, minPct, minFeedbackCount, minAvgFeedbackRating] = await Promise.all([
+        this.params.getNumber('validation.minSupporters', 50),
+        this.params.getNumber('validation.minWeightedUSD', 2000),
+        this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
+        this.params.getNumber('validation.minFeedbackCount', 10),
+        this.params.getNumber('validation.minAvgFeedbackRating', 3),
+      ]);
 
-    const gateProgress = buildGateProgress({
-      supporterCount: idea.supporterCount ?? 0,
-      weighted: Number(idea.weightedPrePledgeTotal ?? 0),
-      feedbackCount: idea.feedbackCount ?? 0,
-      feedbackScore: Number(idea.feedbackScore ?? 0),
-      askAmount: Number(idea.askAmount ?? 0),
-      creatorTarget: idea.creatorPrePledgeTarget ? Number(idea.creatorPrePledgeTarget) : 0,
-      minSupporters,
-      minWeightedUSD,
-      minPct,
-      minFeedbackCount,
-      minAvgFeedbackRating,
-    });
+      const gateProgress = buildGateProgress({
+        supporterCount: idea.supporterCount ?? 0,
+        weighted: Number(idea.weightedPrePledgeTotal ?? 0),
+        feedbackCount: idea.feedbackCount ?? 0,
+        feedbackScore: Number(idea.feedbackScore ?? 0),
+        askAmount: Number(idea.askAmount ?? 0),
+        creatorTarget: idea.creatorPrePledgeTarget ? Number(idea.creatorPrePledgeTarget) : 0,
+        minSupporters,
+        minWeightedUSD,
+        minPct,
+        minFeedbackCount,
+        minAvgFeedbackRating,
+      });
 
-    const { creator, ...rest } = idea;
-    return {
-      ...rest,
-      creator: toPublicCreator(creator),
-      gateProgress,
+      const { creator, ...rest } = idea;
+      return {
+        ...rest,
+        creator: toPublicCreator(creator),
+        gateProgress,
+      };
     };
+
+    return this.cache
+      ? this.cache.getOrSet('idea', idOrSlug, 30, loadIdea)
+      : loadIdea();
   }
 
   // FR-202: support signal, idempotent per (idea, user).
   async support(userId: string, idOrSlug: string) {
     const idea = await this.assertSignalable(idOrSlug);
     const id = idea.id;
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
         update: {},
@@ -254,17 +281,21 @@ export class IdeasService {
       });
       return this.metrics.recompute(tx, id);
     });
+    this.invalidateIdea();
+    return result;
   }
 
   async unsupport(userId: string, idOrSlug: string) {
     const idea = await this.assertSignalable(idOrSlug);
     const id = idea.id;
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'SUPPORT' },
       });
       return this.metrics.recompute(tx, id);
     });
+    this.invalidateIdea();
+    return result;
   }
 
   // FR-202: pre-pledge intent — NO funds move. FR-210: normalize to USD; the weighted
@@ -274,7 +305,7 @@ export class IdeasService {
     const id = idea.id;
     const currency = dto.currency ?? 'USD';
     const amountUsd = await this.metrics.normalizeToUsd(dto.amount, currency);
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
         update: { amount: dto.amount, currency, amountUsd },
@@ -289,18 +320,32 @@ export class IdeasService {
       });
       return this.metrics.recompute(tx, id);
     });
+    this.invalidateIdea();
+    return result;
   }
 
   // FR-211: withdraw a pre-pledge — a withdrawable signal is a more honest signal.
   async withdrawPrePledge(userId: string, idOrSlug: string) {
     const idea = await this.assertSignalable(idOrSlug);
     const id = idea.id;
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.deleteMany({
         where: { ideaId: id, userId, type: 'PRE_PLEDGE' },
       });
       return this.metrics.recompute(tx, id);
     });
+    this.invalidateIdea();
+    return result;
+  }
+
+  /**
+   * A signal changes supporter count and both pre-pledge totals, which appear on
+   * the detail page and on every list card. Bump both generations once the
+   * transaction has committed so a racing read cannot cache pre-commit values.
+   */
+  private invalidateIdea(): void {
+    this.cache?.bumpEventually('idea');
+    this.cache?.bumpEventually('ideas');
   }
 
   // Validation signals may only target a PUBLISHED, still-validating idea.

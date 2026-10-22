@@ -1,6 +1,8 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import { Env } from '../../config/env.validation';
 import { SNAPSHOT_QUEUE } from './snapshot.processor';
 
 // Registers the daily repeatable snapshot job (FR-204a). A stable jobId means the
@@ -8,10 +10,21 @@ import { SNAPSHOT_QUEUE } from './snapshot.processor';
 @Injectable()
 export class SnapshotScheduler implements OnModuleInit {
   private readonly logger = new Logger(SnapshotScheduler.name);
+  private readonly enabled: boolean;
 
-  constructor(@InjectQueue(SNAPSHOT_QUEUE) private readonly queue: Queue) {}
+  constructor(
+    @InjectQueue(SNAPSHOT_QUEUE) private readonly queue: Queue,
+    config: ConfigService<Env, true>,
+  ) {
+    this.enabled = config.get('QUEUE_ENABLED', { infer: true });
+  }
 
   async onModuleInit() {
+    if (!this.enabled) {
+      this.logger.log('Queue disabled; daily snapshot not scheduled on this instance.');
+      return;
+    }
+
     // Best-effort: a Redis outage must never crash or hang boot (the idea-validation
     // flow runs without Redis). Time-box the enqueue and swallow failures — the job
     // re-schedules on the next boot once Redis is reachable.

@@ -41,6 +41,7 @@
     "dotenv": "^16.4.7",
     "express": "5.2.1",
     "helmet": "^8.0.0",
+    "ioredis": "^5.11.1",
     "jose": "^5.9.6",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",

@@ -5,6 +5,15 @@ import { z } from 'zod';
 /** The value shipped in the schema so local dev starts without setup. */
 export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
 
+// `z.coerce.boolean()` treats the string "false" as true, which would make a
+// `REDIS_ENABLED=false` deployment silently connect anyway. Parse the documented
+// spellings explicitly and reject anything else.
+const booleanFlag = z.preprocess(
+  (value) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  z.union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+).transform((value) => value === true || value === 'true' || value === '1');
+
 export const envSchema = z
   .object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -13,6 +22,27 @@ export const envSchema = z
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DIRECT_URL: z.string().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  // Redis is optional infrastructure: reads fall back to Postgres and queues are
+  // skipped when it is disabled. Set false on a box that must not dial Redis at
+  // all (unit/e2e tests, a web-only instance).
+  REDIS_ENABLED: booleanFlag.default(true),
+  QUEUE_ENABLED: booleanFlag.default(true),
+
+  // Comma-separated browser origins. Empty means same-origin only (the web app
+  // reaches the API through its own server, so cross-origin is opt-in).
+  CORS_ORIGINS: z.string().default(''),
+  // Number of reverse proxies in front of the API. Only the resolved req.ip is
+  // used for rate-limit keys; raw X-Forwarded-For is never trusted.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+  JSON_BODY_LIMIT: z.string().default('1mb'),
+
+  RATE_LIMIT_ENABLED: booleanFlag.default(true),
+  METRICS_ENABLED: booleanFlag.default(true),
+  METRICS_TOKEN: z.string().optional(),
+  // json in production, pretty elsewhere unless explicitly set.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  LOG_LEVEL: z.enum(['verbose', 'debug', 'log', 'warn', 'error']).default('log'),
+  LOG_HASH_SALT: z.string().default('inverge-log'),
 
   WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
