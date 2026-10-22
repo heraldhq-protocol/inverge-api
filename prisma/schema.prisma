@@ -790,3 +790,126 @@ model IdeaSignalDailyMetric {
   @@unique([ideaId, day])
   @@index([day])
 }
+
+// ---------------------------------------------------------------------------
+// Advertising (PROPOSED - schema only, no Nest module, migration not applied)
+//
+// A paid placement is a separate bounded context. It has no relation to Idea,
+// Campaign, IdeaSignal, or Contribution, so it cannot write ranking, validation,
+// or funding state. Placement ids are the closed set documented in
+// docs/api/advertising.md; the API validates them before insert.
+// ---------------------------------------------------------------------------
+
+enum AdCreativeStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PAUSED
+  ENDED
+}
+
+enum AdCreativeKind {
+  FIRST_PARTY
+  THIRD_PARTY
+}
+
+enum AdCreativeFormat {
+  NATIVE_CARD
+  BANNER
+  SIDEBAR
+  THIRD_PARTY
+}
+
+enum AdReviewAction {
+  SUBMIT
+  APPROVE
+  REJECT
+  PAUSE
+  RESUME
+  END
+}
+
+enum AdEventType {
+  AD_IMPRESSION
+  AD_CLICK
+  AD_DISMISS
+  AD_DESTINATION_OPENED
+}
+
+// The creative. `approved` is permission to serve, not a schedule: serving also
+// requires startsAt <= now < endsAt and the placement relation.
+model Advertisement {
+  id              String            @id @default(cuid())
+  advertiser      String
+  headline        String
+  body            String
+  ctaLabel        String
+  destination     String
+  format          AdCreativeFormat
+  kind            AdCreativeKind    @default(FIRST_PARTY)
+  status          AdCreativeStatus  @default(DRAFT)
+  priority        Int               @default(0)
+  startsAt        DateTime
+  endsAt          DateTime
+  categories      String[]          @default([])
+  regions         String[]          @default([])
+  createdById     String
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  placements AdvertisementPlacement[]
+  reviews    AdvertisementReviewEvent[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([kind, status])
+}
+
+// One row per allowed placement. @@unique makes a duplicate booking impossible.
+model AdvertisementPlacement {
+  id              String        @id @default(cuid())
+  advertisementId String
+  advertisement   Advertisement @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  placementId     String
+
+  @@unique([advertisementId, placementId])
+  @@index([placementId])
+}
+
+// Append-only review trail. actorId is not an FK for the same reason as
+// PlatformParamAudit.changedBy: the trail must survive an account deletion.
+model AdvertisementReviewEvent {
+  id              String            @id @default(cuid())
+  advertisementId String
+  advertisement   Advertisement     @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  actorId         String
+  action          AdReviewAction
+  fromStatus      AdCreativeStatus
+  toStatus        AdCreativeStatus
+  reason          String?
+  createdAt       DateTime          @default(now())
+
+  @@index([advertisementId, createdAt])
+  @@index([createdAt])
+}
+
+// Validated measurement events. No IP address, user agent, cookie, account, or
+// free text. `dedupeKey` closes the client retry gap. Raw rows are retained for
+// 90 days, then only daily aggregates remain (see analytics-privacy.md).
+model AdvertisementEvent {
+  id          String       @id @default(cuid())
+  creativeId  String
+  placementId String
+  type        AdEventType
+  sessionId   String
+  dedupeKey   String       @unique
+  occurredAt  DateTime
+  receivedAt  DateTime     @default(now())
+
+  @@index([creativeId, occurredAt])
+  @@index([placementId, occurredAt])
+  @@index([receivedAt])
+}
