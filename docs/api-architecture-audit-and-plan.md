@@ -899,3 +899,58 @@ Not done in this slice:
 - The nightly snapshot job reads every validating idea in one pass. It is a job, not a request, and is
   a Stage 4 batching concern.
 - Index migration and `EXPLAIN` evidence (no Postgres reachable).
+
+## 18. Delivery log - Stage 3 (2026-10-22)
+
+Cache, rate limiting, operational endpoints and the e2e bootstrap.
+
+Done:
+
+- **Cache-aside module.** `src/common/cache/` implements versioned keys
+  (`v1:{namespace}:g{n}:{key}`), generation bumps instead of `KEYS`/`SCAN`, ±10 % TTL
+  jitter, per-instance single-flight registered before the Redis read, and a 5 s
+  breaker. Redis is optional: `REDIS_ENABLED=false` bypasses it entirely.
+- **Wired reads.** Public idea pages/details, public campaign pages/details and the
+  platform escrow projection are cached. `mine=true` lists and authenticated campaign
+  details bypass the cache. Signal, survey, submission and review mutations bump the
+  relevant generation after commit.
+- **Token-bucket rate limiting.** Policies live in one module (`discovery`, `search`,
+  `auth`, `username`, `signals`, `comments`, `dashboard`, `financial`, `webhook`,
+  `admin`). Redis Lua keeps the bucket atomic; a bounded local bucket is the fallback;
+  auth, financial and admin fail closed when Redis is enabled but unreachable. Headers
+  and `Retry-After` are emitted, and identifiers are SHA-256 hashed before they become
+  Redis keys.
+- **Production bootstrap extracted.** `src/bootstrap.ts` is shared by `main.ts` and the
+  e2e harness: `/api/v1` prefix, request id, 1 MB body limit, Helmet, explicit CORS
+  allowlist (`CORS_ORIGINS`, same-origin by default in production), `trust proxy` from
+  `TRUST_PROXY_HOPS`, explicit `@Type` conversion, JSON logger in production.
+- **Health and metrics.** `GET /health/live`, `GET /health/ready` (Postgres is the only
+  hard dependency; Redis is reported as degraded) and `GET /metrics` (Prometheus text,
+  optional `METRICS_TOKEN`, hidden from OpenAPI). Health/metrics stay outside the
+  version prefix.
+- **Structured telemetry.** One request log line with request id, matched route,
+  status, duration and a hashed user id; no query string, body, token, cookie or raw IP.
+  Counters and latency histograms are per instance and scrape-aggregated.
+- **Queue registration is optional.** `QUEUE_ENABLED=false` prevents the BullMQ Worker
+  from being registered; a Worker dials Redis during bootstrap and cannot be made lazy
+  from the queue options. The snapshot scheduler also checks the flag.
+- **e2e now runs through the production bootstrap.** `test/create-test-app.ts` applies
+  `configureApp`; all suites use `/api/v1` paths. `jest.setup.ts` disables Redis, queues
+  and rate limiting. The live AI moderation suite is opt-in (`RUN_LIVE_AI_E2E=true`).
+  Result: **96 passed, 2 skipped** across 7 suites; unit: **377 passed**.
+
+Not done in this slice:
+
+- Redis was not installed in this environment, so the Redis success path is exercised
+  by fakes only; the outage/disabled path is exercised by e2e. A Redis-backed
+  integration run is still required before deployment.
+- No analytics, notification read model or webhook inbox (Stage 4). The Prisma schema
+  currently has uncommitted advertising work from another change, so schema-coupled
+  Stage 4 work must be coordinated rather than layered blindly.
+- Auth rate limiting is IP-only; the provider subject is not part of the key yet.
+- `search` classification is query-key based; a new filter key must be added to the
+  list in `rate-limit.policies.ts`.
+- Index migration and `EXPLAIN` evidence remain open.
+- Web Stage 5 is not started: the web repository is currently on `main`, while the API
+  client/generated-types work lives on `feat/web3auth-auth`, with user-owned dirty files
+  in both trees.
