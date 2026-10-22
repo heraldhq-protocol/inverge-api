@@ -1,7 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { createTestApp } from './create-test-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 // End-to-end coverage of the discovery feed against real Postgres + Redis:
@@ -17,7 +16,7 @@ describe('Discovery feed (e2e)', () => {
 
   async function session(sub: string): Promise<string> {
     const res = await http()
-      .post('/auth/session')
+      .post('/api/v1/auth/session')
       .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test` })
       .expect(201);
     return res.body.sessionToken as string;
@@ -73,30 +72,19 @@ describe('Discovery feed (e2e)', () => {
     body: Record<string, unknown>,
   ): Promise<string> {
     const c = await http()
-      .post('/ideas')
+      .post('/api/v1/ideas')
       .set(auth(token))
       .send(body)
       .expect(201);
     await http()
-      .post(`/ideas/${c.body.id}/publish`)
+      .post(`/api/v1/ideas/${c.body.id}/publish`)
       .set(auth(token))
       .expect(201);
     return c.body.id as string;
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleRef.createNestApplication({ rawBody: true });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = await createTestApp();
     prisma = app.get(PrismaService);
     [creator, creator2, backer] = await Promise.all([
       session('creator'),
@@ -125,19 +113,19 @@ describe('Discovery feed (e2e)', () => {
 
     // Low-quality → LINK_ONLY, must never appear in the feed.
     const lo = await http()
-      .post('/ideas')
+      .post('/api/v1/ideas')
       .set(auth(creator))
       .send(thinPitch)
       .expect(201);
     await http()
-      .post(`/ideas/${lo.body.id}/publish`)
+      .post(`/api/v1/ideas/${lo.body.id}/publish`)
       .set(auth(creator))
       .expect(201);
     linkOnlyId = lo.body.id;
 
     // A DRAFT (never published) — also excluded.
     const draft = await http()
-      .post('/ideas')
+      .post('/api/v1/ideas')
       .set(auth(creator2))
       .send(richPitch({ title: 'Draft Feed' }))
       .expect(201);
@@ -157,7 +145,7 @@ describe('Discovery feed (e2e)', () => {
 
   describe('retrieval + anonymous access', () => {
     it('serves the feed to an anonymous caller and flags it anonymous', async () => {
-      const res = await http().get('/feed').expect(200);
+      const res = await http().get('/api/v1/feed').expect(200);
       expect(res.body.anonymous).toBe(true);
       expect(Array.isArray(res.body.items)).toBe(true);
       expect(ids(res.body)).toEqual(
@@ -166,13 +154,13 @@ describe('Discovery feed (e2e)', () => {
     });
 
     it('excludes LINK_ONLY and DRAFT ideas', async () => {
-      const res = await http().get('/feed?take=50').expect(200);
+      const res = await http().get('/api/v1/feed?take=50').expect(200);
       expect(ids(res.body)).not.toContain(linkOnlyId);
       expect(ids(res.body)).not.toContain(draftId);
     });
 
     it('attaches an explainability chip + objectType to every item, none promoted', async () => {
-      const res = await http().get('/feed').expect(200);
+      const res = await http().get('/api/v1/feed').expect(200);
       for (const item of res.body.items) {
         expect(item.objectType).toBe('idea');
         expect(item.reason).toMatchObject({
@@ -188,7 +176,7 @@ describe('Discovery feed (e2e)', () => {
 
     it('honours the stateless excludeIds "already seen" filter', async () => {
       const res = await http()
-        .get(`/feed?take=50&excludeIds=${agriId}`)
+        .get(`/api/v1/feed?take=50&excludeIds=${agriId}`)
         .expect(200);
       expect(ids(res.body)).not.toContain(agriId);
       expect(ids(res.body)).toContain(softwareId);
@@ -196,7 +184,7 @@ describe('Discovery feed (e2e)', () => {
 
     it('applies the category hard filter (Stage 1)', async () => {
       const res = await http()
-        .get('/feed?category=software&take=50')
+        .get('/api/v1/feed?category=software&take=50')
         .expect(200);
       expect(ids(res.body)).toContain(softwareId);
       expect(ids(res.body)).not.toContain(agriId);
@@ -206,13 +194,13 @@ describe('Discovery feed (e2e)', () => {
   describe('personalization + interests', () => {
     it('rejects an interests update without auth', () =>
       http()
-        .put('/me/interests')
+        .put('/api/v1/me/interests')
         .send({ preferredCategories: ['software'] })
         .expect(401));
 
     it('saves onboarding interests', async () => {
       const res = await http()
-        .put('/me/interests')
+        .put('/api/v1/me/interests')
         .set(auth(backer))
         .send({
           preferredCategories: ['agritech'],
@@ -225,7 +213,7 @@ describe('Discovery feed (e2e)', () => {
 
     it('rejects an out-of-enum category interest (whitelist)', () =>
       http()
-        .put('/me/interests')
+        .put('/api/v1/me/interests')
         .set(auth(backer))
         .send({ preferredCategories: ['weapons'] })
         .expect(400));
@@ -239,7 +227,7 @@ describe('Discovery feed (e2e)', () => {
         data: { feedImpressions: 100_000 },
       });
       const res = await http()
-        .get('/feed?take=50')
+        .get('/api/v1/feed?take=50')
         .set(auth(backer))
         .expect(200);
       expect(res.body.anonymous).toBe(false);
