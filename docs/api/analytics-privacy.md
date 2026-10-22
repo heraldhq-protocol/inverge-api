@@ -57,7 +57,8 @@ analytics exports. They keep their own documented retention.
 ## Access and failure
 
 - Reading analytics requires `ADMIN`; writing is server-side only. There is no
-  public ingest endpoint.
+  public ingest endpoint for product analytics. The one scoped exception is the
+  advertising validator below, which is disabled by default and has no sink.
 - A failed analytics write never fails the user action. It is logged and dropped.
 - Events are written after the domain transaction commits. An event must never be
   the reason a contribution or campaign transition rolls back.
@@ -67,3 +68,25 @@ analytics exports. They keep their own documented retention.
 Analytics is first-party and aggregate. If the product later adds anything that
 is not strictly necessary (session replay, third-party pixels, advertising), it
 requires explicit opt-in and this document must be updated first.
+
+## Scoped exception: advertising measurement
+
+Advertising measurement is a separate purpose with its own consent record
+(`inverge:advertising-consent:v2`), not part of product analytics. The web build
+exposes `POST /api/advertising/events` only when both the server and public
+measurement flags are `true`, and the reader has explicitly allowed measurement.
+The route is a validating boundary: it rejects bots, malformed events, stale or
+future timestamps, oversize bodies, and floods, then returns `persisted: false`.
+No event is written or logged today.
+
+If the API later implements the sink described in
+[advertising.md](./advertising.md), the rules are: no IP address, user agent,
+cookie, account id, wallet address, or free text; a random per-tab session id as
+the only subject; 90-day raw retention and 25-month aggregates; ad events are
+never joined to campaign analytics, validation signals, or funding figures. The
+same opt-in rule applies, and refusing measurement must not hide content.
+
+Third-party personalised advertising is a second, independent consent purpose.
+It is off by default, never requested before an explicit choice, and not served
+by the API. Enabling it is a product and privacy decision, not an environment
+flag alone.

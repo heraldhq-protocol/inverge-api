@@ -17,7 +17,8 @@ same surface as the committed document.
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Target — offset pagination is still live |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Target — no cache yet |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Target — no limiter yet |
-| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Target — no analytics yet |
+| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Target - no analytics yet |
+| [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
 | [webhooks.md](./webhooks.md) | Providers, signatures, idempotency | Partly implemented |
 | [gaps.md](./gaps.md) | Route-by-route coverage against the product | Living |
