@@ -94,7 +94,7 @@ exists; **deferred** = planned, not next.
 | Health / readiness | `GET /health/live`, `GET /health/ready` | implemented | Outside the version prefix; Redis down reports `degraded`, Postgres down fails readiness |
 | Account capabilities | `GET /auth/capabilities` | implemented | UI projection of role, verification and onboarding; not cached; see plan §19 |
 | Interests | `PUT /me/interests` | implemented | — |
-| Analytics ingestion | — | missing | Server-side events only when built |
+| Product analytics | no public route | partial | Server-side `IDEA_SIGNAL` only; nightly roll-up and retention run when `QUEUE_ENABLED=true`; creator reads and view/search events are deferred (see [product-analytics.md](./product-analytics.md)) |
 | Notification list / read | — | missing | No notification routes |
 | Outbound webhooks | — | deferred | No subscription product |
 | Real-time stream | — | deferred | Decision recorded in [realtime.md](./realtime.md) |

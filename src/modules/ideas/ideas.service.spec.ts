@@ -18,6 +18,7 @@ function prismaMock(idea: any = null) {
       findFirst: jest.fn().mockResolvedValue(idea),
       count: jest.fn().mockResolvedValue(0),
     },
+    ideaSignal: { findUnique: jest.fn().mockResolvedValue(null) },
     surveyQuestion: { createMany: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
   } as any;
@@ -115,6 +116,29 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
       expect.objectContaining({ create: expect.objectContaining({ type: 'SUPPORT' }) }),
     );
     expect(m.recompute).toHaveBeenCalledWith(p._tx, 'idea1');
+  });
+
+  it('records one analytics signal for a first support and none for a repeat', async () => {
+    const p = prismaMock({ id: 'idea1', status: 'VALIDATING' });
+    const analytics = { record: jest.fn().mockResolvedValue(true) } as any;
+    const svc = new IdeasService(
+      p,
+      metricsMock(),
+      qualityMock(),
+      moderationMock(),
+      paramsMock(),
+      undefined,
+      analytics,
+    );
+
+    await svc.support('u2', 'idea1');
+    p.ideaSignal.findUnique.mockResolvedValue({ id: 'existing' });
+    await svc.support('u2', 'idea1');
+
+    expect(analytics.record).toHaveBeenCalledTimes(1);
+    expect(analytics.record).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'IDEA_SIGNAL', signalType: 'SUPPORT' }),
+    );
   });
 
   it('unsupport deletes the SUPPORT signal then recomputes', async () => {

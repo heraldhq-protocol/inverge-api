@@ -212,6 +212,7 @@ model User {
   campaignReviews   CampaignReviewEvent[] @relation("CampaignReviewActor")
   contributions     Contribution[]
   objections        MilestoneObjection[]
+  productAnalyticsEvents ProductAnalyticsEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -717,4 +718,75 @@ model PlatformParamAudit {
 
   @@index([key, changedAt])
   @@index([changedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Product analytics (first-party, aggregate-only; see docs/api/analytics-privacy.md)
+//
+// No IP, user agent, cookie, fingerprint, free text or wallet address is stored.
+// Authenticated events carry the internal user id; anonymous events carry only a
+// session-scoped random id. Raw events are retained 90 days; daily aggregates 25
+// months. There is no public ingest route: domain code writes after its own
+// transaction commits, and a failed write never fails the user action.
+// ---------------------------------------------------------------------------
+
+enum ProductAnalyticsEventName {
+  IDEA_VIEWED
+  IDEA_SIGNAL
+  CAMPAIGN_VIEWED
+  CAMPAIGN_STEP_STARTED
+  CAMPAIGN_STEP_COMPLETED
+  CONTRIBUTION_STARTED
+  CONTRIBUTION_CONFIRMED
+  SEARCH_PERFORMED
+}
+
+enum AnalyticsSignalType {
+  SUPPORT
+  PRE_PLEDGE
+}
+
+model ProductAnalyticsEvent {
+  id         String                    @id @default(cuid())
+  name       ProductAnalyticsEventName
+  userId     String? // internal id only; never an email, wallet or provider subject
+  user       User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId  String? // anonymous, session-scoped random id; mutually exclusive with userId
+  ideaId     String?
+  campaignId String?
+  signalType AnalyticsSignalType?
+  source     String? // feed | search | direct, from a closed set validated in code
+  position   Int?
+  step       String? // creator-flow step, from a closed set validated in code
+  durationMs Int?
+  queryLength Int?
+  resultCount Int?
+  filterKeys  String[] @default([])
+  amountMinor BigInt?
+  currency    String?
+  countryCode String?  @db.Char(2) // coarse, from a trusted edge header only
+  occurredAt  DateTime
+  receivedAt  DateTime @default(now())
+
+  @@index([name, occurredAt])
+  @@index([ideaId, name, occurredAt])
+  @@index([campaignId, name, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([receivedAt])
+}
+
+// Daily roll-up of idea signals. Derived only from ProductAnalyticsEvent; rebuilt
+// idempotently per (ideaId, day), never incremented by a request path.
+model IdeaSignalDailyMetric {
+  id              String   @id @default(cuid())
+  ideaId          String
+  day             DateTime @db.Date
+  supportCount    Int      @default(0)
+  prePledgeCount  Int      @default(0)
+  uniqueActors    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([ideaId, day])
+  @@index([day])
 }

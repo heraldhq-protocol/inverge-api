@@ -11,6 +11,7 @@ import { MetricsService } from '../metrics/metrics.service';
 import { QualityService } from '../quality/quality.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
+import { ProductAnalyticsService } from '../analytics/product-analytics.service';
 import { slugify } from '../../common/utils/slug.util';
 import { DEFAULT_SURVEY } from '../survey/survey-validation';
 import {
@@ -41,6 +42,7 @@ export class IdeasService {
     private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
     @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly analytics?: ProductAnalyticsService,
   ) {}
 
   private async findIdea(idOrSlug: string) {
@@ -273,6 +275,11 @@ export class IdeasService {
   async support(userId: string, idOrSlug: string) {
     const idea = await this.assertSignalable(idOrSlug);
     const id = idea.id;
+    // A repeat support is a no-op, so it is not a new signal for analytics either.
+    const existing = await this.prisma.ideaSignal.findUnique({
+      where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
+      select: { id: true },
+    });
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
@@ -282,6 +289,16 @@ export class IdeasService {
       return this.metrics.recompute(tx, id);
     });
     this.invalidateIdea();
+    // Analytics is written after the domain commit and never fails the action.
+    if (!existing) {
+      await this.analytics?.record({
+        name: 'IDEA_SIGNAL',
+        userId,
+        ideaId: id,
+        signalType: 'SUPPORT',
+        occurredAt: new Date(),
+      });
+    }
     return result;
   }
 
@@ -305,6 +322,10 @@ export class IdeasService {
     const id = idea.id;
     const currency = dto.currency ?? 'USD';
     const amountUsd = await this.metrics.normalizeToUsd(dto.amount, currency);
+    const existing = await this.prisma.ideaSignal.findUnique({
+      where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
+      select: { id: true },
+    });
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
@@ -321,10 +342,19 @@ export class IdeasService {
       return this.metrics.recompute(tx, id);
     });
     this.invalidateIdea();
+    if (!existing) {
+      await this.analytics?.record({
+        name: 'IDEA_SIGNAL',
+        userId,
+        ideaId: id,
+        signalType: 'PRE_PLEDGE',
+        occurredAt: new Date(),
+      });
+    }
     return result;
   }
 
-  // FR-211: withdraw a pre-pledge — a withdrawable signal is a more honest signal.
+  // FR-211: withdraw a pre-pledge - a withdrawable signal is a more honest signal.
   async withdrawPrePledge(userId: string, idOrSlug: string) {
     const idea = await this.assertSignalable(idOrSlug);
     const id = idea.id;

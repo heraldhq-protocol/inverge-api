@@ -985,3 +985,38 @@ Open: ban state is not enforced on authenticated writes anywhere yet, so
 `accountActive` is advisory for the UI; the boost purchase path has no KYC/AML gate;
 and the web has not consumed the route. These are recorded in the gap report rather
 than papered over here.
+
+## 20. Stage 4a - first-party product analytics (2026-10-22)
+
+Implemented as a **server-side pipeline**, following the revised
+`docs/api/analytics-privacy.md` rather than the public-ingest sketch in §7.3. There is
+no `POST /analytics/events`; the route is asserted absent in e2e.
+
+- **Schema.** `ProductAnalyticsEvent` stores only typed structural fields (no IP, user
+  agent, cookie, email, wallet, provider subject or free text). `IdeaSignalDailyMetric`
+  is the derived roll-up. Migration `20261022150000_product_analytics` was generated
+  against the committed schema (not the uncommitted advertising models) and applied to
+  the dev database; the advertising migration remains pending and untouched.
+- **Writer.** `ProductAnalyticsService.record()` validates the closed taxonomy
+  (`assertProductAnalyticsEvent`) and inserts after the domain commit. Validation or
+  storage failure is logged without values and dropped. `IdeasService.support` and
+  `prePledge` emit `IDEA_SIGNAL` once per first-time signal; repeats are not counted.
+- **Aggregation.** `AnalyticsAggregationService.aggregateIdeaSignals(day)` groups raw
+  events by idea and signal type, counts distinct actors from `(ideaId, userId)` pairs,
+  and upserts `(ideaId, day)` idempotently.
+- **Retention and scheduling.** The `analytics-maintenance` BullMQ job runs at 04:15
+  UTC: aggregate yesterday, then delete raw events older than 90 days and aggregate
+  months older than 25. Queue registration is skipped entirely with
+  `QUEUE_ENABLED=false`.
+- **Configuration.** `ANALYTICS_RAW_RETENTION_DAYS` (90) and
+  `ANALYTICS_AGGREGATE_RETENTION_MONTHS` (25).
+
+Verification: 24 unit cases across the taxonomy, writer, day arithmetic, aggregation
+and retention, plus 4 e2e cases (no public route, two real signal writes with a
+duplicate tap suppressed, no network/free-text columns, double aggregation stable).
+Implementation notes: [api/product-analytics.md](./api/product-analytics.md).
+
+Deferred, with reasons: view/search/campaign-step events need the web server caller;
+contribution events need the indexer; there is no creator read route or admin
+aggregation trigger yet; notifications read model and webhook inbox are the remaining
+Stage 4 slices.

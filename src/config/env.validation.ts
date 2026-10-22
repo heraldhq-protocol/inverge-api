@@ -44,6 +44,17 @@ export const envSchema = z
   LOG_LEVEL: z.enum(['verbose', 'debug', 'log', 'warn', 'error']).default('log'),
   LOG_HASH_SALT: z.string().default('inverge-log'),
 
+  // Product analytics retention (docs/api/analytics-privacy.md): raw events 90 days,
+  // daily aggregates 25 months. There is no public ingestion route; these bounds are
+  // enforced by the nightly maintenance job.
+  ANALYTICS_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+  ANALYTICS_AGGREGATE_RETENTION_MONTHS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(120)
+    .default(25),
+
   WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
   KYC_PROVIDER: z.enum(['stub', 'didit']).default('stub'),
