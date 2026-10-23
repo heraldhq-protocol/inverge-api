@@ -181,7 +181,7 @@ export class IdeasService {
           : whereClause,
         include: {
           creator: {
-            include: { creatorProfile: true, _count: { select: { ideas: true } } },
+            include: { creatorProfile: true },
           },
           boosts: {
             where: {
@@ -196,9 +196,29 @@ export class IdeasService {
         take: limit + 1,
       });
 
+      // Prisma's relation `_count` compiles to a grouped aggregate over the whole
+      // Idea table, so every page paid for a 50k-row scan. Count only the creators
+      // on this page instead; the (creatorId, ...) index serves the IN list.
+      const creatorIds = [...new Set(ideas.map((idea) => idea.creatorId))];
+      const creatorCounts = creatorIds.length
+        ? await this.prisma.idea.groupBy({
+            by: ['creatorId'],
+            where: { creatorId: { in: creatorIds } },
+            _count: { _all: true },
+          })
+        : [];
+      const ideasPublishedByCreator = new Map(
+        creatorCounts.map((row) => [row.creatorId, row._count._all]),
+      );
+
       const rows = ideas.map(({ boosts, creator, ...idea }) => ({
         ...idea,
-        creator: toPublicCreator(creator),
+        creator: creator
+          ? toPublicCreator({
+              ...creator,
+              ideasPublished: ideasPublishedByCreator.get(creator.id) ?? 0,
+            })
+          : null,
         promoted: boosts.length > 0,
         boostTier: boosts[0]?.tier ?? null,
       }));
@@ -230,18 +250,27 @@ export class IdeasService {
         },
         include: {
           creator: {
-            include: { creatorProfile: true, _count: { select: { ideas: true } } },
+            include: { creatorProfile: true },
           },
         },
       });
       if (!idea) throw new NotFoundException('Idea not found');
 
-      const [minSupporters, minWeightedUSD, minPct, minFeedbackCount, minAvgFeedbackRating] = await Promise.all([
+      const [
+        minSupporters,
+        minWeightedUSD,
+        minPct,
+        minFeedbackCount,
+        minAvgFeedbackRating,
+        ideasPublished,
+      ] = await Promise.all([
         this.params.getNumber('validation.minSupporters', 50),
         this.params.getNumber('validation.minWeightedUSD', 2000),
         this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
         this.params.getNumber('validation.minFeedbackCount', 10),
         this.params.getNumber('validation.minAvgFeedbackRating', 3),
+        // Same reason as the list: avoid Prisma's full-table relation count.
+        this.prisma.idea.count({ where: { creatorId: idea.creatorId } }),
       ]);
 
       const gateProgress = buildGateProgress({
@@ -261,7 +290,9 @@ export class IdeasService {
       const { creator, ...rest } = idea;
       return {
         ...rest,
-        creator: toPublicCreator(creator),
+        creator: creator
+          ? toPublicCreator({ ...creator, ideasPublished })
+          : null,
         gateProgress,
       };
     };
