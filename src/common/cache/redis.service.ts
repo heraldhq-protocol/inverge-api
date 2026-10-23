@@ -73,12 +73,25 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
     });
   }
 
-  private get usable(): boolean {
-    return (
-      this.client !== null &&
-      Date.now() >= this.unavailableUntil &&
-      (this.client.status === 'ready' || this.client.status === 'wait')
-    );
+  /**
+   * A lazy client starts in `wait`; issuing a command before it connects fails
+   * immediately with `enableOfflineQueue: false`. Establish the connection on
+   * first use instead, bounded by the 500 ms connect timeout, so the first cache
+   * read (and the readiness probe) sees a usable client rather than tripping the
+   * breaker and bypassing the cache for the next five seconds.
+   */
+  private async connectIfNeeded(): Promise<boolean> {
+    if (!this.client || Date.now() < this.unavailableUntil) return false;
+    if (this.client.status === 'ready') return true;
+    if (this.client.status !== 'wait') return false;
+
+    try {
+      await this.client.connect();
+      return String(this.client.status) === 'ready';
+    } catch (error) {
+      this.trip(error);
+      return false;
+    }
   }
 
   private trip(error: unknown): void {
@@ -102,7 +115,7 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
   }
 
   async get(key: string): Promise<string | null> {
-    if (!this.usable) return null;
+    if (!(await this.connectIfNeeded())) return null;
     try {
       return await this.client!.get(key);
     } catch (error) {
@@ -112,7 +125,7 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
   }
 
   async set(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-    if (!this.usable) return false;
+    if (!(await this.connectIfNeeded())) return false;
     try {
       await this.client!.set(key, value, 'EX', Math.max(1, Math.ceil(ttlSeconds)));
       return true;
@@ -123,7 +136,7 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
   }
 
   async del(key: string): Promise<void> {
-    if (!this.usable) return;
+    if (!(await this.connectIfNeeded())) return;
     try {
       await this.client!.del(key);
     } catch (error) {
@@ -132,7 +145,7 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
   }
 
   async incr(key: string): Promise<number | null> {
-    if (!this.usable) return null;
+    if (!(await this.connectIfNeeded())) return null;
     try {
       return await this.client!.incr(key);
     } catch (error) {
@@ -146,7 +159,7 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
     keys: string[],
     args: string[],
   ): Promise<unknown> {
-    if (!this.usable) return null;
+    if (!(await this.connectIfNeeded())) return null;
     try {
       return await this.client!.eval(script, keys.length, ...keys, ...args);
     } catch (error) {
@@ -156,18 +169,20 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
   }
 
   async ping(): Promise<boolean> {
-    if (!this.client || Date.now() < this.unavailableUntil) return false;
+    if (!(await this.connectIfNeeded())) return false;
     try {
-      // Readiness must answer quickly even while the connection is being made.
+      // A cold lazy connection can take longer than a cache command timeout.
+      // Readiness gets a full second; it must not open the breaker, because a
+      // slow probe would then bypass the cache and amplify database load.
       const result = await Promise.race([
-        this.client.ping(),
+        this.client!.ping(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('ping timed out')), 300),
+          setTimeout(() => reject(new Error('ping timed out')), 1_000),
         ),
       ]);
       return result === 'PONG';
     } catch (error) {
-      this.trip(error);
+      this.lastError = error instanceof Error ? error.message : String(error);
       return false;
     }
   }
