@@ -373,6 +373,7 @@ model Idea {
   updatedAt DateTime @updatedAt
 
   @@index([creatorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-271: audit + coaching output of each quality scoring run (on publish and edit).
@@ -593,6 +594,9 @@ model Campaign {
   @@index([creatorId])
   @@index([status])
   @@index([reviewStatus, submittedAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([deadline, id])
+  @@index([totalRaised(sort: Desc), id(sort: Desc)])
 }
 
 // FR-304 / FR-904: append-only record of every curation decision. Application code
