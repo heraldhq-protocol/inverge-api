@@ -147,6 +147,13 @@ describe('IdeasService — public creator counts', () => {
       _count: { _all: true },
     });
     expect(page.data[0].creator?.ideasPublished).toBe(7);
+    expect(page.data[0].gateProgress.criteria.supporters).toEqual({
+      have: 0,
+      need: 50,
+      pct: 0,
+      met: false,
+    });
+    expect(page.data[0].gateProgress.meetsThreshold).toBe(false);
   });
 
   it('counts one creator on detail', async () => {

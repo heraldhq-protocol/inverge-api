@@ -70,7 +70,7 @@ counter exists.
 
 | Route | Current | Notes |
 |---|---|---|
-| `GET /ideas` | `limit` (default 24, max 50) + `cursor` | Keyset on `(createdAt, id)`, newest first. Optional `taxonomyCategory`/`taxonomySubcategory`. The featured/promoted in-memory re-sort was removed: it only reordered the current page. `promoted`/`boostTier` are still returned for the badge. |
+| `GET /ideas` | `limit` (default 24, max 50) + `cursor` | Keyset on `(createdAt, id)`, newest first. Optional `taxonomyCategory`/`taxonomySubcategory`. Each row carries the same `gateProgress` shape as detail, computed from one threshold read per page. The featured/promoted in-memory re-sort was removed: it only reordered the current page. `promoted`/`boostTier` are still returned for the badge. |
 | `GET /campaigns` | `limit` + `cursor` | Keyset on `(createdAt, id)`, `(deadline, id)` or `(totalRaised, id)`. Optional `taxonomyCategory`/`taxonomySubcategory`. `most-delivered` was removed. |
 | `GET /feed` | fixed candidate pool, no cursor | Ranked output has no stable sort value yet; the pool is bounded. |
 | `GET /ideas/:id/comments` | `limit` (default 50, max 100) + `cursor` | Keyset on `(highlighted, likeCount, createdAt, id)`, all descending. The first three keys are mutable (a like or highlight between pages can move a comment across the cursor); the id tie-breaker still prevents duplicates within a stable page. |

@@ -37,6 +37,23 @@ import {
   keysetCondition,
 } from '../../common/http/pagination';
 
+type GateThresholds = {
+  minSupporters: number;
+  minWeightedUSD: number;
+  minPct: number;
+  minFeedbackCount: number;
+  minAvgFeedbackRating: number;
+};
+
+type GateSource = {
+  supporterCount: number | null;
+  weightedPrePledgeTotal: { toString(): string } | null;
+  feedbackCount: number | null;
+  feedbackScore: { toString(): string } | null;
+  askAmount: { toString(): string };
+  creatorPrePledgeTarget: { toString(): string } | null;
+};
+
 @Injectable()
 export class IdeasService {
   constructor(
@@ -48,6 +65,44 @@ export class IdeasService {
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly analytics?: ProductAnalyticsService,
   ) {}
+
+  private loadGateThresholds(): Promise<GateThresholds> {
+    return Promise.all([
+      this.params.getNumber('validation.minSupporters', 50),
+      this.params.getNumber('validation.minWeightedUSD', 2000),
+      this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
+      this.params.getNumber('validation.minFeedbackCount', 10),
+      this.params.getNumber('validation.minAvgFeedbackRating', 3),
+    ]).then(
+      ([
+        minSupporters,
+        minWeightedUSD,
+        minPct,
+        minFeedbackCount,
+        minAvgFeedbackRating,
+      ]) => ({
+        minSupporters,
+        minWeightedUSD,
+        minPct,
+        minFeedbackCount,
+        minAvgFeedbackRating,
+      }),
+    );
+  }
+
+  private gateProgressFor(idea: GateSource, thresholds: GateThresholds) {
+    return buildGateProgress({
+      supporterCount: idea.supporterCount ?? 0,
+      weighted: Number(idea.weightedPrePledgeTotal ?? 0),
+      feedbackCount: idea.feedbackCount ?? 0,
+      feedbackScore: Number(idea.feedbackScore ?? 0),
+      askAmount: Number(idea.askAmount ?? 0),
+      creatorTarget: idea.creatorPrePledgeTarget
+        ? Number(idea.creatorPrePledgeTarget)
+        : 0,
+      ...thresholds,
+    });
+  }
 
   private async findIdea(idOrSlug: string) {
     const idea = await this.prisma.idea.findFirst({
@@ -195,31 +250,34 @@ export class IdeasService {
       : null;
 
     const loadPage = async () => {
-      const ideas = await this.prisma.idea.findMany({
-        where: cursor
-          ? {
-              AND: [
-                whereClause,
-                keysetCondition('createdAt', 'desc', cursor, asCursorDate),
-              ],
-            }
-          : whereClause,
-        include: {
-          creator: {
-            include: { creatorProfile: true },
-          },
-          boosts: {
-            where: {
-              startsAt: { lte: now },
-              OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      const [ideas, gateThresholds] = await Promise.all([
+        this.prisma.idea.findMany({
+          where: cursor
+            ? {
+                AND: [
+                  whereClause,
+                  keysetCondition('createdAt', 'desc', cursor, asCursorDate),
+                ],
+              }
+            : whereClause,
+          include: {
+            creator: {
+              include: { creatorProfile: true },
+            },
+            boosts: {
+              where: {
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+              },
             },
           },
-        },
-        // Newest first with an id tie-breaker: the order must be total, or a page
-        // boundary can repeat or skip an idea created in the same millisecond.
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-      });
+          // Newest first with an id tie-breaker: the order must be total, or a page
+          // boundary can repeat or skip an idea created in the same millisecond.
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit + 1,
+        }),
+        this.loadGateThresholds(),
+      ]);
 
       // Prisma's relation `_count` compiles to a grouped aggregate over the whole
       // Idea table, so every page paid for a 50k-row scan. Count only the creators
@@ -255,6 +313,7 @@ export class IdeasService {
                 ideasPublished: ideasPublishedByCreator.get(creator.id) ?? 0,
               })
             : null,
+          gateProgress: this.gateProgressFor(idea, gateThresholds),
           promoted: boosts.length > 0,
           boostTier: boosts[0]?.tier ?? null,
         }),
@@ -293,36 +352,13 @@ export class IdeasService {
       });
       if (!idea) throw new NotFoundException('Idea not found');
 
-      const [
-        minSupporters,
-        minWeightedUSD,
-        minPct,
-        minFeedbackCount,
-        minAvgFeedbackRating,
-        ideasPublished,
-      ] = await Promise.all([
-        this.params.getNumber('validation.minSupporters', 50),
-        this.params.getNumber('validation.minWeightedUSD', 2000),
-        this.params.getNumber('validation.minPrePledgePctOfAsk', 0.1),
-        this.params.getNumber('validation.minFeedbackCount', 10),
-        this.params.getNumber('validation.minAvgFeedbackRating', 3),
+      const [gateThresholds, ideasPublished] = await Promise.all([
+        this.loadGateThresholds(),
         // Same reason as the list: avoid Prisma's full-table relation count.
         this.prisma.idea.count({ where: { creatorId: idea.creatorId } }),
       ]);
 
-      const gateProgress = buildGateProgress({
-        supporterCount: idea.supporterCount ?? 0,
-        weighted: Number(idea.weightedPrePledgeTotal ?? 0),
-        feedbackCount: idea.feedbackCount ?? 0,
-        feedbackScore: Number(idea.feedbackScore ?? 0),
-        askAmount: Number(idea.askAmount ?? 0),
-        creatorTarget: idea.creatorPrePledgeTarget ? Number(idea.creatorPrePledgeTarget) : 0,
-        minSupporters,
-        minWeightedUSD,
-        minPct,
-        minFeedbackCount,
-        minAvgFeedbackRating,
-      });
+      const gateProgress = this.gateProgressFor(idea, gateThresholds);
 
       const {
         creator,
