@@ -13,6 +13,10 @@ import { toPublicCreator } from '../../common/projections/creator-profile.projec
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
 import {
+  resolveTaxonomyPair,
+  toTaxonomyProjection,
+} from '../taxonomy/taxonomy';
+import {
   asCursorDate,
   buildPage,
   clampPageSize,
@@ -55,6 +59,18 @@ export class CampaignsService {
       };
     }
 
+    const taxonomy = resolveTaxonomyPair(
+      query.taxonomyCategory,
+      query.taxonomySubcategory,
+    );
+    if (!taxonomy.ok) throw new BadRequestException(taxonomy.reason);
+    if (taxonomy.pair) {
+      whereClause.taxonomyCategorySlug = taxonomy.pair.category;
+      if (taxonomy.pair.subcategory) {
+        whereClause.taxonomySubcategorySlug = taxonomy.pair.subcategory;
+      }
+    }
+
     // Each sort is a total order: `id` breaks ties so a page boundary can never
     // repeat or drop a campaign with the same timestamp or raised amount.
     const sort = query.sort ?? 'newest';
@@ -92,6 +108,8 @@ export class CampaignsService {
       viewer: query.mine ? (currentUserId ?? null) : null,
       status: query.status ?? null,
       category: query.category ?? null,
+      taxonomyCategory: taxonomy.pair?.category ?? null,
+      taxonomySubcategory: taxonomy.pair?.subcategory ?? null,
       region: query.region ?? null,
       sort,
     });
@@ -134,7 +152,13 @@ export class CampaignsService {
       });
 
       const result = campaigns.map((campaign) => {
-        const { creator, milestones, ...rest } = campaign;
+        const {
+          creator,
+          milestones,
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+          ...rest
+        } = campaign;
         const totalMilestones = milestones.length;
         const releasedMilestones = milestones.filter(
           (m) => m.claims[0]?.status === 'APPROVED',
@@ -142,6 +166,10 @@ export class CampaignsService {
 
         return {
           ...rest,
+          taxonomy: toTaxonomyProjection(
+            taxonomyCategorySlug,
+            taxonomySubcategorySlug,
+          ),
           creator: toPublicCreator(creator),
           milestoneSummary: {
             total: totalMilestones,
@@ -203,7 +231,14 @@ export class CampaignsService {
 
       if (!campaign) throw new NotFoundException('Campaign not found');
 
-      const { creator, milestones, contributions, ...rest } = campaign;
+      const {
+        creator,
+        milestones,
+        contributions,
+        taxonomyCategorySlug,
+        taxonomySubcategorySlug,
+        ...rest
+      } = campaign;
 
       const formattedMilestones = milestones.map((m) => {
         const latestClaim = m.claims[0] ?? null;
@@ -237,6 +272,10 @@ export class CampaignsService {
 
       return {
         ...rest,
+        taxonomy: toTaxonomyProjection(
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+        ),
         creator: toPublicCreator(creator),
         milestones: formattedMilestones,
         myContribution,

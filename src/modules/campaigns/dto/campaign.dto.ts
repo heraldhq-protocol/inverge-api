@@ -15,6 +15,7 @@ import {
   DISCOVERY_MAX_PAGE_SIZE,
   DISCOVERY_PAGE_SIZE,
 } from '../../../common/http/pagination';
+import { TAXONOMY_CATEGORY_SLUGS } from '../../taxonomy/taxonomy';
 
 export const CAMPAIGN_SORT_OPTIONS = [
   'closing-soon',
@@ -51,6 +52,21 @@ export class ListCampaignsQueryDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({
+    enum: TAXONOMY_CATEGORY_SLUGS,
+    description: 'Discovery taxonomy category. Independent of the legacy `category` bucket.',
+  })
+  @IsOptional()
+  @IsIn(TAXONOMY_CATEGORY_SLUGS)
+  taxonomyCategory?: string;
+
+  @ApiPropertyOptional({
+    description: 'Discovery taxonomy subcategory; requires taxonomyCategory.',
+  })
+  @IsOptional()
+  @IsString()
+  taxonomySubcategory?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

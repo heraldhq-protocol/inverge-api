@@ -12,6 +12,10 @@ import { QualityService } from '../quality/quality.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { ProductAnalyticsService } from '../analytics/product-analytics.service';
+import {
+  resolveTaxonomyPair,
+  toTaxonomyProjection,
+} from '../taxonomy/taxonomy';
 import { slugify } from '../../common/utils/slug.util';
 import { DEFAULT_SURVEY } from '../survey/survey-validation';
 import {
@@ -69,6 +73,7 @@ export class IdeasService {
         askBreakdown: dto.askBreakdown as object,
         roadmapSteps: dto.roadmapSteps as object,
         category: dto.category,
+        ...this.taxonomyFields(dto.taxonomy),
         region: dto.region ?? null,
         coverImageUrl: dto.coverImageUrl ?? null,
         risks: dto.risks ?? null,
@@ -91,7 +96,7 @@ export class IdeasService {
       })),
     });
     await this.quality.evaluate(idea.id, false);
-    this.cache?.bumpEventually('ideas');
+    this.invalidateIdea();
     return this.get(idea.id);
   }
 
@@ -101,9 +106,15 @@ export class IdeasService {
       throw new BadRequestException('Only draft ideas can be edited');
     }
     const id = idea.id;
-    await this.prisma.idea.update({ where: { id }, data: { ...dto } as object });
+    // `taxonomy` is a nested DTO, not a column: map it, and leave the stored
+    // assignment untouched when the field is absent (undefined). An explicit
+    // `null` clears the assignment.
+    const { taxonomy, ...fields } = dto;
+    const data: Record<string, unknown> = { ...fields };
+    if (taxonomy !== undefined) Object.assign(data, this.taxonomyFields(taxonomy));
+    await this.prisma.idea.update({ where: { id }, data: data as object });
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
-    this.cache?.bumpEventually('ideas');
+    this.invalidateIdea();
     return this.get(id);
   }
 
@@ -120,7 +131,7 @@ export class IdeasService {
     });
     // FR-272: score and set the discoverability tier (auto-promote if it clears the floor).
     await this.quality.evaluate(id, true);
-    this.cache?.bumpEventually('ideas');
+    this.invalidateIdea();
     const fresh = await this.get(id);
     // FR-1004: screen on publish — advisory + non-blocking (records a ModerationCase).
     await this.moderation.screenSafe(
@@ -146,7 +157,7 @@ export class IdeasService {
   async list(query: ListIdeasQueryDto, currentUserId?: string) {
     const now = new Date();
 
-    let whereClause: object;
+    let whereClause: Record<string, unknown>;
     if (query.mine) {
       if (!currentUserId) {
         throw new ForbiddenException('Must be logged in to view your ideas');
@@ -159,11 +170,25 @@ export class IdeasService {
       };
     }
 
+    const taxonomy = resolveTaxonomyPair(
+      query.taxonomyCategory,
+      query.taxonomySubcategory,
+    );
+    if (!taxonomy.ok) throw new BadRequestException(taxonomy.reason);
+    if (taxonomy.pair) {
+      whereClause.taxonomyCategorySlug = taxonomy.pair.category;
+      if (taxonomy.pair.subcategory) {
+        whereClause.taxonomySubcategorySlug = taxonomy.pair.subcategory;
+      }
+    }
+
     const limit = clampPageSize(query.limit);
     const fingerprint = filterFingerprint({
       route: 'ideas.list',
       mine: Boolean(query.mine),
       viewer: query.mine ? (currentUserId ?? null) : null,
+      taxonomyCategory: taxonomy.pair?.category ?? null,
+      taxonomySubcategory: taxonomy.pair?.subcategory ?? null,
     });
     const cursor = query.cursor
       ? decodeCursor(query.cursor, fingerprint)
@@ -211,17 +236,29 @@ export class IdeasService {
         creatorCounts.map((row) => [row.creatorId, row._count._all]),
       );
 
-      const rows = ideas.map(({ boosts, creator, ...idea }) => ({
-        ...idea,
-        creator: creator
-          ? toPublicCreator({
-              ...creator,
-              ideasPublished: ideasPublishedByCreator.get(creator.id) ?? 0,
-            })
-          : null,
-        promoted: boosts.length > 0,
-        boostTier: boosts[0]?.tier ?? null,
-      }));
+      const rows = ideas.map(
+        ({
+          boosts,
+          creator,
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+          ...idea
+        }) => ({
+          ...idea,
+          taxonomy: toTaxonomyProjection(
+            taxonomyCategorySlug,
+            taxonomySubcategorySlug,
+          ),
+          creator: creator
+            ? toPublicCreator({
+                ...creator,
+                ideasPublished: ideasPublishedByCreator.get(creator.id) ?? 0,
+              })
+            : null,
+          promoted: boosts.length > 0,
+          boostTier: boosts[0]?.tier ?? null,
+        }),
+      );
 
       return buildPage(rows, limit, (idea) =>
         encodeCursor(idea.createdAt.toISOString(), idea.id, fingerprint),
@@ -287,9 +324,18 @@ export class IdeasService {
         minAvgFeedbackRating,
       });
 
-      const { creator, ...rest } = idea;
+      const {
+        creator,
+        taxonomyCategorySlug,
+        taxonomySubcategorySlug,
+        ...rest
+      } = idea;
       return {
         ...rest,
+        taxonomy: toTaxonomyProjection(
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+        ),
         creator: creator
           ? toPublicCreator({ ...creator, ideasPublished })
           : null,
@@ -397,6 +443,28 @@ export class IdeasService {
     });
     this.invalidateIdea();
     return result;
+  }
+
+  /**
+   * Map the nested taxonomy DTO onto the two stored slug columns. The pair is
+   * validated here rather than in the DTO because the child is only valid under
+   * its own parent, which a field-level validator cannot see.
+   */
+  private taxonomyFields(
+    taxonomy?: { category: string; subcategory?: string } | null,
+  ): {
+    taxonomyCategorySlug: string | null;
+    taxonomySubcategorySlug: string | null;
+  } {
+    const resolved = resolveTaxonomyPair(
+      taxonomy?.category,
+      taxonomy?.subcategory,
+    );
+    if (!resolved.ok) throw new BadRequestException(resolved.reason);
+    return {
+      taxonomyCategorySlug: resolved.pair?.category ?? null,
+      taxonomySubcategorySlug: resolved.pair?.subcategory ?? null,
+    };
   }
 
   /**

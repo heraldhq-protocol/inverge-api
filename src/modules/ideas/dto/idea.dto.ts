@@ -22,6 +22,7 @@ import {
   DISCOVERY_MAX_PAGE_SIZE,
   DISCOVERY_PAGE_SIZE,
 } from '../../../common/http/pagination';
+import { TAXONOMY_CATEGORY_SLUGS } from '../../taxonomy/taxonomy';
 
 export const PLEDGE_CURRENCIES = ['USD', 'NGN'] as const;
 
@@ -63,6 +64,20 @@ export class RoadmapStepDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(280) description!: string;
 }
 
+export class IdeaTaxonomyDto {
+  @ApiProperty({ enum: TAXONOMY_CATEGORY_SLUGS })
+  @IsIn(TAXONOMY_CATEGORY_SLUGS)
+  category!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Subcategory slug. Must belong to the selected category; omit it when the parent is the honest level of fit.',
+  })
+  @IsOptional()
+  @IsString()
+  subcategory?: string;
+}
+
 export class CreateIdeaDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(140) title!: string;
   @ApiProperty() @IsString() @IsNotEmpty() problem!: string;
@@ -84,6 +99,17 @@ export class CreateIdeaDto {
 
   @ApiProperty({ enum: IDEA_CATEGORIES })
   @IsIn(IDEA_CATEGORIES) category!: (typeof IDEA_CATEGORIES)[number];
+
+  @ApiPropertyOptional({
+    type: IdeaTaxonomyDto,
+    description:
+      'Discovery taxonomy assignment. Optional: an idea whose honest fit is none stays unassigned. ' +
+      'The legacy `category` remains the builder bucket and is not this taxonomy.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => IdeaTaxonomyDto)
+  taxonomy?: IdeaTaxonomyDto | null;
 
   @ApiPropertyOptional({
     description: 'Creator-declared region/origin (e.g. "Lagos"). Feeds discovery '
@@ -172,5 +198,20 @@ export class ListIdeasQueryDto {
   @Transform(parseBooleanQuery)
   @IsBoolean()
   mine?: boolean;
+
+  @ApiPropertyOptional({
+    enum: TAXONOMY_CATEGORY_SLUGS,
+    description: 'Discovery taxonomy category. Independent of the legacy `category` bucket.',
+  })
+  @IsOptional()
+  @IsIn(TAXONOMY_CATEGORY_SLUGS)
+  taxonomyCategory?: string;
+
+  @ApiPropertyOptional({
+    description: 'Discovery taxonomy subcategory; requires taxonomyCategory.',
+  })
+  @IsOptional()
+  @IsString()
+  taxonomySubcategory?: string;
 }
 
