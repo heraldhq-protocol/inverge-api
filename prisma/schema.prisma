@@ -307,6 +307,35 @@ model CreatorProfile {
   updatedAt          DateTime    @updatedAt
 }
 
+// ─────────────────────────── Discovery taxonomy ───────────────────────────
+
+// Seeded reference data for the shared campaign/idea taxonomy (D-038). The
+// canonical list lives in `src/modules/taxonomy/taxonomy.data.ts`, mirrored from
+// the web; `prisma/seed.ts` writes these rows and `GET /taxonomy` reads them.
+// Assignments on Idea and Campaign are validated at the API boundary and carry no
+// foreign key, so an instance can serve while the reference data is reseeded.
+model TaxonomyCategory {
+  slug          String @id
+  label         String
+  sortOrder     Int
+  subcategories TaxonomySubcategory[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TaxonomySubcategory {
+  categorySlug String
+  category     TaxonomyCategory @relation(fields: [categorySlug], references: [slug], onDelete: Cascade)
+  slug         String
+  label        String
+  sortOrder    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@id([categorySlug, slug])
+  @@index([categorySlug, sortOrder])
+}
+
 // ─────────────────────────── Idea validation (Phase 0, live) ───────────────────────────
 
 model Idea {
@@ -326,7 +355,9 @@ model Idea {
   currentAlternative String? // what they do today + why it's insufficient
   askBreakdown       Json? // indicative breakdown of what the ask buys
   roadmapSteps       Json? // >=2 dated steps [{ date, description }]
-  category           String? // software | agriculture | film | arts | ...
+  category           String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
+  taxonomyCategorySlug    String? // canonical discovery taxonomy (D-038); validated against taxonomy.data.ts
+  taxonomySubcategorySlug String? // only meaningful with taxonomyCategorySlug
   region             String? // creator-declared region/origin — personalization + "From Lagos" chip
   coverImageUrl      String? // P1 web UI gap: media on idea
   risks              String? // P2 web UI gap: risks and challenges section
@@ -374,6 +405,7 @@ model Idea {
 
   @@index([creatorId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([taxonomyCategorySlug, taxonomySubcategorySlug, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-271: audit + coaching output of each quality scoring run (on publish and edit).
@@ -554,6 +586,8 @@ model Campaign {
   ideaId                   String?        @unique
   idea                     Idea?          @relation(fields: [ideaId], references: [id])
   ideaSnapshot             Json?
+  taxonomyCategorySlug     String? // copied from the idea at conversion; validated at the API boundary
+  taxonomySubcategorySlug  String?
   creatorId                String
   creator                  User           @relation("CampaignCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   type                     CampaignType   @default(ALL_OR_NOTHING)
@@ -597,6 +631,7 @@ model Campaign {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([deadline, id])
   @@index([totalRaised(sort: Desc), id(sort: Desc)])
+  @@index([taxonomyCategorySlug, taxonomySubcategorySlug, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-304 / FR-904: append-only record of every curation decision. Application code

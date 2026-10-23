@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { TAXONOMY } from '../src/modules/taxonomy/taxonomy.data';
 
 // Launch-parameter defaults (docs/phase0-refined-plan.md §5, docs/srs-pre-pledge-weighting.md §12).
 // Admin-tunable at runtime via PATCH /admin/params — reseeding never clobbers values an
@@ -109,6 +110,64 @@ async function main() {
       });
     }
     console.log(`Seeded ${Object.keys(DEFAULT_PARAMS).length} platform params.`);
+
+    // D-038: the taxonomy is reference data, seeded from the same canonical list
+    // the API validates writes against. Upsert by stable slug so a label edit is
+    // applied without moving a published URL, and remove rows the list no longer
+    // contains. Idea/Campaign assignments carry no FK, so a removed term never
+    // blocks the seed.
+    const categorySlugs = TAXONOMY.map((category) => category.slug);
+    const subcategoryKeys = TAXONOMY.flatMap((category) =>
+      category.subcategories.map((subcategory) => ({
+        categorySlug: category.slug,
+        slug: subcategory.slug,
+      })),
+    );
+
+    await prisma.$transaction(async (tx) => {
+      for (const [categoryIndex, category] of TAXONOMY.entries()) {
+        await tx.taxonomyCategory.upsert({
+          where: { slug: category.slug },
+          update: { label: category.label, sortOrder: categoryIndex },
+          create: {
+            slug: category.slug,
+            label: category.label,
+            sortOrder: categoryIndex,
+          },
+        });
+
+        for (const [subcategoryIndex, subcategory] of category.subcategories.entries()) {
+          await tx.taxonomySubcategory.upsert({
+            where: {
+              categorySlug_slug: {
+                categorySlug: category.slug,
+                slug: subcategory.slug,
+              },
+            },
+            update: { label: subcategory.label, sortOrder: subcategoryIndex },
+            create: {
+              categorySlug: category.slug,
+              slug: subcategory.slug,
+              label: subcategory.label,
+              sortOrder: subcategoryIndex,
+            },
+          });
+        }
+      }
+
+      if (subcategoryKeys.length > 0) {
+        await tx.taxonomySubcategory.deleteMany({
+          where: { NOT: { OR: subcategoryKeys } },
+        });
+      }
+      await tx.taxonomyCategory.deleteMany({
+        where: { slug: { notIn: categorySlugs } },
+      });
+    });
+
+    console.log(
+      `Seeded ${TAXONOMY.length} taxonomy categories and ${subcategoryKeys.length} subcategories.`,
+    );
   } finally {
     await prisma.$disconnect();
   }

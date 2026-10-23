@@ -25,6 +25,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { SurveyModule } from './modules/survey/survey.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     SurveyModule,
     CampaignsModule,
     AnalyticsModule,
+    TaxonomyModule,
   ],
   providers: [
     // Registered as a provider (not only in main.ts) so e2e applications get the
