@@ -1,8 +1,11 @@
 name: ci
 
+# Automatic runs are paused: the repository account currently has an Actions
+# billing lock, so GitHub cancels every job before it starts. Run this workflow
+# manually from the Actions tab ("Run workflow") once billing is restored, then
+# put the push/pull_request triggers back.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
