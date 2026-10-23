@@ -50,7 +50,7 @@ exists; **deferred** = planned, not next.
 | Campaign catalogue | `GET /campaigns` | implemented | Keyset cursor; `most-delivered` removed until a released-claim counter exists |
 | Campaign detail | `GET /campaigns/{id}` | implemented | Deep includes on a card-shaped read |
 | Search | — | missing | No endpoint; `search_performed` analytics would precede it |
-| Topics / categories | — | missing | Taxonomy is fixture-only in the web |
+| Topics / categories | `GET /taxonomy` | partial | Canonical 15/154 taxonomy, assignments and browse filters are implemented; editorial topics and web wiring are missing |
 
 ## Campaigns and escrow
 
