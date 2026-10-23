@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import { logQueueErrors } from '../../common/queue/queue-errors';
 import { Env } from '../../config/env.validation';
 import { SNAPSHOT_QUEUE } from './snapshot.processor';
 
@@ -17,6 +18,7 @@ export class SnapshotScheduler implements OnModuleInit {
     config: ConfigService<Env, true>,
   ) {
     this.enabled = config.get('QUEUE_ENABLED', { infer: true });
+    logQueueErrors(queue, this.logger);
   }
 
   async onModuleInit() {
@@ -26,25 +28,33 @@ export class SnapshotScheduler implements OnModuleInit {
     }
 
     // Best-effort: a Redis outage must never crash or hang boot (the idea-validation
-    // flow runs without Redis). Time-box the enqueue and swallow failures — the job
-    // re-schedules on the next boot once Redis is reachable.
+    // flow runs without Redis). BullMQ's repeatable add starts background work that
+    // rejects unhandled when the lazy connection closes, so only enqueue once the
+    // queue reports ready. A failed probe is the caller's answer: skip this boot.
     let timer: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
-        this.queue.add(
-          'daily-snapshot',
-          {},
-          {
-            repeat: { pattern: '0 3 * * *' }, // 03:00 daily — one snapshot/day feeds the consecutive-day check
-            jobId: 'metrics-daily-snapshot',
-            removeOnComplete: true,
-            removeOnFail: 100,
-          },
-        ),
+        this.queue.waitUntilReady(),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('enqueue timed out')), 3000);
+          timer = setTimeout(() => reject(new Error('connection timed out')), 3000);
         }),
       ]);
+
+      const enqueue = this.queue.add(
+        'daily-snapshot',
+        {},
+        {
+          repeat: { pattern: '0 3 * * *' }, // 03:00 daily — one snapshot/day feeds the consecutive-day check
+          jobId: 'metrics-daily-snapshot',
+          removeOnComplete: true,
+          removeOnFail: 100,
+        },
+      );
+      // The enqueue can still reject after the readiness probe when the
+      // connection closes. Mark it handled now; the outer catch is the verdict.
+      void enqueue.catch(() => undefined);
+      await enqueue;
+
       this.logger.log('Scheduled daily idea metric snapshot (03:00)');
     } catch (e) {
       this.logger.warn(
