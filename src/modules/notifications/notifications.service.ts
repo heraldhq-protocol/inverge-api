@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { logQueueErrors } from '../../common/queue/queue-errors';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -56,7 +57,9 @@ export class NotificationsService {
     @Optional()
     @InjectQueue(NOTIFICATION_QUEUE)
     private readonly queue?: Queue<NotificationDispatchJob>,
-  ) {}
+  ) {
+    if (queue) logQueueErrors(queue, this.logger);
+  }
 
   async notify(message: NotificationMessage): Promise<void> {
     let row: { id: string };

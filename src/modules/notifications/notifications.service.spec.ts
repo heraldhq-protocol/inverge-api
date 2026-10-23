@@ -36,7 +36,12 @@ function fakePort(): NotificationPort & { send: jest.Mock } {
 }
 
 function fakeQueue(): Queue & { add: jest.Mock } {
-  return { add: jest.fn().mockResolvedValue(undefined) } as unknown as Queue & {
+  return {
+    add: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    listenerCount: () => 0,
+    name: 'notification-dispatch',
+  } as unknown as Queue & {
     add: jest.Mock;
   };
 }

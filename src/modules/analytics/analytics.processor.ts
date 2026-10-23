@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AnalyticsAggregationService } from './analytics-aggregation.service';
@@ -20,6 +20,14 @@ export class AnalyticsProcessor extends WorkerHost {
     private readonly retention: AnalyticsRetentionService,
   ) {
     super();
+  }
+
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.warn(
+      `Analytics worker is unavailable (${error.message}); ` +
+        'maintenance resumes when Redis is reachable.',
+    );
   }
 
   async process(job: Job<AnalyticsJobData>) {
