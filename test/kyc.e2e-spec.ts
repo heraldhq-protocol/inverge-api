@@ -228,9 +228,16 @@ describe('KYC/AML routes (e2e)', () => {
   // ─────────────── Webhook robustness ───────────────
   describe('webhook', () => {
     it('ignores a callback for an unknown session (200 ignored)', async () => {
+      // A fresh ref per run: the inbox remembers an ignored event, and a replay
+      // correctly returns 200 without re-applying. Reusing a literal ref would
+      // make this suite pass only on a database that has never seen it.
       await http()
         .post('/api/v1/kyc/webhook')
-        .send({ providerRef: 'no-such-session', vendor_data: 'nobody', status: 'VERIFIED' })
+        .send({
+          providerRef: `no-such-session-${Date.now()}`,
+          vendor_data: 'nobody',
+          status: 'VERIFIED',
+        })
         .expect(200)
         .then((r) => expect(r.body.ignored).toBe(true));
     });
