@@ -372,10 +372,7 @@ model Idea {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([creatorId])
-  @@index([status])
-  @@index([discoverabilityTier])
-  @@index([category])
+  @@index([creatorId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-271: audit + coaching output of each quality scoring run (on publish and edit).
@@ -442,6 +439,7 @@ model IdeaSignal {
 
   @@unique([ideaId, userId, type])
   @@index([ideaId])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 // FR-202/203: a creator-built survey question. Ordered per idea; choice types carry
@@ -643,7 +641,7 @@ model MilestoneClaim {
   objections MilestoneObjection[]
   ruling     ReviewerRuling?
 
-  @@index([milestoneId])
+  @@index([milestoneId, submittedAt(sort: Desc)])
 }
 
 model MilestoneObjection {
@@ -680,7 +678,7 @@ model Contribution {
   txSignature String    @unique
   createdAt   DateTime  @default(now())
 
-  @@index([campaignId])
+  @@index([campaignId, createdAt(sort: Desc)])
   @@index([userId])
 }
 
@@ -696,7 +694,7 @@ model OnChainEvent {
   blockTime   DateTime
   indexedAt   DateTime         @default(now())
 
-  @@index([campaignId])
+  @@index([campaignId, eventType, blockTime(sort: Desc)])
 }
 
 // FR-901 / FR-904: admin-configurable platform parameters (fees, thresholds, windows).

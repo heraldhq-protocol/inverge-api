@@ -1152,7 +1152,7 @@ Remaining before production: start the local PostgreSQL service and apply the
 pending migrations to the developer database; point Paystack and Didit dashboards
 at the `/api/v1` callbacks; run the workflow on GitHub (it has not executed there
 yet); and collect real `EXPLAIN`/latency numbers for the hot list queries - no
-performance figures are claimed here.
+performance figures are claimed here. The last item is closed in §27.
 
 ## 26. Stage 2 close-out - error envelope in the contract (2026-10-23)
 
@@ -1170,3 +1170,38 @@ performance figures are claimed here.
 
 Verification: 4 unit cases; `openapi.json` regenerated (705 added lines, every
 operation covered); `tsc --noEmit`, unit suite, build and `openapi:check` pass.
+
+## 27. Stage 2 close-out - query indexes and measured plans (2026-10-23)
+
+- **The missing indexes are in place.** Migration
+  `20261023100000_query_indexes` adds `IdeaSignal(userId, createdAt DESC)`,
+  `Idea(creatorId, createdAt DESC, id DESC)`,
+  `Contribution(campaignId, createdAt DESC)`,
+  `MilestoneClaim(milestoneId, submittedAt DESC)` and
+  `OnChainEvent(campaignId, eventType, blockTime DESC)`. It drops the
+  single-column indexes those composites replace, plus the old `Idea`
+  status/category/tier singles that the partial index supersedes.
+  `Campaign(status)` stays for admin/single-status reads.
+- **Public discovery uses partial indexes.** Prisma cannot express
+  `WHERE status IN (...) AND discoverabilityTier IN (...)`, so the raw migration
+  adds partial indexes for the exact `IdeasService.list` and
+  `CampaignsService.list` filters. The planner walks them in keyset order and
+  stops after one page; the previous plans scanned 50k ideas or 10k campaigns
+  and sorted. `prisma migrate diff` ignores partial indexes, so the drift gate
+  remains meaningful and green.
+- **Evidence, not intuition.** `prisma/volume-fixture.sql` builds a disposable
+  10k-user / 50k-idea / 10k-campaign / 200k-contribution fixture. Server-side
+  p50/p95 over 50 runs after 10 warm-ups: ideas list 31.07/85.03 ms -> 0.10/0.29
+  ms; feed personalisation 11.07/18.33 ms -> 0.23/0.53 ms; campaigns most
+  backed 11.19/31.80 ms -> 0.14/0.32 ms; contribution timeline 0.45/0.82 ms ->
+  0.17/0.25 ms. The feed category candidate query was left alone: a partial
+  `(category)` index moved p50 from 2.86 ms to ~1.60 ms, which did not justify
+  the write cost.
+- **Honest scope.** The numbers are single-node, warm-cache, server-side SQL
+  timings on synthetic data. They are not API p95 and do not include auth,
+  serialization, cache lookups, network or concurrency. The full table and
+  caveats are in `docs/api/query-performance.md`.
+
+Verification: all 20 migrations apply on a fresh database; `migrate diff` is
+empty; full e2e 111 passed / 6 skipped on the fresh schema; `tsc --noEmit`,
+unit suite, build and `openapi:check` pass.
