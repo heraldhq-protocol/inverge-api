@@ -3,6 +3,14 @@ import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TaxonomyResponseDto } from './dto/taxonomy.dto';
 
+// The same visibility rule as `GET /ideas`: a validating or threshold-met idea
+// that the catalogue can actually surface. Draft, converted and link-only ideas
+// are not counted, so a category chip cannot advertise an unlisted idea.
+const PUBLIC_IDEA_FILTER: Prisma.IdeaWhereInput = {
+  status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
+  discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
+};
+
 /**
  * The browse taxonomy.
  *
@@ -74,11 +82,3 @@ export class TaxonomyService {
     };
   }
 }
-
-// The same visibility rule as `GET /ideas`: a validating or threshold-met idea
-// that the catalogue can actually surface. Draft, converted and low-quality ideas
-// are not counted, so a category chip cannot advertise an unlisted idea.
-const PUBLIC_IDEA_FILTER: Prisma.IdeaWhereInput = {
-  status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
-  discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
-};
