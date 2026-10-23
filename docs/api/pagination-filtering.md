@@ -61,13 +61,17 @@ counter exists.
   fields mean AND.
 - Enum filters are validated against a closed list; an unknown value is a 400, not
   an empty page.
+- `GET /ideas` and `GET /campaigns` accept `taxonomyCategory` and
+  `taxonomySubcategory` (see [taxonomy.md](./taxonomy.md)). The child requires
+  the parent and must belong to it. This is independent of the legacy `category`
+  filter, which is the broad builder bucket, not the discovery taxonomy.
 
 ## Today
 
 | Route | Current | Notes |
 |---|---|---|
-| `GET /ideas` | `limit` (default 24, max 50) + `cursor` | Keyset on `(createdAt, id)`, newest first. The featured/promoted in-memory re-sort was removed: it only reordered the current page. `promoted`/`boostTier` are still returned for the badge. |
-| `GET /campaigns` | `limit` + `cursor` | Keyset on `(createdAt, id)`, `(deadline, id)` or `(totalRaised, id)`. `most-delivered` was removed. |
+| `GET /ideas` | `limit` (default 24, max 50) + `cursor` | Keyset on `(createdAt, id)`, newest first. Optional `taxonomyCategory`/`taxonomySubcategory`. The featured/promoted in-memory re-sort was removed: it only reordered the current page. `promoted`/`boostTier` are still returned for the badge. |
+| `GET /campaigns` | `limit` + `cursor` | Keyset on `(createdAt, id)`, `(deadline, id)` or `(totalRaised, id)`. Optional `taxonomyCategory`/`taxonomySubcategory`. `most-delivered` was removed. |
 | `GET /feed` | fixed candidate pool, no cursor | Ranked output has no stable sort value yet; the pool is bounded. |
 | `GET /ideas/:id/comments` | `limit` (default 50, max 100) + `cursor` | Keyset on `(highlighted, likeCount, createdAt, id)`, all descending. The first three keys are mutable (a like or highlight between pages can move a comment across the cursor); the id tie-breaker still prevents duplicates within a stable page. |
 | `GET /admin/users` | `take` only | Bounded today, grows with the user table. |

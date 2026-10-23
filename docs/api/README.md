@@ -15,6 +15,7 @@ same surface as the committed document.
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
+| [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |
 | [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Implemented for server-side signal events |

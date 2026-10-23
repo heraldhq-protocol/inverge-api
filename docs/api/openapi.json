@@ -320,6 +320,14 @@
             "description": "Who specifically has this problem (named user type, not \"everyone\")",
             "type": "string"
           },
+          "taxonomy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdeaTaxonomyDto"
+              }
+            ],
+            "description": "Discovery taxonomy assignment. Optional: an idea whose honest fit is none stays unassigned. The legacy `category` remains the builder bucket and is not this taxonomy."
+          },
           "title": {
             "type": "string"
           }
@@ -421,6 +429,38 @@
         },
         "required": [
           "highlighted"
+        ],
+        "type": "object"
+      },
+      "IdeaTaxonomyDto": {
+        "properties": {
+          "category": {
+            "enum": [
+              "art",
+              "comics",
+              "crafts",
+              "dance",
+              "design",
+              "fashion",
+              "film",
+              "food",
+              "games",
+              "journalism",
+              "music",
+              "photography",
+              "publishing",
+              "technology",
+              "theater"
+            ],
+            "type": "string"
+          },
+          "subcategory": {
+            "description": "Subcategory slug. Must belong to the selected category; omit it when the parent is the honest level of fit.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category"
         ],
         "type": "object"
       },
@@ -957,6 +997,71 @@
         ],
         "type": "object"
       },
+      "TaxonomyCategoryDto": {
+        "properties": {
+          "label": {
+            "example": "Food",
+            "type": "string"
+          },
+          "publicIdeaCount": {
+            "description": "Public ideas currently assigned to this category, including ideas assigned only at the parent level.",
+            "type": "number"
+          },
+          "slug": {
+            "example": "food",
+            "type": "string"
+          },
+          "subcategories": {
+            "items": {
+              "$ref": "#/components/schemas/TaxonomySubcategoryDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "label",
+          "publicIdeaCount",
+          "subcategories"
+        ],
+        "type": "object"
+      },
+      "TaxonomyResponseDto": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TaxonomyCategoryDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "TaxonomySubcategoryDto": {
+        "properties": {
+          "label": {
+            "example": "Farms",
+            "type": "string"
+          },
+          "publicIdeaCount": {
+            "description": "Public ideas currently assigned to this subcategory. Counts only ideas the public catalogue can list.",
+            "type": "number"
+          },
+          "slug": {
+            "example": "farms",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "label",
+          "publicIdeaCount"
+        ],
+        "type": "object"
+      },
       "UnreadNotificationCountDto": {
         "properties": {
           "count": {
@@ -1080,6 +1185,14 @@
           "targetUser": {
             "description": "Who specifically has this problem (named user type, not \"everyone\")",
             "type": "string"
+          },
+          "taxonomy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdeaTaxonomyDto"
+              }
+            ],
+            "description": "Discovery taxonomy assignment. Optional: an idea whose honest fit is none stays unassigned. The legacy `category` remains the builder bucket and is not this taxonomy."
           },
           "title": {
             "type": "string"
@@ -1974,6 +2087,41 @@
             }
           },
           {
+            "description": "Discovery taxonomy category. Independent of the legacy `category` bucket.",
+            "in": "query",
+            "name": "taxonomyCategory",
+            "required": false,
+            "schema": {
+              "enum": [
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "technology",
+                "theater"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Discovery taxonomy subcategory; requires taxonomyCategory.",
+            "in": "query",
+            "name": "taxonomySubcategory",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "region",
             "required": false,
@@ -2277,6 +2425,41 @@
             "required": false,
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Discovery taxonomy category. Independent of the legacy `category` bucket.",
+            "in": "query",
+            "name": "taxonomyCategory",
+            "required": false,
+            "schema": {
+              "enum": [
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "technology",
+                "theater"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Discovery taxonomy subcategory; requires taxonomyCategory.",
+            "in": "query",
+            "name": "taxonomySubcategory",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -3961,6 +4144,39 @@
         "summary": "Get aggregate platform escrow figures (FR-801)",
         "tags": [
           "platform"
+        ]
+      }
+    },
+    "/api/v1/taxonomy": {
+      "get": {
+        "description": "The shared campaign/idea taxonomy in display order, with a live count of public ideas per term. Counts follow the same visibility rule as GET /ideas and are derived, never stored.",
+        "operationId": "TaxonomyController_tree",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Discovery categories and subcategories",
+        "tags": [
+          "taxonomy"
         ]
       }
     },
