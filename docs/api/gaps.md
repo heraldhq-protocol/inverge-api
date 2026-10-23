@@ -62,7 +62,7 @@ exists; **deferred** = planned, not next.
 | Admin review queue | `GET /admin/campaigns` | implemented | — |
 | Admin review detail | `GET /admin/campaigns/{id}` | implemented | — |
 | Admin decision | `POST /admin/campaigns/{id}/review` | implemented | — |
-| Escrow projection | `GET /platform/escrow` | partial | Grouped aggregate; the duplicate `/campaigns/escrow/stats` alias is removed; `OnChainEvent(campaignId, eventType, blockTime)` index is in place |
+| Escrow projection | `GET /platform/escrow` | partial | Platform-wide grouped aggregate over all on-chain events, cached 60 s; the duplicate `/campaigns/escrow/stats` alias is removed. The `OnChainEvent(campaignId, eventType, blockTime)` index serves per-campaign reads, not this aggregate |
 | Contributions | — | blocked | No Anchor program, no indexer, no route |
 | Milestones / tranches | — | blocked | Same |
 | Refunds | — | blocked | Program-owned |

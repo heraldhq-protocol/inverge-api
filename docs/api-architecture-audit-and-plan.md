@@ -26,7 +26,7 @@ Where something does not exist, it says so rather than describing an intended de
 | API framework | NestJS 11, Express 5, CommonJS | `inverge-api/package.json` | — |
 | API surface | 16 controllers, **63 route handlers**, **no version prefix** | `src/modules/**/*.controller.ts`, `src/main.ts:14` | `api/v1` |
 | API documentation | Swagger UI at `/docs`, JSON at `/docs-json`, generated at boot | `src/main.ts:29-36` | Committed spec, response schemas, generated client, drift check |
-| Database | PostgreSQL 16, Prisma **v7** driver adapter, 27 models, 22 enums, 14 migrations | `prisma/schema.prisma`, `prisma/migrations/`, `src/prisma/prisma.service.ts` | `IdeaSignal(userId)`, campaign sort indexes, partial indexes |
+| Database | PostgreSQL 16, Prisma **v7** driver adapter, 27 models, 22 enums, 21 migrations | `prisma/schema.prisma`, `prisma/migrations/`, `src/prisma/prisma.service.ts` | `IdeaSignal(userId)`, campaign sort indexes, planner-stable list indexes |
 | Connection management | `node-pg` pool `max: 25`, 15 s connect timeout, 10 s idle | `src/prisma/prisma.service.ts:10-18` | Pool metrics, saturation alarm, environment-specific sizing |
 | Redis | BullMQ root only; one repeatable queue (`metrics-snapshot`) | `src/modules/queue/queue.module.ts`, `src/modules/metrics/snapshot.{scheduler,processor}.ts` | Cache, rate-limit store, locks, pub/sub |
 | Cache | **None** | no `cache-manager`, no cache module | Cache keys, TTLs, invalidation |
@@ -1182,26 +1182,54 @@ operation covered); `tsc --noEmit`, unit suite, build and `openapi:check` pass.
   single-column indexes those composites replace, plus the old `Idea`
   status/category/tier singles that the partial index supersedes.
   `Campaign(status)` stays for admin/single-status reads.
-- **Public discovery uses partial indexes.** Prisma cannot express
-  `WHERE status IN (...) AND discoverabilityTier IN (...)`, so the raw migration
-  adds partial indexes for the exact `IdeasService.list` and
-  `CampaignsService.list` filters. The planner walks them in keyset order and
-  stops after one page; the previous plans scanned 50k ideas or 10k campaigns
-  and sorted. `prisma migrate diff` ignores partial indexes, so the drift gate
-  remains meaningful and green.
+- **Public discovery first used partial indexes, then was corrected.** Prisma
+  cannot express `WHERE status IN (...) AND discoverabilityTier IN (...)` in the
+  schema, so the raw migration added partial indexes for the exact
+  `IdeasService.list` and `CampaignsService.list` filters. Literal SQL used
+  them, but the API sends parameters (`status = ANY (ARRAY[$1, $2])`), which the
+  planner cannot prove imply a literal partial-index predicate. §28 records the
+  correction: `20261023110000_list_sort_indexes` replaces them with full
+  sort-key indexes.
 - **Evidence, not intuition.** `prisma/volume-fixture.sql` builds a disposable
   10k-user / 50k-idea / 10k-campaign / 200k-contribution fixture. Server-side
-  p50/p95 over 50 runs after 10 warm-ups: ideas list 31.07/85.03 ms -> 0.10/0.29
-  ms; feed personalisation 11.07/18.33 ms -> 0.23/0.53 ms; campaigns most
-  backed 11.19/31.80 ms -> 0.14/0.32 ms; contribution timeline 0.45/0.82 ms ->
-  0.17/0.25 ms. The feed category candidate query was left alone: a partial
-  `(category)` index moved p50 from 2.86 ms to ~1.60 ms, which did not justify
-  the write cost.
+  p50/p95 over 50 runs after 10 warm-ups: feed personalisation 11.07/18.33 ms ->
+  0.23/0.53 ms; contribution timeline 0.45/0.82 ms -> 0.17/0.25 ms. The feed
+  category candidate query was left alone: a partial `(category)` index moved
+  p50 from 2.86 ms to ~1.60 ms, which did not justify the write cost. The
+  public-list numbers in the first version of this section were literal-SQL
+  plans and did not represent the API; §28 replaces them.
 - **Honest scope.** The numbers are single-node, warm-cache, server-side SQL
   timings on synthetic data. They are not API p95 and do not include auth,
   serialization, cache lookups, network or concurrency. The full table and
   caveats are in `docs/api/query-performance.md`.
 
-Verification: all 20 migrations apply on a fresh database; `migrate diff` is
+Verification: all 21 migrations apply on a fresh database; `migrate diff` is
 empty; full e2e 111 passed / 6 skipped on the fresh schema; `tsc --noEmit`,
 unit suite, build and `openapi:check` pass.
+
+## 28. Correction - parameterised list plans and API-level baseline (2026-10-23)
+
+- **The partial list indexes were unused.** `EXPLAIN` with
+  `plan_cache_mode=force_generic_plan` and `force_custom_plan` both chose a
+  sequential scan for Prisma's `status = ANY (ARRAY[$1, ...])` predicate. The
+  literal-SQL timings in §27 were real but irrelevant to the API. Migration
+  `20261023110000_list_sort_indexes` drops the four partial indexes and adds
+  `Idea(createdAt DESC, id DESC)`, `Campaign(createdAt DESC, id DESC)`,
+  `Campaign(deadline, id)` and `Campaign(totalRaised DESC, id DESC)`. Those plans
+  work with generic and custom parameterised plans and stop after one page.
+- **The creator count was a hidden full-table aggregate.** Prisma's relation
+  `_count` compiled to `GROUP BY creatorId` over all 50k ideas on every ideas
+  list and detail request. The service now groups only the page's creator IDs
+  (list) or counts one creator (detail). Both use the existing
+  `Idea(creatorId, ...)` index.
+- **API probe, not just SQL.** `scripts/load-public-reads.mjs` drives the six
+  public read routes at concurrency 1 and 20. After the fixes, origin p50 at
+  c20: ideas 202 ms, campaigns 196–223 ms, detail 79 ms, escrow 1239 ms. With
+  Redis 7 and the cache enabled, p50 at c20: ideas 47 ms, campaigns 47–53 ms,
+  detail 16 ms, escrow 14 ms; cache-hit c1 p50 is 3–5 ms. The origin path is
+  CPU-bound in the single Node process, not in Postgres; a repeat run measured
+  334/557/444/376/148/1221 ms p50. The full table, throughput and caveats are
+  in `docs/api/query-performance.md`.
+- **Verification.** 21 migrations apply on a fresh database; `migrate diff` is
+  empty; full e2e passes; `tsc --noEmit`, unit suite, build and
+  `openapi:check` pass.
