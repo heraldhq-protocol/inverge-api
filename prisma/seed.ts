@@ -124,46 +124,57 @@ async function main() {
       })),
     );
 
-    await prisma.$transaction(async (tx) => {
-      for (const [categoryIndex, category] of TAXONOMY.entries()) {
-        await tx.taxonomyCategory.upsert({
-          where: { slug: category.slug },
-          update: { label: category.label, sortOrder: categoryIndex },
-          create: {
-            slug: category.slug,
-            label: category.label,
-            sortOrder: categoryIndex,
-          },
-        });
-
-        for (const [subcategoryIndex, subcategory] of category.subcategories.entries()) {
-          await tx.taxonomySubcategory.upsert({
-            where: {
-              categorySlug_slug: {
-                categorySlug: category.slug,
-                slug: subcategory.slug,
-              },
-            },
-            update: { label: subcategory.label, sortOrder: subcategoryIndex },
+    await prisma.$transaction(
+      async (tx) => {
+        for (const [categoryIndex, category] of TAXONOMY.entries()) {
+          await tx.taxonomyCategory.upsert({
+            where: { slug: category.slug },
+            update: { label: category.label, sortOrder: categoryIndex },
             create: {
-              categorySlug: category.slug,
-              slug: subcategory.slug,
-              label: subcategory.label,
-              sortOrder: subcategoryIndex,
+              slug: category.slug,
+              label: category.label,
+              sortOrder: categoryIndex,
             },
           });
-        }
-      }
 
-      if (subcategoryKeys.length > 0) {
-        await tx.taxonomySubcategory.deleteMany({
-          where: { NOT: { OR: subcategoryKeys } },
+          for (const [
+            subcategoryIndex,
+            subcategory,
+          ] of category.subcategories.entries()) {
+            await tx.taxonomySubcategory.upsert({
+              where: {
+                categorySlug_slug: {
+                  categorySlug: category.slug,
+                  slug: subcategory.slug,
+                },
+              },
+              update: {
+                label: subcategory.label,
+                sortOrder: subcategoryIndex,
+              },
+              create: {
+                categorySlug: category.slug,
+                slug: subcategory.slug,
+                label: subcategory.label,
+                sortOrder: subcategoryIndex,
+              },
+            });
+          }
+        }
+
+        if (subcategoryKeys.length > 0) {
+          await tx.taxonomySubcategory.deleteMany({
+            where: { NOT: { OR: subcategoryKeys } },
+          });
+        }
+        await tx.taxonomyCategory.deleteMany({
+          where: { slug: { notIn: categorySlugs } },
         });
-      }
-      await tx.taxonomyCategory.deleteMany({
-        where: { slug: { notIn: categorySlugs } },
-      });
-    });
+      },
+      // Reference data is 169 upserts. The default 5 s transaction budget is
+      // too tight on a cold connection and fails halfway through the taxonomy.
+      { timeout: 30_000 },
+    );
 
     console.log(
       `Seeded ${TAXONOMY.length} taxonomy categories and ${subcategoryKeys.length} subcategories.`,
