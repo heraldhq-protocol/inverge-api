@@ -35,12 +35,6 @@ export class CampaignsController {
     return this.campaigns.list(query, user?.id);
   }
 
-  @Get('escrow/stats')
-  @ApiOperation({ summary: 'Get aggregate platform escrow figures (FR-801)' })
-  getEscrowStatsAlias() {
-    return this.campaigns.getPlatformEscrowStats();
-  }
-
   @Get(':id')
   @UseGuards(OptionalPrivyAuthGuard)
   @ApiOperation({ summary: 'Get campaign details by ID' })

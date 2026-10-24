@@ -15,8 +15,12 @@ function prismaMock(idea: any = null) {
       create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'new-id', ...data })),
       update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'idea1', ...data })),
       findUnique: jest.fn().mockResolvedValue(idea),
+      findFirst: jest.fn().mockResolvedValue(idea),
+      findMany: jest.fn().mockResolvedValue([]),
+      groupBy: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
     },
+    ideaSignal: { findUnique: jest.fn().mockResolvedValue(null) },
     surveyQuestion: { createMany: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
   } as any;
@@ -100,9 +104,78 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
 
 describe('IdeasService.getQuality', () => {
   it('returns the latest coaching report', async () => {
-    const { svc, q } = make();
+    const { svc, q } = make({ id: 'idea1' });
     await svc.getQuality('idea1');
     expect(q.latestReport).toHaveBeenCalledWith('idea1');
+  });
+});
+
+describe('IdeasService — public creator counts', () => {
+  const creator = {
+    id: 'u1',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    creatorProfile: {
+      username: 'alice',
+      displayName: 'Alice',
+      tier: 'STARTER',
+      completedCampaigns: 0,
+      links: [],
+      tenureStartedAt: new Date('2026-01-01T00:00:00.000Z'),
+    },
+  };
+
+  it('counts only the creators on the page', async () => {
+    const { svc, p } = make();
+    p.idea.findMany.mockResolvedValue([
+      {
+        id: 'idea1',
+        creatorId: 'u1',
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        boosts: [],
+        creator,
+      },
+    ]);
+    p.idea.groupBy.mockResolvedValue([
+      { creatorId: 'u1', _count: { _all: 7 } },
+    ]);
+
+    const page = await svc.list({ limit: 20 } as any);
+
+    expect(p.idea.groupBy).toHaveBeenCalledWith({
+      by: ['creatorId'],
+      where: { creatorId: { in: ['u1'] } },
+      _count: { _all: true },
+    });
+    expect(page.data[0].creator?.ideasPublished).toBe(7);
+    expect(page.data[0].gateProgress.criteria.supporters).toEqual({
+      have: 0,
+      need: 50,
+      pct: 0,
+      met: false,
+    });
+    expect(page.data[0].gateProgress.meetsThreshold).toBe(false);
+  });
+
+  it('counts one creator on detail', async () => {
+    const idea = {
+      id: 'idea1',
+      creatorId: 'u1',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      supporterCount: 0,
+      weightedPrePledgeTotal: 0,
+      feedbackCount: 0,
+      feedbackScore: 0,
+      askAmount: 1000,
+      creatorPrePledgeTarget: null,
+      creator,
+    };
+    const { svc, p } = make(idea);
+    p.idea.count.mockResolvedValue(4);
+
+    const result = await svc.get('idea1');
+
+    expect(p.idea.count).toHaveBeenCalledWith({ where: { creatorId: 'u1' } });
+    expect(result.creator?.ideasPublished).toBe(4);
   });
 });
 
@@ -114,6 +187,29 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
       expect.objectContaining({ create: expect.objectContaining({ type: 'SUPPORT' }) }),
     );
     expect(m.recompute).toHaveBeenCalledWith(p._tx, 'idea1');
+  });
+
+  it('records one analytics signal for a first support and none for a repeat', async () => {
+    const p = prismaMock({ id: 'idea1', status: 'VALIDATING' });
+    const analytics = { record: jest.fn().mockResolvedValue(true) } as any;
+    const svc = new IdeasService(
+      p,
+      metricsMock(),
+      qualityMock(),
+      moderationMock(),
+      paramsMock(),
+      undefined,
+      analytics,
+    );
+
+    await svc.support('u2', 'idea1');
+    p.ideaSignal.findUnique.mockResolvedValue({ id: 'existing' });
+    await svc.support('u2', 'idea1');
+
+    expect(analytics.record).toHaveBeenCalledTimes(1);
+    expect(analytics.record).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'IDEA_SIGNAL', signalType: 'SUPPORT' }),
+    );
   });
 
   it('unsupport deletes the SUPPORT signal then recomputes', async () => {

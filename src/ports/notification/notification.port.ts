@@ -5,6 +5,11 @@ export interface NotificationMessage {
   toUserId: string;
   template: string; // e.g. "WAITLIST_CONVERSION", "CAMPAIGN_FUNDED"
   data: Record<string, unknown>;
+  /**
+   * Stable identity for a domain event. Replaying the same event (for example a
+   * retried campaign conversion) must not create or dispatch a second row.
+   */
+  dedupeKey?: string;
 }
 
 export interface NotificationPort {

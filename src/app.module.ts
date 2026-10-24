@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { validateEnv } from './config/env.validation';
+import { ApiExceptionFilter } from './common/http/api-exception.filter';
+import { CacheModule } from './common/cache/cache.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { TelemetryModule } from './common/telemetry/telemetry.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PortsModule } from './ports/ports.module';
 import { QueueModule } from './modules/queue/queue.module';
@@ -19,6 +24,8 @@ import { AdminModule } from './modules/admin/admin.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { SurveyModule } from './modules/survey/survey.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 
 @Module({
   imports: [
@@ -28,6 +35,11 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     PrismaModule,
     PortsModule,
     PlatformParamsModule,
+    CacheModule,
+    // Telemetry registers the metrics/log interceptors before the limiter so a
+    // rejected request still produces a metric and a log line.
+    TelemetryModule,
+    RateLimitModule,
     QueueModule,
     // Phase 0 domain
     AuthModule,
@@ -43,6 +55,13 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     ModerationModule,
     SurveyModule,
     CampaignsModule,
+    AnalyticsModule,
+    TaxonomyModule,
+  ],
+  providers: [
+    // Registered as a provider (not only in main.ts) so e2e applications get the
+    // same error envelope as production.
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })
 export class AppModule {}

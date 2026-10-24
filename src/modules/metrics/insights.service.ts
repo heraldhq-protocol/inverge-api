@@ -6,7 +6,11 @@ import { contribution, resolveTier, round2 } from './pledge-weighting';
 import { buildFeedbackInsights, buildGateProgress, computeVelocity, QuestionLite } from './insights-compute';
 
 // Creator-facing analytics for one idea. Read-only aggregation over data that already
-// exists (snapshots, signals, survey, comments) — chart-ready for the dashboard.
+// exists (snapshots, signals, survey, comments) - chart-ready for the dashboard.
+
+/** The chart window for the daily snapshot series. */
+const INSIGHTS_WINDOW_DAYS = 180;
+
 @Injectable()
 export class InsightsService {
   constructor(
@@ -28,10 +32,15 @@ export class InsightsService {
     if (!idea) throw new NotFoundException('Idea not found');
     if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
 
-    // Time-series (daily snapshots) — line charts.
+    // Time-series (daily snapshots) - line charts. The chart window is bounded:
+    // an idea that validates for years must not make this a full-history read.
     const snaps = await this.prisma.ideaMetricSnapshot.findMany({
-      where: { ideaId },
+      where: {
+        ideaId,
+        capturedAt: { gte: new Date(now.getTime() - INSIGHTS_WINDOW_DAYS * 86_400_000) },
+      },
       orderBy: { capturedAt: 'asc' },
+      take: INSIGHTS_WINDOW_DAYS + 30,
       select: { capturedAt: true, weightedTotal: true, supporterCount: true },
     });
     const timeseries = snaps.map((s) => ({

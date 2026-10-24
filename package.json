@@ -20,7 +20,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config jest-e2e.config.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "openapi:emit": "ts-node scripts/emit-openapi.ts",
+    "openapi:check": "ts-node scripts/emit-openapi.ts --check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.114.0",
@@ -37,7 +39,9 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.7",
+    "express": "5.2.1",
     "helmet": "^8.0.0",
+    "ioredis": "^5.11.1",
     "jose": "^5.9.6",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",

@@ -1,20 +1,43 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-// FR-901/904: admin-configurable platform parameters. Read at call time so a change
-// via PATCH /admin/params takes effect immediately (no deploy/restart).
+/**
+ * How long a parameter snapshot is reused before the next read hits the database.
+ *
+ * Parameters are read several times per public request (the feed alone reads 17),
+ * and they change only through an audited admin action. Five seconds keeps a
+ * change effectively immediate — `set()` invalidates the snapshot in its own
+ * process — while collapsing dozens of point reads into one table read.
+ */
+const SNAPSHOT_TTL_MS = 5_000;
+
+// FR-901/904: admin-configurable platform parameters. Reads are served from a
+// short-lived snapshot and invalidated on write; a change via PATCH /admin/params
+// is visible on the next request in this process.
 @Injectable()
 export class PlatformParamsService {
+  private snapshot: Record<string, unknown> | null = null;
+  private snapshotAt = 0;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getAll(): Promise<Record<string, unknown>> {
+    const now = Date.now();
+    if (this.snapshot !== null && now - this.snapshotAt < SNAPSHOT_TTL_MS) {
+      return this.snapshot;
+    }
+
     const rows = await this.prisma.platformParam.findMany();
-    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    this.snapshot = Object.freeze(
+      Object.fromEntries(rows.map((r) => [r.key, r.value])),
+    ) as Record<string, unknown>;
+    this.snapshotAt = now;
+    return this.snapshot;
   }
 
   async get<T = unknown>(key: string, fallback?: T): Promise<T | undefined> {
-    const row = await this.prisma.platformParam.findUnique({ where: { key } });
-    return (row?.value as T) ?? fallback;
+    const all = await this.getAll();
+    return (all[key] as T) ?? fallback;
   }
 
   async getNumber(key: string, fallback = 0): Promise<number> {
@@ -33,6 +56,11 @@ export class PlatformParamsService {
       update: { value: value as object, updatedBy },
       create: { key, value: value as object, updatedBy },
     });
+
+    // Invalidate immediately after the durable write, before the audit insert:
+    // a failed audit must not leave this process serving the old value.
+    this.snapshot = null;
+    this.snapshotAt = 0;
 
     if (changed) {
       await this.prisma.platformParamAudit.create({

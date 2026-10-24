@@ -66,3 +66,47 @@ describe('PlatformParamsService.auditLog', () => {
     );
   });
 });
+
+describe('PlatformParamsService snapshot', () => {
+  function setupSnapshot() {
+    const prisma = {
+      platformParam: {
+        findMany: jest.fn().mockResolvedValue([
+          { key: 'a', value: 1 },
+          { key: 'b', value: 2 },
+        ]),
+        findUnique: jest.fn().mockResolvedValue({ key: 'a', value: 1 }),
+        upsert: jest.fn().mockResolvedValue({ key: 'a', value: 9 }),
+      },
+      platformParamAudit: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    } as any;
+
+    return { svc: new PlatformParamsService(prisma), prisma };
+  }
+
+  it('reads the table once for several keys in one request', async () => {
+    const { svc, prisma } = setupSnapshot();
+
+    expect(await svc.getNumber('a')).toBe(1);
+    expect(await svc.getNumber('b')).toBe(2);
+    expect(prisma.platformParam.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates the snapshot after a write in this process', async () => {
+    const { svc, prisma } = setupSnapshot();
+
+    await svc.getAll();
+    await svc.set('a', 9, 'admin1');
+    await svc.getAll();
+
+    expect(prisma.platformParam.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back when a key is absent', async () => {
+    const { svc } = setupSnapshot();
+
+    expect(await svc.getNumber('missing', 7)).toBe(7);
+  });
+});

@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { MetricsService } from './metrics.service';
@@ -14,6 +14,14 @@ export class SnapshotProcessor extends WorkerHost {
 
   constructor(private readonly metrics: MetricsService) {
     super();
+  }
+
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.warn(
+      `Snapshot worker is unavailable (${error.message}); ` +
+        'the daily snapshot resumes when Redis is reachable.',
+    );
   }
 
   async process(_job: Job): Promise<{ captured: number }> {

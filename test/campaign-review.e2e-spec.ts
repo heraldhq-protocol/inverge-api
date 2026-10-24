@@ -1,7 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { createTestApp } from './create-test-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 // FR-304 review state + FR-103/FR-311 submission gates against real Postgres.
@@ -24,7 +23,7 @@ describe('Campaign review (e2e)', () => {
 
   async function session(accessToken: string) {
     const res = await http()
-      .post('/auth/session')
+      .post('/api/v1/auth/session')
       .send({ accessToken })
       .expect(201);
     return {
@@ -70,7 +69,7 @@ describe('Campaign review (e2e)', () => {
 
   function submit(campaignId: string, applicationFeeChargeId?: string) {
     return http()
-      .post(`/campaigns/${campaignId}/submit`)
+      .post(`/api/v1/campaigns/${campaignId}/submit`)
       .set(bearer(creatorToken))
       .send(applicationFeeChargeId ? { applicationFeeChargeId } : {});
   }
@@ -80,24 +79,13 @@ describe('Campaign review (e2e)', () => {
     body: { action?: string; reason?: string },
   ) {
     return http()
-      .post(`/admin/campaigns/${campaignId}/review`)
+      .post(`/api/v1/admin/campaigns/${campaignId}/review`)
       .set(bearer(adminToken))
       .send(body);
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleRef.createNestApplication({ rawBody: true });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = await createTestApp();
     prisma = app.get(PrismaService);
 
     ({ token: adminToken, id: adminId } = await session(`a${RUN}`));
@@ -122,14 +110,14 @@ describe('Campaign review (e2e)', () => {
   });
 
   it('denies the review surface to unauthenticated and non-admin callers', async () => {
-    await http().get('/admin/campaigns').expect(401);
-    await http().get('/admin/campaigns').set(bearer(creatorToken)).expect(403);
+    await http().get('/api/v1/admin/campaigns').expect(401);
+    await http().get('/api/v1/admin/campaigns').set(bearer(creatorToken)).expect(403);
     await http()
-      .get('/admin/campaigns/anything')
+      .get('/api/v1/admin/campaigns/anything')
       .set(bearer(creatorToken))
       .expect(403);
     await http()
-      .post('/admin/campaigns/anything/review')
+      .post('/api/v1/admin/campaigns/anything/review')
       .set(bearer(creatorToken))
       .send({ action: 'APPROVE' })
       .expect(403);
@@ -139,8 +127,8 @@ describe('Campaign review (e2e)', () => {
     const campaignId = await createCampaign();
 
     const noKyc = await submit(campaignId).expect(400);
-    expect(noKyc.body.blockers.join(' ')).toMatch(/Identity verification/);
-    expect(noKyc.body.blockers.join(' ')).toMatch(/Application fee/);
+    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Identity verification/);
+    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Application fee/);
 
     let campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -154,10 +142,10 @@ describe('Campaign review (e2e)', () => {
     });
 
     const noFee = await submit(campaignId).expect(400);
-    expect(noFee.body.blockers).toContain(
+    expect(noFee.body.error.details.blockers).toContain(
       'Application fee (FR-311) has not been paid',
     );
-    expect(noFee.body.blockers.join(' ')).not.toMatch(/Identity verification/);
+    expect(noFee.body.error.details.blockers.join(' ')).not.toMatch(/Identity verification/);
 
     campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -183,12 +171,12 @@ describe('Campaign review (e2e)', () => {
     const secondCampaign = await createCampaign();
     const reuse = await submit(secondCampaign, feeId);
     expect(reuse.status).toBeGreaterThanOrEqual(400);
-    expect(reuse.body.message).toMatch(/application fee/i);
+    expect(reuse.body.error.message).toMatch(/application fee/i);
   });
 
   it('shows the queue and read-only FR-103/FR-311 facts to an admin', async () => {
     const queue = await http()
-      .get('/admin/campaigns')
+      .get('/api/v1/admin/campaigns')
       .set(bearer(adminToken))
       .expect(200);
     expect(queue.body.items.length).toBeGreaterThan(0);
@@ -200,7 +188,7 @@ describe('Campaign review (e2e)', () => {
     expect(queued).toMatchObject({ reviewStatus: 'IN_REVIEW' });
 
     const detail = await http()
-      .get(`/admin/campaigns/${queuedCampaignId}`)
+      .get(`/api/v1/admin/campaigns/${queuedCampaignId}`)
       .set(bearer(adminToken))
       .expect(200);
 
@@ -263,7 +251,7 @@ describe('Campaign review (e2e)', () => {
     });
 
     const changed = await http()
-      .get('/admin/campaigns')
+      .get('/api/v1/admin/campaigns')
       .query({ reviewStatus: 'CHANGES_REQUESTED' })
       .set(bearer(adminToken))
       .expect(200);
@@ -319,7 +307,7 @@ describe('Campaign review (e2e)', () => {
     });
 
     const res = await decide(campaignId, { action: 'APPROVE' }).expect(422);
-    expect(res.body.blockers.join(' ')).toMatch(/declined/);
+    expect(res.body.error.details.blockers.join(' ')).toMatch(/declined/);
 
     const campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -361,7 +349,7 @@ describe('Campaign review (e2e)', () => {
 
   it('404s for an unknown campaign', async () => {
     await http()
-      .get('/admin/campaigns/does-not-exist')
+      .get('/api/v1/admin/campaigns/does-not-exist')
       .set(bearer(adminToken))
       .expect(404);
     await decide('does-not-exist', { action: 'APPROVE' }).expect(404);

@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   AuthenticatedUser,
@@ -7,7 +17,11 @@ import {
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { CommentsService } from './comments.service';
-import { CreateCommentDto, HighlightCommentDto } from './dto/comment.dto';
+import {
+  CreateCommentDto,
+  HighlightCommentDto,
+  ListCommentsQueryDto,
+} from './dto/comment.dto';
 
 @ApiTags('comments')
 @Controller('ideas/:id/comments')
@@ -23,8 +37,12 @@ export class CommentsController {
 
   @Get()
   @UseGuards(OptionalPrivyAuthGuard)
-  list(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
-    return this.comments.list(id, user?.id);
+  list(
+    @Param('id') id: string,
+    @Query() query: ListCommentsQueryDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.comments.list(id, query, user?.id);
   }
 
   @Post(':commentId/like')

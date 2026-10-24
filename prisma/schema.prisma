@@ -175,7 +175,7 @@ enum OnChainEventType {
 
 model User {
   id             String    @id @default(cuid())
-  privyDid       String    @unique
+  providerUserId String    @unique // provider-neutral: Web3Auth sub / Privy DID / stub id
   email          String?   @unique
   emailVerified  Boolean   @default(false) // FR-208: EMAIL tier eligibility
   oauthSubject   String?   @unique // FR-212: one social identity ↔ one account (anti-sybil)
@@ -212,6 +212,8 @@ model User {
   campaignReviews   CampaignReviewEvent[] @relation("CampaignReviewActor")
   contributions     Contribution[]
   objections        MilestoneObjection[]
+  productAnalyticsEvents ProductAnalyticsEvent[]
+  notifications          Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -305,6 +307,35 @@ model CreatorProfile {
   updatedAt          DateTime    @updatedAt
 }
 
+// ─────────────────────────── Discovery taxonomy ───────────────────────────
+
+// Seeded reference data for the shared campaign/idea taxonomy (D-038). The
+// canonical list lives in `src/modules/taxonomy/taxonomy.data.ts`, mirrored from
+// the web; `prisma/seed.ts` writes these rows and `GET /taxonomy` reads them.
+// Assignments on Idea and Campaign are validated at the API boundary and carry no
+// foreign key, so an instance can serve while the reference data is reseeded.
+model TaxonomyCategory {
+  slug          String @id
+  label         String
+  sortOrder     Int
+  subcategories TaxonomySubcategory[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TaxonomySubcategory {
+  categorySlug String
+  category     TaxonomyCategory @relation(fields: [categorySlug], references: [slug], onDelete: Cascade)
+  slug         String
+  label        String
+  sortOrder    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@id([categorySlug, slug])
+  @@index([categorySlug, sortOrder])
+}
+
 // ─────────────────────────── Idea validation (Phase 0, live) ───────────────────────────
 
 model Idea {
@@ -324,7 +355,9 @@ model Idea {
   currentAlternative String? // what they do today + why it's insufficient
   askBreakdown       Json? // indicative breakdown of what the ask buys
   roadmapSteps       Json? // >=2 dated steps [{ date, description }]
-  category           String? // software | agriculture | film | arts | ...
+  category           String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
+  taxonomyCategorySlug    String? // canonical discovery taxonomy (D-038); validated against taxonomy.data.ts
+  taxonomySubcategorySlug String? // only meaningful with taxonomyCategorySlug
   region             String? // creator-declared region/origin — personalization + "From Lagos" chip
   coverImageUrl      String? // P1 web UI gap: media on idea
   risks              String? // P2 web UI gap: risks and challenges section
@@ -370,10 +403,9 @@ model Idea {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([creatorId])
-  @@index([status])
-  @@index([discoverabilityTier])
-  @@index([category])
+  @@index([creatorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([taxonomyCategorySlug, taxonomySubcategorySlug, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-271: audit + coaching output of each quality scoring run (on publish and edit).
@@ -440,6 +472,7 @@ model IdeaSignal {
 
   @@unique([ideaId, userId, type])
   @@index([ideaId])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 // FR-202/203: a creator-built survey question. Ordered per idea; choice types carry
@@ -553,6 +586,8 @@ model Campaign {
   ideaId                   String?        @unique
   idea                     Idea?          @relation(fields: [ideaId], references: [id])
   ideaSnapshot             Json?
+  taxonomyCategorySlug     String? // copied from the idea at conversion; validated at the API boundary
+  taxonomySubcategorySlug  String?
   creatorId                String
   creator                  User           @relation("CampaignCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   type                     CampaignType   @default(ALL_OR_NOTHING)
@@ -593,6 +628,10 @@ model Campaign {
   @@index([creatorId])
   @@index([status])
   @@index([reviewStatus, submittedAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([deadline, id])
+  @@index([totalRaised(sort: Desc), id(sort: Desc)])
+  @@index([taxonomyCategorySlug, taxonomySubcategorySlug, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // FR-304 / FR-904: append-only record of every curation decision. Application code
@@ -641,7 +680,7 @@ model MilestoneClaim {
   objections MilestoneObjection[]
   ruling     ReviewerRuling?
 
-  @@index([milestoneId])
+  @@index([milestoneId, submittedAt(sort: Desc)])
 }
 
 model MilestoneObjection {
@@ -678,7 +717,7 @@ model Contribution {
   txSignature String    @unique
   createdAt   DateTime  @default(now())
 
-  @@index([campaignId])
+  @@index([campaignId, createdAt(sort: Desc)])
   @@index([userId])
 }
 
@@ -694,7 +733,7 @@ model OnChainEvent {
   blockTime   DateTime
   indexedAt   DateTime         @default(now())
 
-  @@index([campaignId])
+  @@index([campaignId, eventType, blockTime(sort: Desc)])
 }
 
 // FR-901 / FR-904: admin-configurable platform parameters (fees, thresholds, windows).
@@ -717,4 +756,252 @@ model PlatformParamAudit {
 
   @@index([key, changedAt])
   @@index([changedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Product analytics (first-party, aggregate-only; see docs/api/analytics-privacy.md)
+//
+// No IP, user agent, cookie, fingerprint, free text or wallet address is stored.
+// Authenticated events carry the internal user id; anonymous events carry only a
+// session-scoped random id. Raw events are retained 90 days; daily aggregates 25
+// months. There is no public ingest route: domain code writes after its own
+// transaction commits, and a failed write never fails the user action.
+// ---------------------------------------------------------------------------
+
+enum ProductAnalyticsEventName {
+  IDEA_VIEWED
+  IDEA_SIGNAL
+  CAMPAIGN_VIEWED
+  CAMPAIGN_STEP_STARTED
+  CAMPAIGN_STEP_COMPLETED
+  CONTRIBUTION_STARTED
+  CONTRIBUTION_CONFIRMED
+  SEARCH_PERFORMED
+}
+
+enum AnalyticsSignalType {
+  SUPPORT
+  PRE_PLEDGE
+}
+
+model ProductAnalyticsEvent {
+  id         String                    @id @default(cuid())
+  name       ProductAnalyticsEventName
+  userId     String? // internal id only; never an email, wallet or provider subject
+  user       User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId  String? // anonymous, session-scoped random id; mutually exclusive with userId
+  ideaId     String?
+  campaignId String?
+  signalType AnalyticsSignalType?
+  source     String? // feed | search | direct, from a closed set validated in code
+  position   Int?
+  step       String? // creator-flow step, from a closed set validated in code
+  durationMs Int?
+  queryLength Int?
+  resultCount Int?
+  filterKeys  String[] @default([])
+  amountMinor BigInt?
+  currency    String?
+  countryCode String?  @db.Char(2) // coarse, from a trusted edge header only
+  occurredAt  DateTime
+  receivedAt  DateTime @default(now())
+
+  @@index([name, occurredAt])
+  @@index([ideaId, name, occurredAt])
+  @@index([campaignId, name, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([receivedAt])
+}
+
+// Daily roll-up of idea signals. Derived only from ProductAnalyticsEvent; rebuilt
+// idempotently per (ideaId, day), never incremented by a request path.
+model IdeaSignalDailyMetric {
+  id              String   @id @default(cuid())
+  ideaId          String
+  day             DateTime @db.Date
+  supportCount    Int      @default(0)
+  prePledgeCount  Int      @default(0)
+  uniqueActors    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([ideaId, day])
+  @@index([day])
+}
+
+// ---------------------------------------------------------------------------
+// Advertising (PROPOSED - schema only, no Nest module, migration not applied)
+//
+// A paid placement is a separate bounded context. It has no relation to Idea,
+// Campaign, IdeaSignal, or Contribution, so it cannot write ranking, validation,
+// or funding state. Placement ids are the closed set documented in
+// docs/api/advertising.md; the API validates them before insert.
+// ---------------------------------------------------------------------------
+
+enum AdCreativeStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PAUSED
+  ENDED
+}
+
+enum AdCreativeKind {
+  FIRST_PARTY
+  THIRD_PARTY
+}
+
+enum AdCreativeFormat {
+  NATIVE_CARD
+  BANNER
+  SIDEBAR
+  THIRD_PARTY
+}
+
+enum AdReviewAction {
+  SUBMIT
+  APPROVE
+  REJECT
+  PAUSE
+  RESUME
+  END
+}
+
+enum AdEventType {
+  AD_IMPRESSION
+  AD_CLICK
+  AD_DISMISS
+  AD_DESTINATION_OPENED
+}
+
+// The creative. `approved` is permission to serve, not a schedule: serving also
+// requires startsAt <= now < endsAt and the placement relation.
+model Advertisement {
+  id              String            @id @default(cuid())
+  advertiser      String
+  headline        String
+  body            String
+  ctaLabel        String
+  destination     String
+  format          AdCreativeFormat
+  kind            AdCreativeKind    @default(FIRST_PARTY)
+  status          AdCreativeStatus  @default(DRAFT)
+  priority        Int               @default(0)
+  startsAt        DateTime
+  endsAt          DateTime
+  categories      String[]          @default([])
+  regions         String[]          @default([])
+  createdById     String
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  placements AdvertisementPlacement[]
+  reviews    AdvertisementReviewEvent[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([kind, status])
+}
+
+// One row per allowed placement. @@unique makes a duplicate booking impossible.
+model AdvertisementPlacement {
+  id              String        @id @default(cuid())
+  advertisementId String
+  advertisement   Advertisement @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  placementId     String
+
+  @@unique([advertisementId, placementId])
+  @@index([placementId])
+}
+
+// Append-only review trail. actorId is not an FK for the same reason as
+// PlatformParamAudit.changedBy: the trail must survive an account deletion.
+model AdvertisementReviewEvent {
+  id              String            @id @default(cuid())
+  advertisementId String
+  advertisement   Advertisement     @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  actorId         String
+  action          AdReviewAction
+  fromStatus      AdCreativeStatus
+  toStatus        AdCreativeStatus
+  reason          String?
+  createdAt       DateTime          @default(now())
+
+  @@index([advertisementId, createdAt])
+  @@index([createdAt])
+}
+
+// Validated measurement events. No IP address, user agent, cookie, account, or
+// free text. `dedupeKey` closes the client retry gap. Raw rows are retained for
+// 90 days, then only daily aggregates remain (see analytics-privacy.md).
+model AdvertisementEvent {
+  id          String       @id @default(cuid())
+  creativeId  String
+  placementId String
+  type        AdEventType
+  sessionId   String
+  dedupeKey   String       @unique
+  occurredAt  DateTime
+  receivedAt  DateTime     @default(now())
+
+  @@index([creativeId, occurredAt])
+  @@index([placementId, occurredAt])
+  @@index([receivedAt])
+}
+
+// Persisted in-app notification. The row is the durable record; delivery to an
+// external channel is a separate, retryable step. `dedupeKey` makes a repeated
+// domain event (for example a replayed campaign conversion) idempotent.
+model Notification {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template         String
+  data             Json?
+  dedupeKey        String?   @unique
+  readAt           DateTime?
+  dispatchedAt     DateTime?
+  dispatchAttempts Int       @default(0)
+  lastDispatchError String?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+}
+
+// Durable receipt for a verified provider callback. The raw body is never stored:
+// only a hash plus the normalized event type and minimum routing metadata. A
+// duplicate retry returns without reapplying; a failed event can be retried.
+enum WebhookProvider {
+  PAYSTACK
+  DIDIT
+}
+
+enum WebhookReceiptStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+model WebhookReceipt {
+  id          String               @id @default(cuid())
+  provider    WebhookProvider
+  dedupeKey   String
+  payloadHash String
+  eventType   String?
+  status      WebhookReceiptStatus @default(PENDING)
+  attempts    Int                  @default(0)
+  receivedAt  DateTime             @default(now())
+  processedAt DateTime?
+  lockedAt    DateTime?
+  lastError   String?
+
+  @@unique([provider, dedupeKey])
+  @@index([provider, receivedAt])
+  @@index([status, lockedAt])
 }

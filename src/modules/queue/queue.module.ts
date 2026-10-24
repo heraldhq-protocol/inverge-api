@@ -5,8 +5,12 @@ import { Env } from '../../config/env.validation';
 
 // BullMQ root connection. Global so feature modules can BullModule.registerQueue()
 // against the shared connection. The first registered queue (metrics-snapshot, FR-204a)
-// connects Redis at boot; other feature queues (campaign-conversion, notification-dispatch,
+// connects Redis lazily; other feature queues (campaign-conversion, notification-dispatch,
 // milestone-deadline, onramp/flatfee/kyc-webhook, indexer-reconcile) join as built out.
+//
+// lazyConnect is deliberate: an eager ioredis connection retries forever when Redis is
+// unreachable, which hangs boot (and blocks tooling that only needs the module graph,
+// such as the OpenAPI emitter). The snapshot scheduler already treats Redis as optional.
 @Global()
 @Module({
   imports: [
@@ -19,6 +23,7 @@ import { Env } from '../../config/env.validation';
             host: url.hostname,
             port: Number(url.port || 6379),
             password: url.password || undefined,
+            lazyConnect: true,
           },
         };
       },

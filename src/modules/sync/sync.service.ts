@@ -51,6 +51,11 @@ export class SyncService {
             askAmount: Number(idea.askAmount),
           },
           creatorId: idea.creatorId,
+          // D-038: a campaign inherits the idea's discovery taxonomy. Conversion
+          // has no taxonomy input of its own, so there is one assignment to keep
+          // honest rather than two that can disagree.
+          taxonomyCategorySlug: idea.taxonomyCategorySlug,
+          taxonomySubcategorySlug: idea.taxonomySubcategorySlug,
           type: dto.type,
           tokenType: dto.tokenType,
           targetAmount: dto.targetAmount,
@@ -128,6 +133,8 @@ export class SyncService {
         toUserId: s.userId,
         template: 'WAITLIST_CONVERSION',
         data: { ideaId, campaignId },
+        // A retried sync must not send the same conversion alert twice.
+        dedupeKey: `WAITLIST_CONVERSION:${campaignId}:${s.userId}`,
       });
     }
   }
