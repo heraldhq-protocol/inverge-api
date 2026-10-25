@@ -40,6 +40,53 @@ export class CapabilityFlagsDto {
   managePlatform!: boolean;
 }
 
+export class AnalyticsCapabilitiesDto {
+  @ApiProperty({
+    description:
+      'False when the operator has disabled analytics reads; entitlement may still be recorded.',
+  })
+  available!: boolean;
+
+  @ApiProperty({ enum: ['basic', 'premium', 'admin'] })
+  tier!: 'basic' | 'premium' | 'admin';
+
+  @ApiProperty({
+    enum: ['STARTER', 'TRUSTED', 'ESTABLISHED'],
+    nullable: true,
+  })
+  creatorTier!: 'STARTER' | 'TRUSTED' | 'ESTABLISHED' | null;
+
+  @ApiProperty()
+  premium!: boolean;
+
+  @ApiProperty({
+    enum: [
+      'NONE',
+      'PENDING',
+      'APPROVED',
+      'REJECTED',
+      'EXPIRED',
+      'NOT_REQUIRED',
+    ],
+  })
+  requestStatus!:
+    | 'NONE'
+    | 'PENDING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'EXPIRED'
+    | 'NOT_REQUIRED';
+
+  @ApiProperty({
+    description:
+      'True when the account may request premium access; false while pending or approved.',
+  })
+  canRequest!: boolean;
+
+  @ApiProperty({ type: [String] })
+  features!: string[];
+}
+
 export class AccountCapabilitiesDto {
   @ApiProperty({ enum: ['USER', 'ADMIN'] })
   role!: 'USER' | 'ADMIN';
@@ -55,6 +102,9 @@ export class AccountCapabilitiesDto {
 
   @ApiProperty({ type: CapabilityFlagsDto })
   capabilities!: CapabilityFlagsDto;
+
+  @ApiProperty({ type: AnalyticsCapabilitiesDto })
+  analytics!: AnalyticsCapabilitiesDto;
 
   @ApiProperty({ description: 'ISO 8601 timestamp' })
   asOf!: string;

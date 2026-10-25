@@ -5,12 +5,18 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Env } from '../../config/env.validation';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   EMBEDDED_WALLET_PORT,
   EmbeddedWalletInfo,
   EmbeddedWalletPort,
 } from '../../ports/wallet/embedded-wallet.port';
+import {
+  ANALYTICS_PREMIUM_FEATURE,
+  analyticsEntitlement,
+} from '../analytics/analytics-entitlements';
 import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
@@ -29,6 +35,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
     private readonly sessions: SessionService,
+    private readonly config: ConfigService<Env, true>,
     @Inject(EMBEDDED_WALLET_PORT)
     private readonly wallets: EmbeddedWalletPort,
   ) {}
@@ -116,18 +123,32 @@ export class AuthService {
    * leave the server through this route.
    */
   async capabilities(userId: string): Promise<AccountCapabilities> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        role: true,
-        bannedAt: true,
-        kycStatus: true,
-        amlStatus: true,
-        creatorProfile: { select: { displayName: true, username: true } },
-      },
-    });
+    const [user, access] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          role: true,
+          bannedAt: true,
+          kycStatus: true,
+          amlStatus: true,
+          creatorProfile: {
+            select: { displayName: true, username: true, tier: true },
+          },
+        },
+      }),
+      this.prisma.analyticsAccessGrant.findUnique({
+        where: {
+          userId_feature: {
+            userId,
+            feature: ANALYTICS_PREMIUM_FEATURE,
+          },
+        },
+        select: { status: true, source: true, expiresAt: true },
+      }),
+    ]);
     if (!user) throw new NotFoundException('User not found');
 
+    const now = new Date();
     return buildAccountCapabilities(
       {
         role: user.role,
@@ -136,8 +157,15 @@ export class AuthService {
         amlStatus: user.amlStatus,
         displayName: user.creatorProfile?.displayName ?? null,
         username: user.creatorProfile?.username ?? null,
+        analytics: analyticsEntitlement({
+          role: user.role,
+          creatorTier: user.creatorProfile?.tier ?? null,
+          access,
+          available: this.config.get('ANALYTICS_READ_ENABLED', { infer: true }),
+          now,
+        }),
       },
-      new Date(),
+      now,
     );
   }
 
