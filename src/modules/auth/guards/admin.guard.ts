@@ -10,7 +10,7 @@ import type { User } from '../../../generated/prisma/client';
 
 // FR-901: gates the /admin surface. Runs AFTER PrivyAuthGuard (which attaches req.user).
 // Grants when the user's DB role is ADMIN, or when they're in the ADMIN_ALLOWLIST
-// break-glass set (emails / Privy DIDs) that bootstraps the very first admin.
+// break-glass set (emails / provider user ids) that bootstraps the very first admin.
 @Injectable()
 export class AdminGuard implements CanActivate {
   constructor(private readonly config: ConfigService<Env, true>) {}
@@ -37,7 +37,7 @@ export class AdminGuard implements CanActivate {
     const email = user.email?.toLowerCase();
     return (
       (email !== undefined && allow.has(email)) ||
-      allow.has(user.privyDid.toLowerCase())
+      allow.has(user.providerUserId.toLowerCase())
     );
   }
 }

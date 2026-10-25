@@ -5,6 +5,7 @@ import { Env } from '../config/env.validation';
 import { EMBEDDED_WALLET_PORT } from './wallet/embedded-wallet.port';
 import { StubWalletAdapter } from './wallet/stub-wallet.adapter';
 import { PrivyWalletAdapter } from './wallet/privy-wallet.adapter';
+import { Web3AuthWalletAdapter } from './wallet/web3auth-wallet.adapter';
 
 import { FLAT_FEE_PAYMENT_PORT } from './flat-fee/flat-fee-payment.port';
 import { StubFlatFeeAdapter } from './flat-fee/stub-flat-fee.adapter';
@@ -36,6 +37,7 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
   providers: [
     StubWalletAdapter,
     PrivyWalletAdapter,
+    Web3AuthWalletAdapter,
     StubFlatFeeAdapter,
     PaystackFlatFeeAdapter,
     StubKycAdapter,
@@ -48,12 +50,23 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
     StubShingleDetector,
     {
       provide: EMBEDDED_WALLET_PORT,
-      inject: [ConfigService, StubWalletAdapter, PrivyWalletAdapter],
+      inject: [
+        ConfigService,
+        StubWalletAdapter,
+        PrivyWalletAdapter,
+        Web3AuthWalletAdapter,
+      ],
       useFactory: (
         config: ConfigService<Env, true>,
         stub: StubWalletAdapter,
         privy: PrivyWalletAdapter,
-      ) => (config.get('WALLET_PROVIDER', { infer: true }) === 'privy' ? privy : stub),
+        web3auth: Web3AuthWalletAdapter,
+      ) => {
+        const provider = config.get('WALLET_PROVIDER', { infer: true });
+        if (provider === 'privy') return privy;
+        if (provider === 'web3auth') return web3auth;
+        return stub;
+      },
     },
     {
       provide: FLAT_FEE_PAYMENT_PORT,

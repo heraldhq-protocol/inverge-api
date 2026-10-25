@@ -2,15 +2,60 @@ import { z } from 'zod';
 
 // Provider selection keeps vendors swappable (docs/phase0-refined-plan.md §3).
 // "stub" runs fully offline for local dev.
-export const envSchema = z.object({
+/** The value shipped in the schema so local dev starts without setup. */
+export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
+
+// `z.coerce.boolean()` treats the string "false" as true, which would make a
+// `REDIS_ENABLED=false` deployment silently connect anyway. Parse the documented
+// spellings explicitly and reject anything else.
+const booleanFlag = z.preprocess(
+  (value) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  z.union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+).transform((value) => value === true || value === 'true' || value === '1');
+
+export const envSchema = z
+  .object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DIRECT_URL: z.string().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  // Redis is optional infrastructure: reads fall back to Postgres and queues are
+  // skipped when it is disabled. Set false on a box that must not dial Redis at
+  // all (unit/e2e tests, a web-only instance).
+  REDIS_ENABLED: booleanFlag.default(true),
+  QUEUE_ENABLED: booleanFlag.default(true),
 
-  WALLET_PROVIDER: z.enum(['stub', 'privy']).default('stub'),
+  // Comma-separated browser origins. Empty means same-origin only (the web app
+  // reaches the API through its own server, so cross-origin is opt-in).
+  CORS_ORIGINS: z.string().default(''),
+  // Number of reverse proxies in front of the API. Only the resolved req.ip is
+  // used for rate-limit keys; raw X-Forwarded-For is never trusted.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+  JSON_BODY_LIMIT: z.string().default('1mb'),
+
+  RATE_LIMIT_ENABLED: booleanFlag.default(true),
+  METRICS_ENABLED: booleanFlag.default(true),
+  METRICS_TOKEN: z.string().optional(),
+  // json in production, pretty elsewhere unless explicitly set.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  LOG_LEVEL: z.enum(['verbose', 'debug', 'log', 'warn', 'error']).default('log'),
+  LOG_HASH_SALT: z.string().default('inverge-log'),
+
+  // Product analytics retention (docs/api/analytics-privacy.md): raw events 90 days,
+  // daily aggregates 25 months. There is no public ingestion route; these bounds are
+  // enforced by the nightly maintenance job.
+  ANALYTICS_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+  ANALYTICS_AGGREGATE_RETENTION_MONTHS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(120)
+    .default(25),
+
+  WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
   KYC_PROVIDER: z.enum(['stub', 'didit']).default('stub'),
   NOTIFICATION_PROVIDER: z.enum(['stub', 'herald']).default('stub'),
@@ -32,6 +77,14 @@ export const envSchema = z.object({
   PRIVY_JWKS_URL: z.string().optional(),
   PRIVY_TOKEN_ISSUER: z.string().default('privy.io'),
 
+  // MetaMask Embedded Wallets / Web3Auth (WALLET_PROVIDER=web3auth). The client
+  // id is the token audience; without it a token minted for another project
+  // would verify, so it is required at exchange time. No client secret is needed
+  // for JWKS verification — never put one in this service.
+  WEB3AUTH_CLIENT_ID: z.string().optional(),
+  WEB3AUTH_JWKS_URL: z.string().url().default('https://api-auth.web3auth.io/jwks'),
+  WEB3AUTH_TOKEN_ISSUER: z.string().url().default('https://api-auth.web3auth.io'),
+
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
 
@@ -52,13 +105,27 @@ export const envSchema = z.object({
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
 
-  SESSION_JWT_SECRET: z.string().min(1).default('change-me-in-production'),
+  SESSION_JWT_SECRET: z.string().min(1).default(DEFAULT_SESSION_JWT_SECRET),
 
   // FR-901: break-glass / bootstrap superadmins. Comma-separated emails and/or Privy DIDs
   // that always pass the AdminGuard regardless of their DB role — used to seed the first
   // admin, who then grants others via PATCH /admin/users/:id/role. Empty by default.
   ADMIN_ALLOWLIST: z.string().default(''),
-});
+  })
+  .superRefine((env, ctx) => {
+    // A production boot with the documented default would let anyone forge a
+    // session for any user id. Fail at startup, not silently at runtime.
+    if (
+      env.NODE_ENV === 'production' &&
+      env.SESSION_JWT_SECRET === DEFAULT_SESSION_JWT_SECRET
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_JWT_SECRET'],
+        message: 'SESSION_JWT_SECRET must be set to a real secret in production',
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

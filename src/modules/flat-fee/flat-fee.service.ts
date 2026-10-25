@@ -1,11 +1,13 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateChargeInput,
   FLAT_FEE_PAYMENT_PORT,
   FlatFeePaymentPort,
+  FlatFeeWebhookEvent,
 } from '../../ports/flat-fee/flat-fee-payment.port';
+import { WebhookInboxService } from '../../common/webhooks/webhook-inbox.service';
 import { FLATFEE_SUCCEEDED, FlatFeeSucceededEvent } from './flat-fee.events';
 
 // The flat-fee rail (FR-406): boosts + application fee, independent of escrow flows.
@@ -15,6 +17,7 @@ export class FlatFeeService {
     @Inject(FLAT_FEE_PAYMENT_PORT) private readonly processor: FlatFeePaymentPort,
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    @Optional() private readonly inbox?: WebhookInboxService,
   ) {}
 
   async createCharge(input: CreateChargeInput) {
@@ -40,6 +43,22 @@ export class FlatFeeService {
     const evt = this.processor.parseWebhook(rawBody, signature);
     if (!evt) throw new BadRequestException('Invalid or unverifiable webhook');
 
+    if (!this.inbox) return this.applyWebhook(evt);
+
+    return this.inbox.run(
+      {
+        provider: 'PAYSTACK',
+        rawBody,
+        // The charge reference is already durable local state, and the status
+        // distinguishes a later failed event from the original success.
+        dedupeKey: `PAYSTACK:${evt.processorRef}:${evt.status}`,
+        eventType: evt.status,
+      },
+      () => this.applyWebhook(evt),
+    );
+  }
+
+  private async applyWebhook(evt: FlatFeeWebhookEvent) {
     const charge = await this.prisma.flatFeeCharge.findUnique({
       where: { processorRef: evt.processorRef },
     });

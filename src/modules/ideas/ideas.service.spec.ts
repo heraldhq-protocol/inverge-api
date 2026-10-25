@@ -15,8 +15,12 @@ function prismaMock(idea: any = null) {
       create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'new-id', ...data })),
       update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'idea1', ...data })),
       findUnique: jest.fn().mockResolvedValue(idea),
+      findFirst: jest.fn().mockResolvedValue(idea),
+      findMany: jest.fn().mockResolvedValue([]),
+      groupBy: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
     },
+    ideaSignal: { findUnique: jest.fn().mockResolvedValue(null) },
     surveyQuestion: { createMany: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
   } as any;
@@ -27,9 +31,9 @@ const moderationMock = () => ({ screenSafe: jest.fn().mockResolvedValue(null), s
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
 
-function make(idea: any = null, params = paramsMock()) {
+function make(idea: any = null, params = paramsMock(), cache?: any) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return { svc: new IdeasService(p, m, q, mod, params), p, m, q, mod };
+  return { svc: new IdeasService(p, m, q, mod, params, cache), p, m, q, mod };
 }
 
 const validDto = {
@@ -42,7 +46,7 @@ const validDto = {
 
 describe('IdeasService.create (FR-270/275)', () => {
   it('creates a structured DRAFT, derives a roadmap summary, scores, returns fresh', async () => {
-    const fresh = { id: 'new-id', status: 'DRAFT' };
+    const fresh = { id: 'new-id', creatorId: 'u1', status: 'DRAFT' };
     const { svc, p, q } = make(fresh);
     const res = await svc.create('u1', validDto);
     const data = p.idea.create.mock.calls[0][0].data;
@@ -100,9 +104,173 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
 
 describe('IdeasService.getQuality', () => {
   it('returns the latest coaching report', async () => {
-    const { svc, q } = make();
+    const { svc, q } = make({ id: 'idea1' });
     await svc.getQuality('idea1');
     expect(q.latestReport).toHaveBeenCalledWith('idea1');
+  });
+});
+
+const ideaFixture = (overrides: Record<string, unknown> = {}) => ({
+  id: 'idea1',
+  creatorId: 'u1',
+  status: 'VALIDATING',
+  createdAt: new Date('2026-01-02T00:00:00.000Z'),
+  supporterCount: 0,
+  weightedPrePledgeTotal: 0,
+  feedbackCount: 0,
+  feedbackScore: 0,
+  askAmount: 1000,
+  creatorPrePledgeTarget: null,
+  creator: null,
+  taxonomyCategorySlug: null,
+  taxonomySubcategorySlug: null,
+  ...overrides,
+});
+
+describe('IdeasService.get - unpublished visibility (FR-272)', () => {
+  it('404s a DRAFT for an anonymous reader', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.get('idea1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('404s a DRAFT for another authenticated user', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.get('idea1', { id: 'u2' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('returns a DRAFT to its owner', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    const idea = await svc.get('idea1', { id: 'u1' });
+    expect(idea.status).toBe('DRAFT');
+  });
+
+  it('returns a DRAFT to an admin', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    const idea = await svc.get('idea1', { id: 'u2', role: 'ADMIN' });
+    expect(idea.status).toBe('DRAFT');
+  });
+
+  it('keeps a published LINK_ONLY idea reachable by direct URL', async () => {
+    const { svc } = make(
+      ideaFixture({ status: 'VALIDATING', discoverabilityTier: 'LINK_ONLY' }),
+    );
+    await expect(svc.get('idea1')).resolves.toMatchObject({
+      discoverabilityTier: 'LINK_ONLY',
+    });
+  });
+
+  it('caches only the anonymous projection and bypasses cache for a viewer', async () => {
+    const cache = {
+      getOrSet: jest.fn(
+        async (
+          _ns: string,
+          _key: string,
+          _ttl: number,
+          loader: () => Promise<unknown>,
+        ) => loader(),
+      ),
+    };
+    const { svc } = make(ideaFixture(), paramsMock(), cache);
+
+    await svc.get('idea1');
+    expect(cache.getOrSet).toHaveBeenCalledWith(
+      'idea',
+      'public:v2:idea1',
+      30,
+      expect.any(Function),
+    );
+
+    cache.getOrSet.mockClear();
+    await svc.get('idea1', { id: 'u1' });
+    expect(cache.getOrSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('IdeasService.getQuality - unpublished visibility', () => {
+  it('404s a DRAFT coaching report for an anonymous reader', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.getQuality('idea1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('returns a DRAFT coaching report to its owner', async () => {
+    const { svc, q } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.getQuality('idea1', { id: 'u1' })).resolves.toEqual({
+      id: 'r1',
+    });
+    expect(q.latestReport).toHaveBeenCalledWith('idea1');
+  });
+});
+
+describe('IdeasService — public creator counts', () => {
+  const creator = {
+    id: 'u1',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    creatorProfile: {
+      username: 'alice',
+      displayName: 'Alice',
+      tier: 'STARTER',
+      completedCampaigns: 0,
+      links: [],
+      tenureStartedAt: new Date('2026-01-01T00:00:00.000Z'),
+    },
+  };
+
+  it('counts only the creators on the page', async () => {
+    const { svc, p } = make();
+    p.idea.findMany.mockResolvedValue([
+      {
+        id: 'idea1',
+        creatorId: 'u1',
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        boosts: [],
+        creator,
+      },
+    ]);
+    p.idea.groupBy.mockResolvedValue([
+      { creatorId: 'u1', _count: { _all: 7 } },
+    ]);
+
+    const page = await svc.list({ limit: 20 } as any);
+
+    expect(p.idea.groupBy).toHaveBeenCalledWith({
+      by: ['creatorId'],
+      where: { creatorId: { in: ['u1'] } },
+      _count: { _all: true },
+    });
+    expect(page.data[0].creator?.ideasPublished).toBe(7);
+    expect(page.data[0].gateProgress.criteria.supporters).toEqual({
+      have: 0,
+      need: 50,
+      pct: 0,
+      met: false,
+    });
+    expect(page.data[0].gateProgress.meetsThreshold).toBe(false);
+  });
+
+  it('counts one creator on detail', async () => {
+    const idea = {
+      id: 'idea1',
+      creatorId: 'u1',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      supporterCount: 0,
+      weightedPrePledgeTotal: 0,
+      feedbackCount: 0,
+      feedbackScore: 0,
+      askAmount: 1000,
+      creatorPrePledgeTarget: null,
+      creator,
+    };
+    const { svc, p } = make(idea);
+    p.idea.count.mockResolvedValue(4);
+
+    const result = await svc.get('idea1');
+
+    expect(p.idea.count).toHaveBeenCalledWith({ where: { creatorId: 'u1' } });
+    expect(result.creator?.ideasPublished).toBe(4);
   });
 });
 
@@ -114,6 +282,29 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
       expect.objectContaining({ create: expect.objectContaining({ type: 'SUPPORT' }) }),
     );
     expect(m.recompute).toHaveBeenCalledWith(p._tx, 'idea1');
+  });
+
+  it('records one analytics signal for a first support and none for a repeat', async () => {
+    const p = prismaMock({ id: 'idea1', status: 'VALIDATING' });
+    const analytics = { record: jest.fn().mockResolvedValue(true) } as any;
+    const svc = new IdeasService(
+      p,
+      metricsMock(),
+      qualityMock(),
+      moderationMock(),
+      paramsMock(),
+      undefined,
+      analytics,
+    );
+
+    await svc.support('u2', 'idea1');
+    p.ideaSignal.findUnique.mockResolvedValue({ id: 'existing' });
+    await svc.support('u2', 'idea1');
+
+    expect(analytics.record).toHaveBeenCalledTimes(1);
+    expect(analytics.record).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'IDEA_SIGNAL', signalType: 'SUPPORT' }),
+    );
   });
 
   it('unsupport deletes the SUPPORT signal then recomputes', async () => {
@@ -145,7 +336,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('seeds a default survey on create (rating + open-text)', async () => {
-    const { svc, p } = make({ id: 'new-id', status: 'DRAFT' });
+    const { svc, p } = make({ id: 'new-id', creatorId: 'u1', status: 'DRAFT' });
     await svc.create('u1', validDto);
     const data = p.surveyQuestion.createMany.mock.calls[0][0].data;
     expect(data.some((q: any) => q.type === 'RATING')).toBe(true);

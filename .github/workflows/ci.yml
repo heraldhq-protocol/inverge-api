@@ -1,0 +1,138 @@
+name: ci
+
+# Automatic runs are paused: the repository account currently has an Actions
+# billing lock, so GitHub cancels every job before it starts. Run this workflow
+# manually from the Actions tab ("Run workflow") once billing is restored, then
+# put the push/pull_request triggers back.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Only used by `prisma generate`; no database is reachable in this job and
+      # no query is executed.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test -- --ci --forceExit
+
+      - name: Build
+        run: pnpm build
+
+      # Fails when a controller or DTO changed without regenerating the committed
+      # contract. This is the drift gate: the web client is generated from it.
+      - name: OpenAPI drift
+        run: pnpm openapi:check
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # A clean database is the point of this job: it applies every committed
+    # migration, seeds launch parameters, and exercises the HTTP surface. A
+    # schema change that only exists in someone's `db push` state fails here.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: inverge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/inverge
+      REDIS_URL: redis://127.0.0.1:6379
+      REDIS_ENABLED: 'false'
+      QUEUE_ENABLED: 'false'
+      RATE_LIMIT_ENABLED: 'false'
+      WALLET_PROVIDER: stub
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Apply migrations
+        run: pnpm prisma:deploy
+
+      # A schema change that exists only in a developer's `db push` state is
+      # invisible to `migrate deploy` but breaks the first runtime query. Fail the
+      # job when the migrated database and the schema disagree.
+      - name: Schema drift
+        run: pnpm exec prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code
+
+      - name: Seed launch parameters
+        run: pnpm db:seed
+
+      - name: E2E tests
+        run: pnpm test:e2e -- --ci --forceExit
+
+      # The same suite against a live Redis: single-flight, generation bump,
+      # Lua token bucket and readiness. Opt-in because the default run proves
+      # graceful degradation instead.
+      - name: Redis-backed cache and limiter
+        env:
+          REDIS_E2E: 'true'
+        run: pnpm test:e2e -- test/redis.e2e-spec.ts --runInBand --forceExit

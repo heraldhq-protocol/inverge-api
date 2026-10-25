@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -10,29 +10,38 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { parseBooleanQuery } from '../../../common/http/boolean-query';
+import {
+  DISCOVERY_MAX_PAGE_SIZE,
+  DISCOVERY_PAGE_SIZE,
+} from '../../../common/http/pagination';
+import { TAXONOMY_CATEGORY_SLUGS } from '../../taxonomy/taxonomy';
 
 export const CAMPAIGN_SORT_OPTIONS = [
   'closing-soon',
   'newest',
   'most-backed',
-  'most-delivered',
 ] as const;
 
 export class ListCampaignsQueryDto {
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  skip?: number;
-
-  @ApiPropertyOptional({ default: 50 })
+  @ApiPropertyOptional({
+    default: DISCOVERY_PAGE_SIZE,
+    maximum: DISCOVERY_MAX_PAGE_SIZE,
+    description: 'Page size. Discovery pages omit an exact total.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
-  take?: number;
+  @Max(DISCOVERY_MAX_PAGE_SIZE)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Opaque nextCursor from the previous page. Do not construct or edit it.',
+  })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -43,6 +52,21 @@ export class ListCampaignsQueryDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({
+    enum: TAXONOMY_CATEGORY_SLUGS,
+    description: 'Discovery taxonomy category. Independent of the legacy `category` bucket.',
+  })
+  @IsOptional()
+  @IsIn(TAXONOMY_CATEGORY_SLUGS)
+  taxonomyCategory?: string;
+
+  @ApiPropertyOptional({
+    description: 'Discovery taxonomy subcategory; requires taxonomyCategory.',
+  })
+  @IsOptional()
+  @IsString()
+  taxonomySubcategory?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -56,7 +80,7 @@ export class ListCampaignsQueryDto {
 
   @ApiPropertyOptional({ description: 'If true, returns calling creator\'s own campaigns (all statuses including DRAFT and IN_REVIEW)' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(parseBooleanQuery)
   @IsBoolean()
   mine?: boolean;
 }

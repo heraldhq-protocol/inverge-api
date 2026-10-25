@@ -4,16 +4,19 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { ModerationService } from './moderation.service';
 import { ScreenContentDto } from './dto/screen-content.dto';
 
 // FR-1001–1007. Admin/tooling entry to run the moderation harness on arbitrary content.
-// NOTE: guarded by session auth; admin RBAC is a pre-production TODO (as with AdminController).
+// FR-901: admin RBAC. PrivyAuthGuard authenticates, AdminGuard requires role ADMIN (or the
+// ADMIN_ALLOWLIST break-glass set). This route can run the vendor classifier on arbitrary
+// text, so authentication alone is not enough.
 @ApiTags('moderation')
 @ApiBearerAuth()
 @Controller('admin/moderation')
-@UseGuards(PrivyAuthGuard)
+@UseGuards(PrivyAuthGuard, AdminGuard)
 export class ModerationController {
   constructor(private readonly moderation: ModerationService) {}
 

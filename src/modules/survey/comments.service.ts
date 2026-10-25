@@ -6,9 +6,21 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import { CreateCommentDto } from './dto/comment.dto';
+import { CreateCommentDto, ListCommentsQueryDto } from './dto/comment.dto';
+import {
+  buildPage,
+  filterFingerprint,
+} from '../../common/http/pagination';
+import {
+  commentKeysetWhere,
+  decodeCommentCursor,
+  encodeCommentCursor,
+} from './comment-cursor';
 
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+
+const COMMENT_PAGE_SIZE = 50;
+const COMMENT_MAX_PAGE_SIZE = 100;
 
 // Free-form comments thread on an idea (distinct from the structured survey). Comments
 // can be liked and replied to. Thread volume feeds Idea.commentCount (engagement metric,
@@ -64,13 +76,33 @@ export class CommentsService {
     };
   }
 
-  // Public: highlighted first, then most-liked, then most-recent. Flat list carrying
+  // Public: highlighted first, then most-liked, then most-recent. Flat page carrying
   // parentId + likeCount so the client can nest replies. Includes author projection.
-  async list(ideaIdOrSlug: string, currentUserId?: string) {
+  async list(
+    ideaIdOrSlug: string,
+    query: ListCommentsQueryDto,
+    currentUserId?: string,
+  ) {
     const idea = await this.resolveIdea(ideaIdOrSlug);
     const ideaId = idea.id;
+    const limit = Math.min(
+      Math.max(query.limit ?? COMMENT_PAGE_SIZE, 1),
+      COMMENT_MAX_PAGE_SIZE,
+    );
+    const fingerprint = filterFingerprint({
+      route: 'ideas.comments',
+      ideaId,
+      sort: 'highlighted_desc,likeCount_desc,createdAt_desc,id_desc',
+    });
+    const cursor = query.cursor
+      ? decodeCommentCursor(query.cursor, fingerprint)
+      : null;
+
     const comments = await this.prisma.ideaComment.findMany({
-      where: { ideaId },
+      where: {
+        ideaId,
+        ...(cursor ? commentKeysetWhere(cursor) : {}),
+      },
       include: {
         user: {
           include: { creatorProfile: true },
@@ -82,26 +114,40 @@ export class CommentsService {
             }
           : false,
       },
-      orderBy: [{ highlighted: 'desc' }, { likeCount: 'desc' }, { createdAt: 'desc' }],
-      take: 300,
+      orderBy: [
+        { highlighted: 'desc' },
+        { likeCount: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limit + 1,
     });
 
-    return comments.map((comment) => {
-      const publicCreator = toPublicCreator(comment.user);
-      const isCreator = comment.userId === idea.creatorId;
-      const { user, likes, ...rest } = comment;
+    const page = buildPage(comments, limit, (comment) =>
+      encodeCommentCursor(comment, fingerprint),
+    );
 
-      return {
-        ...rest,
-        author: {
-          id: comment.user.id,
-          displayName: publicCreator?.displayName ?? null,
-          avatarUrl: publicCreator?.avatarUrl ?? null,
-          isCreator,
-        },
-        ...(currentUserId ? { likedByMe: Array.isArray(likes) && likes.length > 0 } : {}),
-      };
-    });
+    return {
+      data: page.data.map((comment) => {
+        const publicCreator = toPublicCreator(comment.user);
+        const isCreator = comment.userId === idea.creatorId;
+        const { user, likes, ...rest } = comment;
+
+        return {
+          ...rest,
+          author: {
+            id: comment.user.id,
+            displayName: publicCreator?.displayName ?? null,
+            avatarUrl: publicCreator?.avatarUrl ?? null,
+            isCreator,
+          },
+          ...(currentUserId
+            ? { likedByMe: Array.isArray(likes) && likes.length > 0 }
+            : {}),
+        };
+      }),
+      page: page.page,
+    };
   }
 
   async like(userId: string, ideaIdOrSlug: string, commentId: string) {

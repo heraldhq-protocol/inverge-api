@@ -4,16 +4,34 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
+import {
+  resolveTaxonomyPair,
+  toTaxonomyProjection,
+} from '../taxonomy/taxonomy';
+import {
+  asCursorDate,
+  buildPage,
+  clampPageSize,
+  decodeCursor,
+  encodeCursor,
+  filterFingerprint,
+  keysetCondition,
+} from '../../common/http/pagination';
 
 @Injectable()
 export class CampaignsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly cache?: CacheService,
+  ) {}
 
   async list(query: ListCampaignsQueryDto, currentUserId?: string) {
     let whereClause: Record<string, unknown> = {};
@@ -41,128 +59,234 @@ export class CampaignsService {
       };
     }
 
-    let orderBy: object = { createdAt: 'desc' };
-    if (query.sort === 'closing-soon') {
-      orderBy = { deadline: 'asc' };
-    } else if (query.sort === 'most-backed') {
-      orderBy = { totalRaised: 'desc' };
-    } else if (query.sort === 'newest') {
-      orderBy = { createdAt: 'desc' };
+    const taxonomy = resolveTaxonomyPair(
+      query.taxonomyCategory,
+      query.taxonomySubcategory,
+    );
+    if (!taxonomy.ok) throw new BadRequestException(taxonomy.reason);
+    if (taxonomy.pair) {
+      whereClause.taxonomyCategorySlug = taxonomy.pair.category;
+      if (taxonomy.pair.subcategory) {
+        whereClause.taxonomySubcategorySlug = taxonomy.pair.subcategory;
+      }
     }
 
-    const campaigns = await this.prisma.campaign.findMany({
-      where: whereClause,
-      include: {
-        creator: {
-          include: { creatorProfile: true },
-        },
-        idea: true,
-        milestones: {
-          include: {
-            claims: {
-              orderBy: { submittedAt: 'desc' },
-              take: 1,
+    // Each sort is a total order: `id` breaks ties so a page boundary can never
+    // repeat or drop a campaign with the same timestamp or raised amount.
+    const sort = query.sort ?? 'newest';
+    const sortConfig: {
+      orderBy: Prisma.CampaignOrderByWithRelationInput[];
+      field: 'createdAt' | 'deadline' | 'totalRaised';
+      direction: 'asc' | 'desc';
+    } = (() => {
+      switch (sort) {
+        case 'closing-soon':
+          return {
+            orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+            field: 'deadline',
+            direction: 'asc',
+          };
+        case 'most-backed':
+          return {
+            orderBy: [{ totalRaised: 'desc' }, { id: 'desc' }],
+            field: 'totalRaised',
+            direction: 'desc',
+          };
+        default:
+          return {
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            field: 'createdAt',
+            direction: 'desc',
+          };
+      }
+    })();
+
+    const limit = clampPageSize(query.limit);
+    const fingerprint = filterFingerprint({
+      route: 'campaigns.list',
+      mine: Boolean(query.mine),
+      viewer: query.mine ? (currentUserId ?? null) : null,
+      status: query.status ?? null,
+      category: query.category ?? null,
+      taxonomyCategory: taxonomy.pair?.category ?? null,
+      taxonomySubcategory: taxonomy.pair?.subcategory ?? null,
+      region: query.region ?? null,
+      sort,
+    });
+    const cursor = query.cursor
+      ? decodeCursor(query.cursor, fingerprint)
+      : null;
+
+    const loadPage = async () => {
+      const campaigns = await this.prisma.campaign.findMany({
+        where: cursor
+          ? {
+              AND: [
+                whereClause,
+                keysetCondition(sortConfig.field, sortConfig.direction, cursor, (value) =>
+                  sortConfig.field === 'totalRaised' ? value : asCursorDate(value),
+                ),
+              ],
+            }
+          : whereClause,
+        include: {
+          creator: {
+            include: { creatorProfile: true },
+          },
+          idea: true,
+          // A card only needs the milestone count and whether each one was
+          // released. Loading every milestone field for every row was excess.
+          milestones: {
+            select: {
+              id: true,
+              claims: {
+                orderBy: { submittedAt: 'desc' },
+                take: 1,
+                select: { status: true },
+              },
             },
           },
         },
-      },
-      orderBy,
-      skip: query.skip ?? 0,
-      take: query.take ?? 50,
-    });
+        orderBy: sortConfig.orderBy,
+        take: limit + 1,
+      });
 
-    const result = campaigns.map((campaign) => {
-      const { creator, milestones, ...rest } = campaign;
-      const totalMilestones = milestones.length;
-      const releasedMilestones = milestones.filter(
-        (m) => m.claims[0]?.status === 'APPROVED',
-      ).length;
+      const result = campaigns.map((campaign) => {
+        const {
+          creator,
+          milestones,
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+          ...rest
+        } = campaign;
+        const totalMilestones = milestones.length;
+        const releasedMilestones = milestones.filter(
+          (m) => m.claims[0]?.status === 'APPROVED',
+        ).length;
 
-      return {
-        ...rest,
-        creator: toPublicCreator(creator),
-        milestoneSummary: {
-          total: totalMilestones,
-          released: releasedMilestones,
-        },
-      };
-    });
+        return {
+          ...rest,
+          taxonomy: toTaxonomyProjection(
+            taxonomyCategorySlug,
+            taxonomySubcategorySlug,
+          ),
+          creator: toPublicCreator(creator),
+          milestoneSummary: {
+            total: totalMilestones,
+            released: releasedMilestones,
+          },
+        };
+      });
 
-    if (query.sort === 'most-delivered') {
-      result.sort(
-        (a, b) => b.milestoneSummary.released - a.milestoneSummary.released,
-      );
-    }
+      return buildPage(result, limit, (campaign) => {
+        const sortValue =
+          sort === 'closing-soon'
+            ? campaign.deadline.toISOString()
+            : sort === 'most-backed'
+              ? campaign.totalRaised.toString()
+              : campaign.createdAt.toISOString();
 
-    return result;
+        return encodeCursor(sortValue, campaign.id, fingerprint);
+      });
+    };
+
+    // `mine=true` is a creator-specific view and is never cached across callers.
+    if (query.mine) return loadPage();
+    return this.cache
+      ? this.cache.getOrSet(
+          'campaigns',
+          `${fingerprint}:${limit}:${query.cursor ?? 'first'}`,
+          20,
+          loadPage,
+        )
+      : loadPage();
   }
 
   async get(id: string, currentUserId?: string) {
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id },
-      include: {
-        creator: {
-          include: { creatorProfile: true },
-        },
-        idea: true,
-        milestones: {
-          orderBy: { index: 'asc' },
-          include: {
-            claims: {
-              orderBy: { submittedAt: 'desc' },
-              take: 1,
+    const loadCampaign = async () => {
+      const campaign = await this.prisma.campaign.findUnique({
+        where: { id },
+        include: {
+          creator: {
+            include: { creatorProfile: true },
+          },
+          idea: true,
+          milestones: {
+            orderBy: { index: 'asc' },
+            include: {
+              claims: {
+                orderBy: { submittedAt: 'desc' },
+                take: 1,
+              },
             },
           },
+          contributions: currentUserId
+            ? {
+                where: { userId: currentUserId },
+                take: 1,
+              }
+            : false,
         },
-        contributions: currentUserId
+      });
+
+      if (!campaign) throw new NotFoundException('Campaign not found');
+
+      const {
+        creator,
+        milestones,
+        contributions,
+        taxonomyCategorySlug,
+        taxonomySubcategorySlug,
+        ...rest
+      } = campaign;
+
+      const formattedMilestones = milestones.map((m) => {
+        const latestClaim = m.claims[0] ?? null;
+        return {
+          id: m.id,
+          index: m.index,
+          title: m.title,
+          deliverable: m.deliverable,
+          tranchePct: Number(m.tranchePct),
+          evidenceDefinition: m.evidenceDefinition,
+          latestClaim: latestClaim
+            ? {
+                id: latestClaim.id,
+                submittedAt: latestClaim.submittedAt,
+                objectionWindowEndsAt: latestClaim.objectionWindowEndsAt,
+                status: latestClaim.status,
+              }
+            : null,
+        };
+      });
+
+      const myContribution =
+        Array.isArray(contributions) && contributions.length > 0
           ? {
-              where: { userId: currentUserId },
-              take: 1,
+              amount: Number(contributions[0].amount),
+              tokenType: contributions[0].tokenType,
+              txSignature: contributions[0].txSignature,
+              createdAt: contributions[0].createdAt,
             }
-          : false,
-      },
-    });
+          : null;
 
-    if (!campaign) throw new NotFoundException('Campaign not found');
-
-    const { creator, milestones, contributions, ...rest } = campaign;
-
-    const formattedMilestones = milestones.map((m) => {
-      const latestClaim = m.claims[0] ?? null;
       return {
-        id: m.id,
-        index: m.index,
-        title: m.title,
-        deliverable: m.deliverable,
-        tranchePct: Number(m.tranchePct),
-        evidenceDefinition: m.evidenceDefinition,
-        latestClaim: latestClaim
-          ? {
-              id: latestClaim.id,
-              submittedAt: latestClaim.submittedAt,
-              objectionWindowEndsAt: latestClaim.objectionWindowEndsAt,
-              status: latestClaim.status,
-            }
-          : null,
+        ...rest,
+        taxonomy: toTaxonomyProjection(
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+        ),
+        creator: toPublicCreator(creator),
+        milestones: formattedMilestones,
+        myContribution,
       };
-    });
-
-    const myContribution =
-      Array.isArray(contributions) && contributions.length > 0
-        ? {
-            amount: Number(contributions[0].amount),
-            tokenType: contributions[0].tokenType,
-            txSignature: contributions[0].txSignature,
-            createdAt: contributions[0].createdAt,
-          }
-        : null;
-
-    return {
-      ...rest,
-      creator: toPublicCreator(creator),
-      milestones: formattedMilestones,
-      myContribution,
     };
+
+    // A contribution lookup is viewer-specific: never serve it from a shared key.
+    if (currentUserId) return loadCampaign();
+    return this.cache
+      ? this.cache.getOrSet('campaign', id, 30, loadCampaign)
+      : loadCampaign();
   }
 
   // FR-103 + FR-311: a campaign enters the curation queue only when the creator is
@@ -171,7 +295,7 @@ export class CampaignsService {
   // change-requested campaign is resubmitted (the fee is non-refundable, FR-311).
   async submit(userId: string, campaignId: string, dto: SubmitCampaignDto) {
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const campaign = await tx.campaign.findUnique({
           where: { id: campaignId },
           select: {
@@ -305,6 +429,11 @@ export class CampaignsService {
           creator: toPublicCreator(creator),
         };
       });
+      // A submission changes review state visible on the creator and admin
+      // surfaces. Invalidate after commit, never inside the transaction.
+      this.cache?.bumpEventually('campaigns');
+      this.cache?.bumpEventually('campaign');
+      return result;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -319,43 +448,57 @@ export class CampaignsService {
   }
 
   async getPlatformEscrowStats() {
-    const [events, activeCount, completedCount, refundedCount, activeCampaigns] =
-      await Promise.all([
-        this.prisma.onChainEvent.findMany({
-          select: { eventType: true, amount: true },
-        }),
-        this.prisma.campaign.count({ where: { status: 'ACTIVE' } }),
-        this.prisma.campaign.count({ where: { status: 'COMPLETED' } }),
-        this.prisma.campaign.count({ where: { status: 'FAILED' } }),
-        this.prisma.campaign.aggregate({
-          where: { status: 'ACTIVE' },
-          _sum: { totalRaised: true },
-        }),
-      ]);
+    const loadStats = async () => {
+      // One grouped aggregate instead of loading every indexed event into Node.
+      // The table is append-only (FR-803) and grows with every chain event, so the
+      // previous `findMany` was an unbounded read once the indexer had history.
+      const [eventTotals, activeCount, completedCount, refundedCount, activeCampaigns] =
+        await Promise.all([
+          this.prisma.onChainEvent.groupBy({
+            by: ['eventType'],
+            where: {
+              eventType: { in: ['TRANCHE_RELEASED', 'REFUND_CLAIMED'] },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.campaign.count({ where: { status: 'ACTIVE' } }),
+          this.prisma.campaign.count({ where: { status: 'COMPLETED' } }),
+          this.prisma.campaign.count({ where: { status: 'FAILED' } }),
+          this.prisma.campaign.aggregate({
+            where: { status: 'ACTIVE' },
+            _sum: { totalRaised: true },
+          }),
+        ]);
 
-    let releasedSum = 0;
-    let refundedSum = 0;
+      const sumFor = (eventType: 'TRANCHE_RELEASED' | 'REFUND_CLAIMED') =>
+        Number(
+          eventTotals.find((row) => row.eventType === eventType)?._sum.amount ?? 0,
+        );
 
-    for (const event of events) {
-      const amt = Number(event.amount ?? 0);
-      if (event.eventType === 'TRANCHE_RELEASED') {
-        releasedSum += amt;
-      } else if (event.eventType === 'REFUND_CLAIMED') {
-        refundedSum += amt;
-      }
-    }
+      const releasedSum = sumFor('TRANCHE_RELEASED');
+      const refundedSum = sumFor('REFUND_CLAIMED');
 
-    const heldUsd = (Number(activeCampaigns._sum.totalRaised ?? 0) - releasedSum).toFixed(2);
+      const heldUsd = (
+        Number(activeCampaigns._sum.totalRaised ?? 0) - releasedSum
+      ).toFixed(2);
 
-    return {
-      heldUsd,
-      releasedUsd: releasedSum.toFixed(2),
-      refundedUsd: refundedSum.toFixed(2),
-      counts: {
-        active: activeCount,
-        completed: completedCount,
-        refunded: refundedCount,
-      },
+      return {
+        // Escrow figures are a projection of chain events, not an authoritative
+        // balance: the label tells a client how fresh the snapshot is.
+        asOf: new Date().toISOString(),
+        heldUsd,
+        releasedUsd: releasedSum.toFixed(2),
+        refundedUsd: refundedSum.toFixed(2),
+        counts: {
+          active: activeCount,
+          completed: completedCount,
+          refunded: refundedCount,
+        },
+      };
     };
+
+    return this.cache
+      ? this.cache.getOrSet('platform', 'escrow', 60, loadStats)
+      : loadStats();
   }
 }
