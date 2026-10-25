@@ -6,6 +6,9 @@
           "accountActive": {
             "type": "boolean"
           },
+          "analytics": {
+            "$ref": "#/components/schemas/AnalyticsCapabilitiesDto"
+          },
           "asOf": {
             "description": "ISO 8601 timestamp",
             "type": "string"
@@ -33,7 +36,160 @@
           "requiresOnboarding",
           "verification",
           "capabilities",
+          "analytics",
           "asOf"
+        ],
+        "type": "object"
+      },
+      "AdminAnalyticsAccessRequestDto": {
+        "properties": {
+          "creatorTier": {
+            "enum": [
+              "STARTER",
+              "TRUSTED",
+              "ESTABLISHED"
+            ],
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "displayName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "email": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "REQUEST",
+              "ADMIN",
+              "PAID"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "email",
+          "displayName",
+          "username",
+          "creatorTier",
+          "status",
+          "source",
+          "requestedAt",
+          "decidedAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "AdminAnalyticsAccessRequestListDto": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAnalyticsAccessRequestDto"
+            },
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfoDto"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "type": "object"
+      },
+      "AdminAnalyticsOverviewDto": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "lastAggregatedDay": {
+            "nullable": true,
+            "type": "object"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAnalyticsResourceDto"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/AnalyticsTotalsDto"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "totals",
+          "resources",
+          "lastAggregatedDay",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "AdminAnalyticsResourceDto": {
+        "properties": {
+          "resourceType": {
+            "enum": [
+              "IDEA",
+              "CAMPAIGN",
+              "PAGE"
+            ],
+            "type": "string"
+          },
+          "uniqueSessions": {
+            "description": "Daily uniques summed across the range.",
+            "type": "number"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "resourceType",
+          "views",
+          "uniqueSessions"
         ],
         "type": "object"
       },
@@ -72,6 +228,281 @@
         ],
         "type": "object"
       },
+      "AnalyticsAccessDto": {
+        "properties": {
+          "canRequest": {
+            "description": "True when the account may submit a new request. False while pending or approved.",
+            "type": "boolean"
+          },
+          "creatorTier": {
+            "enum": [
+              "STARTER",
+              "TRUSTED",
+              "ESTABLISHED"
+            ],
+            "type": "string"
+          },
+          "decidedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "feature": {
+            "example": "analytics.premium",
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "requestStatus": {
+            "enum": [
+              "NONE",
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED",
+              "NOT_REQUIRED"
+            ],
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "source": {
+            "description": "How the current grant was issued; null before any request.",
+            "enum": [
+              "REQUEST",
+              "ADMIN",
+              "PAID"
+            ],
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature",
+          "premium",
+          "requestStatus",
+          "canRequest",
+          "source",
+          "requestedAt",
+          "decidedAt",
+          "expiresAt",
+          "creatorTier"
+        ],
+        "type": "object"
+      },
+      "AnalyticsCapabilitiesDto": {
+        "properties": {
+          "available": {
+            "description": "False when the operator has disabled analytics reads; entitlement may still be recorded.",
+            "type": "boolean"
+          },
+          "canRequest": {
+            "description": "True when the account may request premium access; false while pending or approved.",
+            "type": "boolean"
+          },
+          "creatorTier": {
+            "enum": [
+              "STARTER",
+              "TRUSTED",
+              "ESTABLISHED"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "requestStatus": {
+            "enum": [
+              "NONE",
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED",
+              "NOT_REQUIRED"
+            ],
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "basic",
+              "premium",
+              "admin"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "tier",
+          "creatorTier",
+          "premium",
+          "requestStatus",
+          "canRequest",
+          "features"
+        ],
+        "type": "object"
+      },
+      "AnalyticsCountryDto": {
+        "properties": {
+          "countryCode": {
+            "example": "NG",
+            "type": "string"
+          },
+          "sharePct": {
+            "nullable": true,
+            "type": "object"
+          },
+          "uniqueSessions": {
+            "type": "number"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "countryCode",
+          "views",
+          "uniqueSessions",
+          "sharePct"
+        ],
+        "type": "object"
+      },
+      "AnalyticsIngestResponseDto": {
+        "properties": {
+          "accepted": {
+            "type": "number"
+          },
+          "duplicates": {
+            "description": "Duplicate event keys skipped on an inline write.",
+            "type": "number"
+          },
+          "persisted": {
+            "description": "Rows written inline; 0 when the batch was queued.",
+            "type": "number"
+          },
+          "queued": {
+            "type": "boolean"
+          },
+          "received": {
+            "type": "number"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedAnalyticsEventDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "received",
+          "accepted",
+          "persisted",
+          "duplicates",
+          "queued",
+          "rejected"
+        ],
+        "type": "object"
+      },
+      "AnalyticsSeriesPointDto": {
+        "properties": {
+          "bucket": {
+            "example": "2026-10-24",
+            "type": "string"
+          },
+          "prePledgeCount": {
+            "type": "number"
+          },
+          "supportCount": {
+            "type": "number"
+          },
+          "uniqueActors": {
+            "type": "number"
+          },
+          "uniqueSessions": {
+            "description": "Daily uniques summed into the bucket.",
+            "type": "number"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bucket",
+          "views",
+          "uniqueSessions",
+          "supportCount",
+          "prePledgeCount",
+          "uniqueActors"
+        ],
+        "type": "object"
+      },
+      "AnalyticsSourceDto": {
+        "properties": {
+          "sharePct": {
+            "description": "Share of views; null for a zero total.",
+            "nullable": true,
+            "type": "object"
+          },
+          "source": {
+            "enum": [
+              "feed",
+              "search",
+              "direct",
+              "internal"
+            ],
+            "type": "string"
+          },
+          "uniqueSessions": {
+            "type": "number"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "views",
+          "uniqueSessions",
+          "sharePct"
+        ],
+        "type": "object"
+      },
+      "AnalyticsTotalsDto": {
+        "properties": {
+          "uniqueSessions": {
+            "type": "number"
+          },
+          "uniqueSessionsExact": {
+            "description": "False when the range predates raw-event retention and the value is the sum of daily uniques.",
+            "type": "boolean"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "views",
+          "uniqueSessions",
+          "uniqueSessionsExact"
+        ],
+        "type": "object"
+      },
       "AnswerDto": {
         "properties": {
           "questionId": {
@@ -107,6 +538,146 @@
             "type": "number"
           }
         },
+        "type": "object"
+      },
+      "CampaignAnalyticsFunnelDto": {
+        "properties": {
+          "backingStarted": {
+            "type": "number"
+          },
+          "campaignId": {
+            "type": "string"
+          },
+          "confirmedBacking": {
+            "$ref": "#/components/schemas/CampaignConfirmedBackingDto"
+          },
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "stepCompleted": {
+            "type": "number"
+          },
+          "stepCompletionPct": {
+            "nullable": true,
+            "type": "object"
+          },
+          "stepStarted": {
+            "type": "number"
+          },
+          "to": {
+            "type": "string"
+          },
+          "uniqueSessions": {
+            "type": "number"
+          },
+          "uniqueSessionsExact": {
+            "type": "boolean"
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "campaignId",
+          "from",
+          "to",
+          "views",
+          "uniqueSessions",
+          "uniqueSessionsExact",
+          "stepStarted",
+          "stepCompleted",
+          "stepCompletionPct",
+          "backingStarted",
+          "confirmedBacking",
+          "premium",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "CampaignAnalyticsSummaryDto": {
+        "properties": {
+          "campaignId": {
+            "type": "string"
+          },
+          "confirmedBacking": {
+            "$ref": "#/components/schemas/CampaignConfirmedBackingDto"
+          },
+          "from": {
+            "type": "string"
+          },
+          "funnel": {
+            "$ref": "#/components/schemas/CampaignFunnelCountsDto"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "lastAggregatedDay": {
+            "nullable": true,
+            "type": "object"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/AnalyticsTotalsDto"
+          }
+        },
+        "required": [
+          "campaignId",
+          "from",
+          "to",
+          "totals",
+          "funnel",
+          "confirmedBacking",
+          "lastAggregatedDay",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "CampaignConfirmedBackingDto": {
+        "properties": {
+          "amountUsd": {
+            "description": "Indexed amount in USD.",
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "source": {
+            "example": "contribution_indexer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "amountUsd",
+          "source"
+        ],
+        "type": "object"
+      },
+      "CampaignFunnelCountsDto": {
+        "properties": {
+          "contributionStarted": {
+            "type": "number"
+          },
+          "stepCompleted": {
+            "type": "number"
+          },
+          "stepStarted": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "stepStarted",
+          "stepCompleted",
+          "contributionStarted"
+        ],
         "type": "object"
       },
       "CapabilityFlagsDto": {
@@ -365,6 +936,26 @@
         "properties": {},
         "type": "object"
       },
+      "DecideAnalyticsAccessRequestDto": {
+        "properties": {
+          "expiresAt": {
+            "description": "Optional paid-through instant for an approval. Omit for access without expiry.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "DecideCampaignReviewDto": {
         "properties": {
           "action": {
@@ -432,6 +1023,210 @@
         ],
         "type": "object"
       },
+      "IdeaAnalyticsAcquisitionDto": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsSourceDto"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totalViews": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ideaId",
+          "from",
+          "to",
+          "totalViews",
+          "sources",
+          "premium",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAnalyticsGeographyDto": {
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsCountryDto"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totalViews": {
+            "type": "number"
+          },
+          "truncated": {
+            "description": "True when the country list was capped.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ideaId",
+          "from",
+          "to",
+          "totalViews",
+          "countries",
+          "truncated",
+          "premium",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAnalyticsSummaryDto": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "lastAggregatedDay": {
+            "example": "2026-10-24",
+            "nullable": true,
+            "type": "object"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/AnalyticsTotalsDto"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/IdeaValidationCountsDto"
+          }
+        },
+        "required": [
+          "ideaId",
+          "from",
+          "to",
+          "totals",
+          "validation",
+          "lastAggregatedDay",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAnalyticsTimeseriesDto": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsSeriesPointDto"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": "string"
+          },
+          "uniqueSessionsIsSum": {
+            "description": "True because bucket uniques are daily uniques summed, not a distinct range count.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ideaId",
+          "from",
+          "to",
+          "interval",
+          "uniqueSessionsIsSum",
+          "points",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAnalyticsValidationDto": {
+        "properties": {
+          "conversion": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdeaValidationConversionDto"
+              }
+            ],
+            "description": "Premium-only; null for a basic entitlement.",
+            "nullable": true,
+            "type": "object"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/IdeaValidationCountsDto"
+          },
+          "from": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ideaId",
+          "from",
+          "to",
+          "counts",
+          "conversion",
+          "premium",
+          "generatedAt"
+        ],
+        "type": "object"
+      },
       "IdeaTaxonomyDto": {
         "properties": {
           "category": {
@@ -461,6 +1256,87 @@
         },
         "required": [
           "category"
+        ],
+        "type": "object"
+      },
+      "IdeaValidationConversionDto": {
+        "properties": {
+          "viewToCommentPct": {
+            "nullable": true,
+            "type": "object"
+          },
+          "viewToFeedbackPct": {
+            "nullable": true,
+            "type": "object"
+          },
+          "viewToSupportPct": {
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "viewToSupportPct",
+          "viewToFeedbackPct",
+          "viewToCommentPct"
+        ],
+        "type": "object"
+      },
+      "IdeaValidationCountsDto": {
+        "properties": {
+          "commentCount": {
+            "type": "number"
+          },
+          "estimatedInterestUsd": {
+            "description": "Weighted estimated interest in USD; intent, never received funds.",
+            "type": "string"
+          },
+          "feedbackCount": {
+            "type": "number"
+          },
+          "feedbackScore": {
+            "description": "Mean rating on the 0-5 scale.",
+            "type": "number"
+          },
+          "follows": {
+            "description": "Not modelled in Phase 1.",
+            "nullable": true,
+            "type": "object"
+          },
+          "prePledges": {
+            "type": "number"
+          },
+          "saves": {
+            "description": "Not modelled in Phase 1.",
+            "nullable": true,
+            "type": "object"
+          },
+          "supporters": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "supporters",
+          "prePledges",
+          "feedbackCount",
+          "feedbackScore",
+          "commentCount",
+          "estimatedInterestUsd",
+          "follows",
+          "saves"
+        ],
+        "type": "object"
+      },
+      "IngestAnalyticsEventsDto": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/WireAnalyticsEventDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
         ],
         "type": "object"
       },
@@ -783,6 +1659,21 @@
         },
         "required": [
           "tier"
+        ],
+        "type": "object"
+      },
+      "RejectedAnalyticsEventDto": {
+        "properties": {
+          "index": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "reason"
         ],
         "type": "object"
       },
@@ -1290,6 +2181,99 @@
           "available"
         ],
         "type": "object"
+      },
+      "WireAnalyticsEventDto": {
+        "properties": {
+          "amountMinor": {
+            "description": "Decimal string. Reserved for domain-confirmed events.",
+            "type": "string"
+          },
+          "campaignId": {
+            "type": "string"
+          },
+          "countryCode": {
+            "example": "NG",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "eventKey": {
+            "description": "Idempotency key; required by the service for every event.",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "filterKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ideaId": {
+            "type": "string"
+          },
+          "name": {
+            "example": "idea_viewed",
+            "type": "string"
+          },
+          "occurredAt": {
+            "example": "2026-10-25T12:00:00.000Z",
+            "type": "string"
+          },
+          "position": {
+            "type": "number"
+          },
+          "queryLength": {
+            "type": "number"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceType": {
+            "enum": [
+              "IDEA",
+              "CAMPAIGN",
+              "PAGE"
+            ],
+            "type": "string"
+          },
+          "resultCount": {
+            "type": "number"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "signalType": {
+            "enum": [
+              "SUPPORT",
+              "PRE_PLEDGE"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "feed",
+              "search",
+              "direct",
+              "internal"
+            ],
+            "type": "string"
+          },
+          "step": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "occurredAt"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1308,6 +2292,204 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/admin/analytics/access-requests": {
+      "get": {
+        "operationId": "AdminAnalyticsController_listAccessRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page. Omitting it starts at page one.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAnalyticsAccessRequestListDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List premium analytics access requests",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/access-requests/{id}": {
+      "patch": {
+        "operationId": "AdminAnalyticsController_decideAccessRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAnalyticsAccessRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAnalyticsAccessRequestDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve or reject a premium analytics request",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/overview": {
+      "get": {
+        "operationId": "AdminAnalyticsController_overview",
+        "parameters": [
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAnalyticsOverviewDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Platform analytics overview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/boost-prices": {
       "get": {
         "operationId": "AdminController_getBoostPrices",
@@ -1815,6 +2997,81 @@
         ]
       }
     },
+    "/api/v1/analytics/access": {
+      "get": {
+        "operationId": "AnalyticsAccessController_getAccess",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Premium analytics access for the signed-in account",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/access-requests": {
+      "post": {
+        "description": "Idempotent. A pending request or an active approval is returned unchanged; a rejected or expired grant becomes pending again.",
+        "operationId": "AnalyticsAccessController_requestAccess",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request premium analytics access",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/auth/capabilities": {
       "get": {
         "description": "Presentation only. Every route re-checks ownership, role and eligibility on the server.",
@@ -2207,6 +3464,166 @@
         ]
       }
     },
+    "/api/v1/campaigns/{id}/analytics/funnel": {
+      "get": {
+        "operationId": "CampaignAnalyticsController_funnel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignAnalyticsFunnelDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Campaign creator-flow funnel (premium)",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/analytics/summary": {
+      "get": {
+        "operationId": "CampaignAnalyticsController_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignAnalyticsSummaryDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Campaign reach, funnel and confirmed backing",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/campaigns/{id}/submit": {
       "post": {
         "operationId": "CampaignsController_submit",
@@ -2596,6 +4013,406 @@
         ],
         "tags": [
           "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/analytics/acquisition": {
+      "get": {
+        "operationId": "IdeaAnalyticsController_acquisition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAnalyticsAcquisitionDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idea view sources (premium)",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/analytics/geography": {
+      "get": {
+        "operationId": "IdeaAnalyticsController_geography",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAnalyticsGeographyDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idea views by country (premium)",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/analytics/summary": {
+      "get": {
+        "operationId": "IdeaAnalyticsController_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAnalyticsSummaryDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idea reach and current validation totals",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/analytics/timeseries": {
+      "get": {
+        "operationId": "IdeaAnalyticsController_timeseries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAnalyticsTimeseriesDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idea reach and signal series, UTC buckets",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/ideas/{id}/analytics/validation": {
+      "get": {
+        "operationId": "IdeaAnalyticsController_validation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "example": "2026-09-25",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive UTC day.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "example": "2026-10-24",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAnalyticsValidationDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idea validation totals and premium conversion rates",
+        "tags": [
+          "analytics"
         ]
       }
     },
@@ -3445,6 +5262,80 @@
         ],
         "tags": [
           "survey"
+        ]
+      }
+    },
+    "/api/v1/internal/analytics/events": {
+      "post": {
+        "description": "Signed service-to-service route. Accepts views and step attempts only; confirmed outcomes are written by the domain after commit.",
+        "operationId": "InternalAnalyticsController_ingestEvents",
+        "parameters": [
+          {
+            "description": "HMAC-SHA256 of `${timestamp}.${rawBody}` as lowercase hex.",
+            "in": "header",
+            "name": "x-inverge-signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Unix timestamp in seconds, within the configured clock skew.",
+            "in": "header",
+            "name": "x-inverge-timestamp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestAnalyticsEventsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsIngestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "description": "Missing, stale or invalid signature."
+          },
+          "413": {
+            "description": "Batch body exceeds the configured limit."
+          },
+          "429": {
+            "description": "Ingest rate limit exceeded."
+          },
+          "503": {
+            "description": "Ingest or persistence is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Ingest server-observed analytics events",
+        "tags": [
+          "Internal analytics"
         ]
       }
     },
