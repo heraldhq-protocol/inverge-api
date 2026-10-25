@@ -26,6 +26,7 @@ import {
 } from './dto/idea.dto';
 
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+import type { UserRole } from '../../generated/prisma/client';
 import { buildGateProgress } from '../metrics/insights-compute';
 import {
   asCursorDate,
@@ -53,6 +54,8 @@ type GateSource = {
   askAmount: { toString(): string };
   creatorPrePledgeTarget: { toString(): string } | null;
 };
+
+type IdeaViewer = { id: string; role?: UserRole };
 
 @Injectable()
 export class IdeasService {
@@ -112,6 +115,26 @@ export class IdeasService {
     return idea;
   }
 
+  /**
+   * FR-272 gates distribution, not existence: a published LINK_ONLY idea stays
+   * reachable by direct URL. DRAFT is the only state that is not public.
+   */
+  private isPublicIdea(idea: { status: string }): boolean {
+    return idea.status !== 'DRAFT';
+  }
+
+  private assertReadable(
+    idea: { creatorId: string; status: string },
+    viewer?: IdeaViewer,
+  ): void {
+    if (this.isPublicIdea(idea)) return;
+    if (viewer && (viewer.id === idea.creatorId || viewer.role === 'ADMIN')) {
+      return;
+    }
+    // 404, not 403: an anonymous caller must not be able to probe draft ids.
+    throw new NotFoundException('Idea not found');
+  }
+
   // FR-201/270: create a structured-pitch DRAFT. FR-275: bounded by the per-creator
   // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
   async create(userId: string, dto: CreateIdeaDto) {
@@ -152,7 +175,7 @@ export class IdeasService {
     });
     await this.quality.evaluate(idea.id, false);
     this.invalidateIdea();
-    return this.get(idea.id);
+    return this.get(idea.id, { id: userId });
   }
 
   async update(userId: string, idOrSlug: string, dto: UpdateIdeaDto) {
@@ -170,7 +193,7 @@ export class IdeasService {
     await this.prisma.idea.update({ where: { id }, data: data as object });
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
     this.invalidateIdea();
-    return this.get(id);
+    return this.get(id, { id: userId });
   }
 
   async publish(userId: string, idOrSlug: string) {
@@ -187,7 +210,7 @@ export class IdeasService {
     // FR-272: score and set the discoverability tier (auto-promote if it clears the floor).
     await this.quality.evaluate(id, true);
     this.invalidateIdea();
-    const fresh = await this.get(id);
+    const fresh = await this.get(id, { id: userId });
     // FR-1004: screen on publish — advisory + non-blocking (records a ModerationCase).
     await this.moderation.screenSafe(
       {
@@ -203,8 +226,9 @@ export class IdeasService {
   }
 
   // FR-271a: creator-facing coaching for their idea.
-  async getQuality(idOrSlug: string) {
+  async getQuality(idOrSlug: string, viewer?: IdeaViewer) {
     const idea = await this.findIdea(idOrSlug);
+    this.assertReadable(idea, viewer);
     return this.quality.latestReport(idea.id);
   }
 
@@ -338,7 +362,7 @@ export class IdeasService {
       : loadPage();
   }
 
-  async get(idOrSlug: string) {
+  async get(idOrSlug: string, viewer?: IdeaViewer) {
     const loadIdea = async () => {
       const idea = await this.prisma.idea.findFirst({
         where: {
@@ -351,6 +375,7 @@ export class IdeasService {
         },
       });
       if (!idea) throw new NotFoundException('Idea not found');
+      this.assertReadable(idea, viewer);
 
       const [gateThresholds, ideasPublished] = await Promise.all([
         this.loadGateThresholds(),
@@ -379,8 +404,13 @@ export class IdeasService {
       };
     };
 
+    // A viewer may be allowed to see a DRAFT, and unpublished projections must
+    // never enter the public cache, so authenticated reads bypass cache-aside.
+    // The key prefix also retires anything cached before the visibility guard.
+    if (viewer) return loadIdea();
+
     return this.cache
-      ? this.cache.getOrSet('idea', idOrSlug, 30, loadIdea)
+      ? this.cache.getOrSet('idea', `public:v2:${idOrSlug}`, 30, loadIdea)
       : loadIdea();
   }
 

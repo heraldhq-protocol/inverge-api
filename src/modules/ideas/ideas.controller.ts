@@ -61,13 +61,15 @@ export class IdeasController {
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.ideas.get(id);
+  @UseGuards(OptionalPrivyAuthGuard)
+  get(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.ideas.get(id, user);
   }
 
   @Get(':id/quality')
-  quality(@Param('id') id: string) {
-    return this.ideas.getQuality(id);
+  @UseGuards(OptionalPrivyAuthGuard)
+  quality(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.ideas.getQuality(id, user);
   }
 
   @Post(':id/support')

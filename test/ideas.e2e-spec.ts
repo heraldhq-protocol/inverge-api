@@ -120,6 +120,31 @@ describe('Ideas routes (e2e)', () => {
       ideaId = res.body.id;
     });
 
+    it('security: hides a DRAFT from anonymous and non-owner detail reads (404)', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}`).expect(404);
+      await http().get(`/api/v1/ideas/${ideaId}`).set(auth(backerA)).expect(404);
+    });
+
+    it('security: returns a DRAFT to its owner', async () => {
+      const res = await http()
+        .get(`/api/v1/ideas/${ideaId}`)
+        .set(auth(creator))
+        .expect(200);
+      expect(res.body.status).toBe('DRAFT');
+    });
+
+    it('security: hides the DRAFT coaching report from anonymous and non-owner reads', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}/quality`).expect(404);
+      await http()
+        .get(`/api/v1/ideas/${ideaId}/quality`)
+        .set(auth(backerA))
+        .expect(404);
+      await http()
+        .get(`/api/v1/ideas/${ideaId}/quality`)
+        .set(auth(creator))
+        .expect(200);
+    });
+
     it('security: signals + survey responses are rejected on an unpublished DRAFT (400)', async () => {
       await http().post(`/api/v1/ideas/${ideaId}/support`).set(auth(backerA)).expect(400);
       await http().post(`/api/v1/ideas/${ideaId}/pre-pledge`).set(auth(backerA)).send({ amount: 100 }).expect(400);

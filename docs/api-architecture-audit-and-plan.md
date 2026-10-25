@@ -1233,3 +1233,25 @@ unit suite, build and `openapi:check` pass.
 - **Verification.** 21 migrations apply on a fresh database; `migrate diff` is
   empty; full e2e passes; `tsc --noEmit`, unit suite, build and
   `openapi:check` pass.
+
+## 29. Security - unpublished idea detail visibility (2026-10-25)
+
+- **The gap.** `GET /ideas/:id` and `GET /ideas/:id/quality` were public and
+  returned a DRAFT to anyone who knew its id or slug. The web hid the status
+  after fetching, which is not a boundary.
+- **The rule.** FR-272 gates distribution, not existence: a published
+  `LINK_ONLY` idea stays reachable by direct URL. `DRAFT` is the only state that
+  is not public. Anonymous and non-owner reads get `404` (not `403`, so ids
+  cannot be probed); the owner and an `ADMIN` may read a draft. The same guard
+  covers the creator-facing quality report.
+- **Cache.** Authenticated reads bypass cache-aside, because a viewer may be
+  allowed to see a draft and unpublished projections must never enter the public
+  cache. The public detail key is now `public:v2:<id-or-slug>`, which also
+  retires any pre-fix draft cached for the 30 s TTL.
+- **No contract change.** The route signatures and response schemas are
+  unchanged; `openapi.json` was not regenerated or staged.
+- **Verification.** 28 unit tests in `ideas.service.spec.ts`; the four new e2e
+  cases pass against Postgres (`creates a DRAFT`, anonymous 404, owner 200,
+  quality 404/200). The full ideas e2e suite still reports two environment
+  failures on the perf database: `contribution.count()` is 200,000 from the
+  volume fixture, and one comment-like transaction exceeded its 5 s budget.

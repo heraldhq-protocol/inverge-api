@@ -31,9 +31,9 @@ const moderationMock = () => ({ screenSafe: jest.fn().mockResolvedValue(null), s
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
 
-function make(idea: any = null, params = paramsMock()) {
+function make(idea: any = null, params = paramsMock(), cache?: any) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return { svc: new IdeasService(p, m, q, mod, params), p, m, q, mod };
+  return { svc: new IdeasService(p, m, q, mod, params, cache), p, m, q, mod };
 }
 
 const validDto = {
@@ -46,7 +46,7 @@ const validDto = {
 
 describe('IdeasService.create (FR-270/275)', () => {
   it('creates a structured DRAFT, derives a roadmap summary, scores, returns fresh', async () => {
-    const fresh = { id: 'new-id', status: 'DRAFT' };
+    const fresh = { id: 'new-id', creatorId: 'u1', status: 'DRAFT' };
     const { svc, p, q } = make(fresh);
     const res = await svc.create('u1', validDto);
     const data = p.idea.create.mock.calls[0][0].data;
@@ -106,6 +106,101 @@ describe('IdeasService.getQuality', () => {
   it('returns the latest coaching report', async () => {
     const { svc, q } = make({ id: 'idea1' });
     await svc.getQuality('idea1');
+    expect(q.latestReport).toHaveBeenCalledWith('idea1');
+  });
+});
+
+const ideaFixture = (overrides: Record<string, unknown> = {}) => ({
+  id: 'idea1',
+  creatorId: 'u1',
+  status: 'VALIDATING',
+  createdAt: new Date('2026-01-02T00:00:00.000Z'),
+  supporterCount: 0,
+  weightedPrePledgeTotal: 0,
+  feedbackCount: 0,
+  feedbackScore: 0,
+  askAmount: 1000,
+  creatorPrePledgeTarget: null,
+  creator: null,
+  taxonomyCategorySlug: null,
+  taxonomySubcategorySlug: null,
+  ...overrides,
+});
+
+describe('IdeasService.get - unpublished visibility (FR-272)', () => {
+  it('404s a DRAFT for an anonymous reader', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.get('idea1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('404s a DRAFT for another authenticated user', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.get('idea1', { id: 'u2' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('returns a DRAFT to its owner', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    const idea = await svc.get('idea1', { id: 'u1' });
+    expect(idea.status).toBe('DRAFT');
+  });
+
+  it('returns a DRAFT to an admin', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    const idea = await svc.get('idea1', { id: 'u2', role: 'ADMIN' });
+    expect(idea.status).toBe('DRAFT');
+  });
+
+  it('keeps a published LINK_ONLY idea reachable by direct URL', async () => {
+    const { svc } = make(
+      ideaFixture({ status: 'VALIDATING', discoverabilityTier: 'LINK_ONLY' }),
+    );
+    await expect(svc.get('idea1')).resolves.toMatchObject({
+      discoverabilityTier: 'LINK_ONLY',
+    });
+  });
+
+  it('caches only the anonymous projection and bypasses cache for a viewer', async () => {
+    const cache = {
+      getOrSet: jest.fn(
+        async (
+          _ns: string,
+          _key: string,
+          _ttl: number,
+          loader: () => Promise<unknown>,
+        ) => loader(),
+      ),
+    };
+    const { svc } = make(ideaFixture(), paramsMock(), cache);
+
+    await svc.get('idea1');
+    expect(cache.getOrSet).toHaveBeenCalledWith(
+      'idea',
+      'public:v2:idea1',
+      30,
+      expect.any(Function),
+    );
+
+    cache.getOrSet.mockClear();
+    await svc.get('idea1', { id: 'u1' });
+    expect(cache.getOrSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('IdeasService.getQuality - unpublished visibility', () => {
+  it('404s a DRAFT coaching report for an anonymous reader', async () => {
+    const { svc } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.getQuality('idea1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('returns a DRAFT coaching report to its owner', async () => {
+    const { svc, q } = make(ideaFixture({ status: 'DRAFT' }));
+    await expect(svc.getQuality('idea1', { id: 'u1' })).resolves.toEqual({
+      id: 'r1',
+    });
     expect(q.latestReport).toHaveBeenCalledWith('idea1');
   });
 });
@@ -241,7 +336,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
   });
 
   it('seeds a default survey on create (rating + open-text)', async () => {
-    const { svc, p } = make({ id: 'new-id', status: 'DRAFT' });
+    const { svc, p } = make({ id: 'new-id', creatorId: 'u1', status: 'DRAFT' });
     await svc.create('u1', validDto);
     const data = p.surveyQuestion.createMany.mock.calls[0][0].data;
     expect(data.some((q: any) => q.type === 'RATING')).toBe(true);
