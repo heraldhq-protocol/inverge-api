@@ -319,15 +319,16 @@ conversion; display "not enough data".
 The routes and DTOs are in `docs/api/openapi.json`. Analytics coverage:
 
 - 92 unit cases across 12 suites;
-- 18 Phase 1 e2e cases against real Postgres;
+- 22 Phase 1 e2e cases against real Postgres, including the measured operation
+  budgets in `docs/api/query-performance.md`;
 - 4 existing domain-signal e2e cases.
 
 ## Remaining gaps
 
-- Web wiring for views, the request CTA and the dashboard itself.
+- The live creator dashboard: `/d/creator/analytics` reads the premium
+  entitlement and submits access requests, but the idea workspace is still
+  preview data.
 - Phase 2 privacy work: consent record, device/browser/OS, region, referrer/UTM,
   returning visitors, bot filtering, deletion path.
 - Follow/save/vote models and contribution start/confirm events.
 - Challenge/ideathon/leaderboard analytics; the domain does not exist yet.
-- Per-request query-budget evidence for the new aggregate reads (the plan's §28
-  evidence predates these routes).

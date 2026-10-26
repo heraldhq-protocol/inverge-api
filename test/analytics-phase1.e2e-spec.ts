@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './create-test-app';
+import { countPrismaQueries, type QueryCounter } from './prisma-query-counter';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AnalyticsAggregationService } from '../src/modules/analytics/analytics-aggregation.service';
 import { utcDayKey } from '../src/modules/analytics/analytics-time';
@@ -22,7 +23,9 @@ describe('Analytics phase 1 (e2e)', () => {
   let adminId: string;
   let otherToken: string;
   let ideaId: string;
+  let campaignId: string;
   let day: string;
+  let counter: QueryCounter;
 
   const RUN = Date.now().toString(36);
   const http = () => request(app.getHttpServer());
@@ -62,6 +65,7 @@ describe('Analytics phase 1 (e2e)', () => {
     app = await createTestApp();
     prisma = app.get(PrismaService);
     aggregation = app.get(AnalyticsAggregationService);
+    counter = countPrismaQueries(prisma);
 
     const [creator, admin, other] = await Promise.all([
       session('c'),
@@ -106,22 +110,55 @@ describe('Analytics phase 1 (e2e)', () => {
       .set(auth(creatorToken))
       .expect(201);
 
+    const campaign = await prisma.campaign.create({
+      data: {
+        creatorId,
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        ideaId,
+        status: 'ACTIVE',
+        targetAmount: 25_000,
+        tokenType: 'USDC',
+      },
+    });
+    campaignId = campaign.id;
+
     day = utcDayKey(new Date());
+    await ingest([
+      {
+        campaignId,
+        eventKey: `campaign-${RUN}`,
+        name: 'campaign_viewed',
+        occurredAt: new Date().toISOString(),
+        sessionId: `session-${RUN}`,
+        source: 'direct',
+        countryCode: 'NG',
+      },
+    ]).expect(202);
   });
 
   afterAll(async () => {
     await prisma.productAnalyticsEvent.deleteMany({
-      where: { OR: [{ ideaId }, { resourceId: 'home' }] },
+      where: {
+        OR: [
+          { ideaId },
+          { campaignId },
+          { resourceId: { in: [ideaId, campaignId, 'home'] } },
+        ],
+      },
     });
     await prisma.resourceReachDailyMetric.deleteMany({
-      where: { resourceId: ideaId },
+      where: { resourceId: { in: [ideaId, campaignId] } },
     });
     await prisma.resourceAcquisitionDailyMetric.deleteMany({
-      where: { resourceId: ideaId },
+      where: { resourceId: { in: [ideaId, campaignId] } },
     });
     await prisma.resourceCountryDailyMetric.deleteMany({
-      where: { resourceId: ideaId },
+      where: { resourceId: { in: [ideaId, campaignId] } },
     });
+    await prisma.campaignFunnelDailyMetric.deleteMany({
+      where: { campaignId },
+    });
+    await prisma.campaign.deleteMany({ where: { id: campaignId } });
     await prisma.analyticsAccessGrant.deleteMany({
       where: { userId: { in: [creatorId, adminId] } },
     });
@@ -419,6 +456,132 @@ describe('Analytics phase 1 (e2e)', () => {
         canRequest: false,
         available: true,
       });
+    });
+  });
+
+  describe('query budget', () => {
+    beforeAll(async () => {
+      await prisma.analyticsAccessGrant.upsert({
+        where: {
+          userId_feature: {
+            userId: creatorId,
+            feature: 'analytics.premium',
+          },
+        },
+        update: {
+          status: 'APPROVED',
+          source: 'ADMIN',
+          decidedAt: new Date(),
+          decidedBy: adminId,
+        },
+        create: {
+          userId: creatorId,
+          feature: 'analytics.premium',
+          status: 'APPROVED',
+          source: 'ADMIN',
+          decidedAt: new Date(),
+          decidedBy: adminId,
+        },
+      });
+    });
+
+    async function measuredQueries(run: () => Promise<unknown>): Promise<number> {
+      counter.reset();
+      try {
+        await run();
+      } catch (error) {
+        counter.stop();
+        throw error;
+      }
+      return counter.stop();
+    }
+
+    it('keeps the basic idea reports within their operation budgets', async () => {
+      const summary = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/ideas/${ideaId}/analytics/summary`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(summary).toBe(7);
+
+      const timeseries = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/ideas/${ideaId}/analytics/timeseries`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(timeseries).toBe(4);
+
+      const validation = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/ideas/${ideaId}/analytics/validation`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(validation).toBe(7);
+    });
+
+    it('keeps the premium idea reports within their operation budgets', async () => {
+      const acquisition = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/ideas/${ideaId}/analytics/acquisition`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(acquisition).toBe(5);
+
+      const geography = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/ideas/${ideaId}/analytics/geography`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(geography).toBe(5);
+    });
+
+    it('keeps the campaign reports within their operation budgets', async () => {
+      const summary = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/campaigns/${campaignId}/analytics/summary`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(summary).toBe(7);
+
+      const funnel = await measuredQueries(async () => {
+        await http()
+          .get(`/api/v1/campaigns/${campaignId}/analytics/funnel`)
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(funnel).toBe(8);
+    });
+
+    it('keeps entitlement and admin reads bounded', async () => {
+      const access = await measuredQueries(async () => {
+        await http()
+          .get('/api/v1/analytics/access')
+          .set(auth(creatorToken))
+          .expect(200);
+      });
+      expect(access).toBe(3);
+
+      const overview = await measuredQueries(async () => {
+        await http()
+          .get('/api/v1/admin/analytics/overview')
+          .set(auth(adminToken))
+          .expect(200);
+      });
+      expect(overview).toBe(4);
+
+      const requests = await measuredQueries(async () => {
+        await http()
+          .get('/api/v1/admin/analytics/access-requests?status=APPROVED')
+          .set(auth(adminToken))
+          .expect(200);
+      });
+      expect(requests).toBe(2);
     });
   });
 });
