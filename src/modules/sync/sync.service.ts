@@ -60,7 +60,7 @@ export class SyncService {
           tokenType: dto.tokenType,
           targetAmount: dto.targetAmount,
           deadline: new Date(dto.deadline),
-          workingCapitalPct: dto.workingCapitalPct ?? 0,
+          workingCapitalPct: dto.workingCapitalPct ?? 20,
           status: 'DRAFT',
           milestones: {
             create: dto.milestones.map((m, i) => ({

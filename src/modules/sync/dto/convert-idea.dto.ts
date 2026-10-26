@@ -50,11 +50,10 @@ export class ConvertIdeaDto {
   @IsDateString()
   deadline!: string;
 
-  @ApiPropertyOptional({ description: 'Working-capital tranche %, capped 20–25 (FR-503a)' })
+  @ApiPropertyOptional({ description: 'Working-capital tranche %, fixed at 20 (FR-503a)' })
   @IsOptional()
   @IsNumber()
-  @Min(0)
-  @Max(25)
+  @IsIn([20])
   workingCapitalPct?: number;
 
   @ApiProperty({ type: [MilestoneInputDto], description: '2–6 milestones (FR-301)' })

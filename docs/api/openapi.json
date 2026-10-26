@@ -109,6 +109,69 @@
         },
         "type": "object"
       },
+      "CampaignMediaDto": {
+        "properties": {
+          "alt": {
+            "description": "Alt text. Required: it is what a screen reader reads.",
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video"
+            ],
+            "type": "string"
+          },
+          "poster": {
+            "type": "string"
+          },
+          "src": {
+            "description": "An https URL or a same-origin asset path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "src",
+          "alt"
+        ],
+        "type": "object"
+      },
+      "CampaignMilestoneDraftDto": {
+        "properties": {
+          "allocationPercent": {
+            "description": "Share of the amount left after the fixed 20% working-capital tranche, e.g. \"30\" or \"12.5\". All milestone weights must total exactly 100% on their own.",
+            "type": "string"
+          },
+          "deliverable": {
+            "type": "string"
+          },
+          "evidence": {
+            "description": "The immutable evidence definition (FR-302).",
+            "type": "string"
+          },
+          "expectedAt": {
+            "description": "ISO date for the on-chain milestone deadline.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "deliverable",
+          "allocationPercent",
+          "evidence"
+        ],
+        "type": "object"
+      },
       "CapabilityFlagsDto": {
         "properties": {
           "createIdeas": {
@@ -202,7 +265,7 @@
             "type": "string"
           },
           "workingCapitalPct": {
-            "description": "Working-capital tranche %, capped 20–25 (FR-503a)",
+            "description": "Working-capital tranche %, fixed at 20 (FR-503a)",
             "type": "number"
           }
         },
@@ -211,6 +274,129 @@
           "tokenType",
           "targetAmount",
           "deadline",
+          "milestones"
+        ],
+        "type": "object"
+      },
+      "CreateCampaignDraftDto": {
+        "properties": {
+          "beneficiaries": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "art",
+              "comics",
+              "crafts",
+              "dance",
+              "design",
+              "fashion",
+              "film",
+              "food",
+              "games",
+              "journalism",
+              "music",
+              "photography",
+              "publishing",
+              "technology",
+              "theater"
+            ],
+            "type": "string"
+          },
+          "deadline": {
+            "description": "ISO 8601 funding deadline.",
+            "type": "string"
+          },
+          "eligibility": {
+            "type": "string"
+          },
+          "failurePlan": {
+            "type": "string"
+          },
+          "heroMedia": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMediaDto"
+            },
+            "type": "array"
+          },
+          "location": {
+            "type": "string"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMilestoneDraftDto"
+            },
+            "type": "array"
+          },
+          "objectionWindowDays": {
+            "description": "Objection window in days. The programme fixes it at 7.",
+            "type": "number"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "rewardTiers": {
+            "description": "Reward tiers as authored by the creator. Stored as a JSON projection; fulfilment semantics are validated by the web layer and reviewed before publication.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "risks": {
+            "type": "string"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "storyMedia": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMediaDto"
+            },
+            "type": "array"
+          },
+          "subcategory": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "targetAmount": {
+            "description": "USDC target as an exact decimal string.",
+            "example": "5000.00",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tokenType": {
+            "enum": [
+              "USDC",
+              "CNGN"
+            ],
+            "type": "string"
+          },
+          "useOfFunds": {
+            "items": {
+              "$ref": "#/components/schemas/UseOfFundsLineDto"
+            },
+            "type": "array"
+          },
+          "workingCapitalPercent": {
+            "description": "The initial working-capital tranche: exactly 20% of the target, released at funding close. Milestone weights divide what remains and total 100% on their own.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "location",
+          "problem",
+          "solution",
+          "beneficiaries",
+          "targetAmount",
+          "deadline",
+          "workingCapitalPercent",
+          "objectionWindowDays",
           "milestones"
         ],
         "type": "object"
@@ -693,6 +879,18 @@
         ],
         "type": "object"
       },
+      "PrepareDeploymentDto": {
+        "properties": {
+          "acceptTerms": {
+            "description": "Explicit acceptance of the campaign terms being committed on-chain. Recorded separately from the wallet signature.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "acceptTerms"
+        ],
+        "type": "object"
+      },
       "PublicCreatorDto": {
         "properties": {
           "avatarUrl": {
@@ -945,6 +1143,22 @@
         },
         "type": "object"
       },
+      "SubmitDeploymentDto": {
+        "properties": {
+          "attemptId": {
+            "description": "Deployment attempt the signature belongs to. Supplying a different attempt is rejected rather than applied.",
+            "type": "string"
+          },
+          "signature": {
+            "description": "Base58 transaction signature returned by the wallet after sending.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signature"
+        ],
+        "type": "object"
+      },
       "SubmitResponseDto": {
         "properties": {
           "answers": {
@@ -1070,6 +1284,123 @@
         },
         "required": [
           "count"
+        ],
+        "type": "object"
+      },
+      "UpdateCampaignDraftDto": {
+        "properties": {
+          "beneficiaries": {
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "art",
+              "comics",
+              "crafts",
+              "dance",
+              "design",
+              "fashion",
+              "film",
+              "food",
+              "games",
+              "journalism",
+              "music",
+              "photography",
+              "publishing",
+              "technology",
+              "theater"
+            ],
+            "type": "string"
+          },
+          "deadline": {
+            "description": "ISO 8601 funding deadline.",
+            "type": "string"
+          },
+          "eligibility": {
+            "type": "string"
+          },
+          "failurePlan": {
+            "type": "string"
+          },
+          "heroMedia": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMediaDto"
+            },
+            "type": "array"
+          },
+          "location": {
+            "type": "string"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMilestoneDraftDto"
+            },
+            "type": "array"
+          },
+          "objectionWindowDays": {
+            "description": "Objection window in days. The programme fixes it at 7.",
+            "type": "number"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "rewardTiers": {
+            "description": "Reward tiers as authored by the creator. Stored as a JSON projection; fulfilment semantics are validated by the web layer and reviewed before publication.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "risks": {
+            "type": "string"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "storyMedia": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignMediaDto"
+            },
+            "type": "array"
+          },
+          "subcategory": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "targetAmount": {
+            "description": "USDC target as an exact decimal string.",
+            "example": "5000.00",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tokenType": {
+            "enum": [
+              "USDC",
+              "CNGN"
+            ],
+            "type": "string"
+          },
+          "useOfFunds": {
+            "items": {
+              "$ref": "#/components/schemas/UseOfFundsLineDto"
+            },
+            "type": "array"
+          },
+          "version": {
+            "description": "The draftVersion returned by the last successful read or write.",
+            "type": "number"
+          },
+          "workingCapitalPercent": {
+            "description": "The initial working-capital tranche: exactly 20% of the target, released at funding close. Milestone weights divide what remains and total 100% on their own.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
         ],
         "type": "object"
       },
@@ -1274,6 +1605,23 @@
         },
         "required": [
           "role"
+        ],
+        "type": "object"
+      },
+      "UseOfFundsLineDto": {
+        "properties": {
+          "amount": {
+            "description": "USD amount as an exact decimal string.",
+            "example": "250.00",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "amount"
         ],
         "type": "object"
       },
@@ -2171,6 +2519,44 @@
         "tags": [
           "campaigns"
         ]
+      },
+      "post": {
+        "operationId": "CampaignDraftsController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCampaignDraftDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a persistent campaign draft",
+        "tags": [
+          "campaigns"
+        ]
       }
     },
     "/api/v1/campaigns/{id}": {
@@ -2202,6 +2588,307 @@
           }
         },
         "summary": "Get campaign details by ID",
+        "tags": [
+          "campaigns"
+        ]
+      },
+      "patch": {
+        "operationId": "CampaignDraftsController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCampaignDraftDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a draft with optimistic concurrency (version required)",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/deployment": {
+      "get": {
+        "operationId": "CampaignDeploymentController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the authoritative deployment status",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/deployment/prepare": {
+      "post": {
+        "operationId": "CampaignDeploymentController_prepare",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareDeploymentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Validate readiness and prepare (or return) a deployment attempt",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/deployment/reconcile": {
+      "post": {
+        "operationId": "CampaignDeploymentController_reconcile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Re-check a submitted transaction after a timeout or outage",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/deployment/submit": {
+      "post": {
+        "operationId": "CampaignDeploymentController_submit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitDeploymentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a signed transaction and verify it against the cluster",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/draft": {
+      "get": {
+        "operationId": "CampaignDraftsController_getDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the authoritative draft and its deployment readiness",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/publish": {
+      "post": {
+        "operationId": "CampaignDraftsController_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish after review approval and verified deployment (FR-304, FR-305)",
         "tags": [
           "campaigns"
         ]

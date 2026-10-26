@@ -99,9 +99,10 @@ Prisma v7 / Windows gotchas.
 seven-tab detail page and a five-step creator flow, all running on fixtures behind one flag, written
 against `inverge-web/docs/campaign-data-contract.md`. Gap item 6 (`GET /campaigns`, `GET
 /campaigns/:id`) turns them on. Before implementing anything campaign-shaped, read that contract's §2a
-on how the money splits — the working-capital tranche is a share of the **target** and every milestone
-tranche is a share of the **raise less that tranche**, and getting it backwards is a money bug rather
-than a rendering one (gap item 18).
+on how the money splits — the working-capital tranche is fixed at 20% of the **target**,
+and every milestone weight is a share of the **raise less that tranche**, with the last
+milestone absorbing the remainder. Getting it backwards is a money bug rather than a
+rendering one (gap item 18, web D-045).
 
 ## Module map
 

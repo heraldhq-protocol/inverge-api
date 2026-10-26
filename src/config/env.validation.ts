@@ -105,6 +105,34 @@ export const envSchema = z
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
 
+  // Campaign escrow deployment (FR-303/FR-305). `disabled` refuses to prepare a
+  // deployment; there is no adapter that fabricates a confirmed transaction.
+  ESCROW_CHAIN_PROVIDER: z.enum(['disabled', 'solana-rpc']).default('disabled'),
+  // The only programme this API will verify a deployment against. A client value
+  // is never read; an operator override is an allowlist of exactly one.
+  ESCROW_PROGRAM_ID: z
+    .string()
+    .min(32)
+    .max(44)
+    .default('38rarxmrSL3rjCN2bwdDfQNLtpYRgLGp96xfkPXv39S1'),
+  SOLANA_CLUSTER: z.enum(['devnet', 'mainnet-beta']).default('devnet'),
+  // Finalized by default: a deployment unlocks funding, so a weaker commitment
+  // would let a reorged-away transaction look permanent.
+  SOLANA_COMMITMENT: z.enum(['confirmed', 'finalized']).default('finalized'),
+  // JSON map of TokenType -> SPL mint. USDC defaults per cluster are built in;
+  // cNGN has no canonical mint and must be configured explicitly.
+  SOLANA_TOKEN_MINTS: z.string().optional(),
+  SOLANA_USDC_MINT: z.string().optional(),
+
+  // Fee policy for a deployment. `flat_fee` links an existing SUCCEEDED
+  // APPLICATION_FEE charge (the FR-311 rail). The escrow programme has no
+  // instruction that collects a platform fee, so `not_required` is the only mode
+  // that is truthful without a contract change.
+  CAMPAIGN_DEPLOYMENT_FEE_MODE: z
+    .enum(['not_required', 'flat_fee'])
+    .default('not_required'),
+  CAMPAIGN_DEPLOYMENT_FEE_USD: z.coerce.number().positive().default(10),
+
   SESSION_JWT_SECRET: z.string().min(1).default(DEFAULT_SESSION_JWT_SECRET),
 
   // FR-901: break-glass / bootstrap superadmins. Comma-separated emails and/or Privy DIDs
@@ -123,6 +151,27 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SESSION_JWT_SECRET'],
         message: 'SESSION_JWT_SECRET must be set to a real secret in production',
+      });
+    }
+
+    // Mainnet is a deliberate deployment, never something a local `pnpm start`
+    // can reach by leaving an env var at its default.
+    if (env.SOLANA_CLUSTER === 'mainnet-beta' && env.NODE_ENV !== 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SOLANA_CLUSTER'],
+        message: 'SOLANA_CLUSTER=mainnet-beta is only allowed with NODE_ENV=production',
+      });
+    }
+
+    // A configured RPC without a provider switch (or the reverse) is a
+    // half-configured deployment. Refuse to boot rather than silently disabling
+    // the workflow.
+    if (env.ESCROW_CHAIN_PROVIDER === 'solana-rpc' && !env.SOLANA_RPC_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SOLANA_RPC_URL'],
+        message: 'SOLANA_RPC_URL is required when ESCROW_CHAIN_PROVIDER=solana-rpc',
       });
     }
   });

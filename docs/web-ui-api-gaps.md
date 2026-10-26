@@ -13,6 +13,11 @@
 > the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11, and
 > `docs/campaign-data-contract.md` §2 for the shapes the web is built against). None of them is P0.
 >
+> Items 20–25 were added 2026-10-16 while rebuilding the public ideas surfaces in `inverge-web`
+> (`feature/ideas-ui`): the editorial homepage, the category catalogue, the public idea page and the topic
+> pages, plus the community-loop plan in `docs/idea-community-loop-plan.md`. Item 25 is a bug rather than
+> an enhancement: it breaks the one path every authenticated web screen depends on.
+>
 > **P0 items block web work that is otherwise ready to build.** P1 unblocks screens that have a
 > documented fallback. P2 is real but deferrable.
 
@@ -41,6 +46,12 @@
 | 9 | One-line `summary` on `Idea` | P2 | OpenGraph text, share copy |
 | 10 | Objection threshold and window as readable params | P2 | Rendering the rule instead of hard-coding 30% and 7 days |
 | 11 | Public aggregate support view | P2 | A public community tab |
+| 25 | Session token on `POST /auth/session` | **P0** | Every authenticated web call returns 401 |
+| 20 | Committed OpenAPI document + generated typed client | P1 | Types the web's TanStack Query + `openapi-typescript` stack |
+| 21 | Topics/category browse endpoint | P1 | The topic directory and `/topics/[slug]` |
+| 23 | Public idea detail fields (story, risks, updates) | P1 | `/ideas/[id]` renders a real page, not a fixture stub |
+| 22 | Feed pagination and total | P2 | A real load-more instead of client-side paging |
+| 24 | Community loop endpoints (challenges, standings, judging) | P2 | Planned; see `docs/idea-community-loop-plan.md` |
 
 **What the web is running on meanwhile.** Every campaign surface reads from
 `inverge-web/src/lib/campaigns/campaigns-api.ts`, which returns fixtures behind one `USE_FIXTURES`
@@ -55,7 +66,7 @@ contract, so the swap when item 6 lands is one file rather than a rewrite of eve
 ### 1. Public creator identity
 
 **Problem.** There is no display name, avatar or bio anywhere in the data model. `User` holds
-`privyDid`, `email`, verification state and preferences; `CreatorProfile` holds tier and track record.
+`providerUserId`, `email`, verification state and preferences; `CreatorProfile` holds tier and track record.
 So `GET /feed` returns `creatorId` and nothing renderable, and the same is true of `GET /ideas/:id`.
 
 Three separate web surfaces are blocked by this one gap: the idea card (creator line and avatar), the
@@ -87,7 +98,7 @@ Write path: `PATCH /me/profile`.
 - **Never fall back to `email`** for a missing display name, in any projection, ever. An email is not
   a display name and leaking one through a public feed would be a privacy incident. Fall back to
   `null` and let the client render initials.
-- Do not expose `kycStatus`, `amlStatus`, `bannedAt`, `privyDid`, `oauthSubject`, `role` or
+- Do not expose `kycStatus`, `amlStatus`, `bannedAt`, `providerUserId`, `oauthSubject`, `role` or
   `institutionalCosign` publicly. `identityVerified` is a derived boolean and the only leak permitted.
 - `activeStrikes` stays internal. Track record may affect ranking; it must never become a public
   scarlet letter (FR-270 doc: no silent shadow-ban, and equally no public one).
@@ -287,18 +298,23 @@ The web app derives what each stage releases from two different bases, and getti
 bug rather than a rendering one:
 
 ```
-upfront = workingCapitalPct%  of  targetAmount          (FR-503a)
-stages  = tranchePct%         of  (totalRaised - upfront)
+initial = 20%                 of  targetAmount                 (FR-503a, fixed)
+stages  = tranchePct%         of  (totalRaised - initial)      (weights sum to 10,000)
 ```
 
-The upfront is a share of the **target** because it is the only money that moves before anything is
-verified: pegged to the raise, a $1,000 target that raises $20,000 pays out $4,000 against nothing. The
-stages divide the **raise** because a campaign that overfunds is being asked to do more, and the extra
-must be available while the work happens. The two always sum to exactly the amount raised.
+The initial tranche is 20% of the **target** because it is the only money that moves before anything
+is verified, and because a creator should not receive more up front just for overfunding: pegged to
+the raise, a $1,000 target that raises $20,000 would pay $4,000 against nothing. The milestone weights
+divide the **raise after that tranche**, so a campaign that overfunds keeps the extra under the same
+milestone and objection rules. The last milestone absorbs the integer remainder, so the stages sum to
+exactly `totalRaised - initial`; the initial plus the stages sum to the amount raised.
 
-If the API or the on-chain programme derives these too, all three must agree. Put it in one pure module
-— the same treatment as milestone state in item 6 — and consider returning the derived amounts so the
-client is not a second implementation.
+If the API or the on-chain programme derives these too, all three must agree. The web now has one pure
+module (`inverge-web/src/features/campaigns/lib/allocation.ts`) and the API's readiness gate enforces
+the same fixed 20% / 10,000 split. Returning the derived amounts from the API is still preferable to
+the client being a second implementation, and the indexer must eventually make `totalRaised`
+authoritative rather than a fixture. No release endpoint or `TrancheRelease` projection exists yet, so
+none of these amounts is evidence that a transfer happened.
 
 ### 19. Reward tiers
 
@@ -365,6 +381,93 @@ Creator dashboard covers the need until then.
 
 ---
 
+## Items 20–25 — ideas discovery, detail and topics
+
+Raised 2026-10-16 by rebuilding the public ideas surfaces in `inverge-web` (`feature/ideas-ui`): the
+editorial homepage, the category catalogue (`/ideas`), the public idea page (`/ideas/[id]`) and the topic
+pages (`/topics/[slug]`). All additive.
+
+### 25. Session token on `POST /auth/session` — **P0**
+
+**Problem.** `AuthController.session` calls `AuthService.authenticate`, which returns
+`token: privyAccessToken` — the *provider* token echoed straight back — and never calls
+`SessionService.sign`. But `PrivyAuthGuard` verifies an HS256 session JWT through
+`SessionService.verify`. So the token `/auth/session` hands out can never pass a guarded route:
+`GET /auth/me`, `PATCH /auth/me/profile`, `GET /ideas?mine=true` and every future authenticated call
+return 401. The web app has no network layer yet, and that is the only reason this has stayed hidden.
+
+**Proposed.** Mint the session in `authenticate` (or the controller): `const sessionToken = await
+this.sessions.sign(user.id)` and return it. Name it `sessionToken`, not `token`, to stop conflating it with
+the provider token, and keep the provider token out of the response body. Align the web client and the e2e
+expectation on the one field name.
+
+**Tests.** E2E: `/auth/session` returns a token that `GET /auth/me` accepts; a garbage or expired token
+401s; the provider token never appears in the response body.
+
+### 20. Committed OpenAPI document and generated typed client — P1
+
+**Problem.** Swagger is wired (`main.ts`: `DocumentBuilder` + `SwaggerModule.setup('docs', ...)`), so a
+spec exists at runtime under `/docs` and `/docs-json`. It is not committed or versioned, and it is thin on
+*responses*: the `@nestjs/swagger` CLI plugin is not enabled in `nest-cli.json`, and most controllers
+return plain service objects, so many responses carry no schema. The web's approved stack (TanStack Query
+plus `openapi-typescript`) needs a stable, committed `openapi.json` to generate from.
+
+**Proposed.** Enable the `@nestjs/swagger` CLI plugin (or annotate response DTOs and add `@ApiOkResponse`),
+add a script that emits `openapi.json` at build, and publish it — commit it, or serve a versioned
+`/openapi.json`. Generate the web types from that artefact.
+
+**Invariants.** The emitted spec is a public interface: generate it from the same projections the runtime
+uses, so it cannot describe a forbidden field (see item 1's list).
+
+**Tests.** A CI drift guard: regenerate and fail if the committed spec differs from the live one.
+
+### 21. Topics and categories as a browse axis — P1
+
+**Problem.** The catalogue's category chips, the topic directory and `/topics/[slug]` all read from web
+fixtures (`inverge-web/src/features/ideas/content/topics.ts`). Nothing lists topics or filters ideas by one.
+
+**Proposed.** `GET /topics` (`slug`, `title`, `description`, `publicIdeaCount`) and either
+`GET /topics/:slug/ideas` or a `topic=` filter on `GET /ideas`, matching the feed's existing query idiom.
+
+**Invariants.** A topic's count respects visibility: it counts public ideas only and must never surface or
+count an unlisted/private idea (the web scopes with `ideasInTopic(topic, ideas, "public")`). Counts follow
+the recompute-never-increment rule, not a stored counter.
+
+**Open question.** Does the API already model a browse axis (category enum, tags) that topics map onto, or
+is this net-new taxonomy? Confirm before building.
+
+### 23. Public idea detail fields — P1
+
+**Problem.** `/ideas/[id]` now renders a full page — pitch story, FR-204 gate progress and a published date
+— but all of it comes from the web fixture (`inverge-web/src/features/ideas/content/preview-details.ts`).
+The public `GET /ideas/:id` projection still returns no `story`, `risks`, `publishedAt` or `updates`, so
+the page cannot leave preview mode. Items 1, 5 and 9 supply the creator, the gate thresholds and a
+one-line summary; the rest are unlisted.
+
+**Proposed.** Widen the public `GET /ideas/:id` projection with `story` (the pitch body, rich text),
+`risks` (item 8), `publishedAt`, and `updates: { id, title, body, createdAt }[]`. Gate thresholds and
+progress arrive through item 5. No new endpoint — a widening of the existing detail read, reusing the
+item 1 creator projection and the item 2 author rules wherever comments appear.
+
+**Invariants.** Same forbidden-field rules as item 1. The story is user-supplied public content: moderate
+on write, strip control characters, cap length.
+
+### 22. Feed pagination and total — P2
+
+**Problem.** The catalogue's "Show more" pages client-side over the whole fixture set. `GET /ideas` accepts
+`skip`/`take` but returns no total or cursor, so a real load-more cannot know when to stop.
+
+**Proposed.** Add `total` (and/or `nextCursor`) to the feed response, keeping the existing `skip`/`take`.
+
+### 24. Community loop endpoints — P2, planned
+
+The weekly challenges, monthly ideathon, weighted standings, judging and reputation badges are specified in
+`docs/idea-community-loop-plan.md` (schema, endpoints, phasing A/B/C, anti-gaming and judge-conflict
+rules). Grouped here so this document stays the single index of web-driven API asks. Not scheduled until
+that plan is approved.
+
+---
+
 ## Explicitly not asks
 
 Recorded so nobody "helpfully" adds them:
@@ -408,3 +511,7 @@ split. It costs nothing today and is expensive the moment a tranche has been rel
 wrong base.
 
 **Then the P2s**, in whatever order suits.
+
+**Items 20–25, raised 2026-10-16, slot in as follows.** Item 25 comes first regardless of the rest: it is
+the one that is a bug, and it gates every authenticated web screen. Then, after the existing ideas run
+(1 → 2 → 4 → 5 → 3): 21 → 23 → 20 → 22. Item 24 waits on the community-loop plan being approved.

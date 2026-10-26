@@ -152,6 +152,46 @@ enum CampaignReviewAction {
   REJECT
 }
 
+// The escrow-deployment lifecycle. Deliberately separate from CampaignStatus
+// (funding/publication) and CampaignReviewStatus (curation): a campaign may stay
+// a DRAFT while its deployment is awaiting a signature, and a FAILED deployment
+// never changes what backers see.
+enum CampaignDeploymentStatus {
+  NOT_STARTED
+  READY
+  AWAITING_SIGNATURE
+  SUBMITTED
+  CONFIRMING
+  CONFIRMED
+  FAILED
+  NEEDS_RECONCILIATION
+}
+
+// The deployment-fee lifecycle. Separate from the deployment itself because a fee
+// can settle before or after escrow creation, and the two must reconcile
+// independently without ever charging twice.
+enum CampaignDeploymentFeeStatus {
+  NOT_REQUIRED
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  NEEDS_RECONCILIATION
+}
+
+enum CampaignDeploymentEventType {
+  PREPARED
+  SIGNATURE_REQUESTED
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  RECONCILE_REQUESTED
+  NEEDS_RECONCILIATION
+  FEE_CONFIRMED
+  FEE_FAILED
+  PUBLISHED
+}
+
 enum ClaimStatus {
   UNDER_REVIEW
   APPROVED
@@ -195,23 +235,23 @@ model User {
   // Admin-settable; feeds the feed TrustScore, never any validation metric.
   institutionalCosign Boolean  @default(false)
 
-  wallets           WalletAccount[]
-  creatorProfile    CreatorProfile?
-  business          BusinessProfile?
-  ideas             Idea[]                @relation("IdeaCreator")
-  signals           IdeaSignal[]
-  surveyResponses   SurveyResponse[]
-  comments          IdeaComment[]
-  commentLikes      CommentLike[]
-  boostsPurchased   IdeaBoost[]
-  kycEvents         KycStatusEvent[]
-  amlScreenings     AmlScreening[]
-  flatFeeCharges    FlatFeeCharge[]
-  campaigns         Campaign[]            @relation("CampaignCreator")
-  reviewedCampaigns Campaign[]            @relation("CampaignReviewer")
-  campaignReviews   CampaignReviewEvent[] @relation("CampaignReviewActor")
-  contributions     Contribution[]
-  objections        MilestoneObjection[]
+  wallets                WalletAccount[]
+  creatorProfile         CreatorProfile?
+  business               BusinessProfile?
+  ideas                  Idea[]                  @relation("IdeaCreator")
+  signals                IdeaSignal[]
+  surveyResponses        SurveyResponse[]
+  comments               IdeaComment[]
+  commentLikes           CommentLike[]
+  boostsPurchased        IdeaBoost[]
+  kycEvents              KycStatusEvent[]
+  amlScreenings          AmlScreening[]
+  flatFeeCharges         FlatFeeCharge[]
+  campaigns              Campaign[]              @relation("CampaignCreator")
+  reviewedCampaigns      Campaign[]              @relation("CampaignReviewer")
+  campaignReviews        CampaignReviewEvent[]   @relation("CampaignReviewActor")
+  contributions          Contribution[]
+  objections             MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
   notifications          Notification[]
 
@@ -315,12 +355,12 @@ model CreatorProfile {
 // Assignments on Idea and Campaign are validated at the API boundary and carry no
 // foreign key, so an instance can serve while the reference data is reseeded.
 model TaxonomyCategory {
-  slug          String @id
+  slug          String                @id
   label         String
   sortOrder     Int
   subcategories TaxonomySubcategory[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 }
 
 model TaxonomySubcategory {
@@ -329,8 +369,8 @@ model TaxonomySubcategory {
   slug         String
   label        String
   sortOrder    Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@id([categorySlug, slug])
   @@index([categorySlug, sortOrder])
@@ -351,18 +391,18 @@ model Idea {
   status    IdeaStatus @default(DRAFT)
 
   // FR-270 structured pitch (nullable for back-compat; required at the DTO for new ideas).
-  targetUser         String? // who specifically has the problem
-  currentAlternative String? // what they do today + why it's insufficient
-  askBreakdown       Json? // indicative breakdown of what the ask buys
-  roadmapSteps       Json? // >=2 dated steps [{ date, description }]
-  category           String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
+  targetUser              String? // who specifically has the problem
+  currentAlternative      String? // what they do today + why it's insufficient
+  askBreakdown            Json? // indicative breakdown of what the ask buys
+  roadmapSteps            Json? // >=2 dated steps [{ date, description }]
+  category                String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
   taxonomyCategorySlug    String? // canonical discovery taxonomy (D-038); validated against taxonomy.data.ts
   taxonomySubcategorySlug String? // only meaningful with taxonomyCategorySlug
-  region             String? // creator-declared region/origin — personalization + "From Lagos" chip
-  coverImageUrl      String? // P1 web UI gap: media on idea
-  risks              String? // P2 web UI gap: risks and challenges section
-  problemDoc         Json? // Rich text problem document
-  solutionDoc        Json? // Rich text solution document
+  region                  String? // creator-declared region/origin — personalization + "From Lagos" chip
+  coverImageUrl           String? // P1 web UI gap: media on idea
+  risks                   String? // P2 web UI gap: risks and challenges section
+  problemDoc              Json? // Rich text problem document
+  solutionDoc             Json? // Rich text solution document
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
@@ -593,10 +633,17 @@ model Campaign {
   type                     CampaignType   @default(ALL_OR_NOTHING)
   status                   CampaignStatus @default(DRAFT)
   tokenType                TokenType
+  title                    String         @default("") // required before deployment; empty until the creator names it
+  summary                  String         @default("")
+  // The authored campaign document (story, media, use of funds, disclosures,
+  // location). Presentation-only fields stay here so a schema column is added
+  // only when the lifecycle or money depends on it.
+  story                    Json?
   targetAmount             Decimal        @db.Decimal(14, 2)
   fundingFloorPct          Int? // Flexible Funding only (FR-306)
   deadline                 DateTime
   termsHash                String? // FR-303: content hash, stored on-chain once published
+  objectionWindowDays      Int? // FR-602; must be inside the programme's allowed range at deployment
   workingCapitalPct        Decimal        @default(0) @db.Decimal(5, 2) // FR-503a: capped 20–25%
   workingCapitalReleasedAt DateTime?
   escrowPdaAddress         String?
@@ -616,6 +663,12 @@ model Campaign {
   reviewedById String?
   reviewedBy   User?                 @relation("CampaignReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewEvents CampaignReviewEvent[]
+
+  // Optimistic concurrency for creator autosave. A save carries the version it
+  // read; the update only applies when the stored version still matches.
+  draftVersion     Int                       @default(0)
+  deployment       CampaignDeployment?
+  termsAcceptances CampaignTermsAcceptance[]
 
   milestones    Milestone[]
   contributions Contribution[]
@@ -654,14 +707,16 @@ model CampaignReviewEvent {
 }
 
 model Milestone {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   campaignId         String
-  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign           Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   index              Int
   title              String
-  deliverable        String   @default("")
-  tranchePct         Decimal  @db.Decimal(5, 2) // FR-302: sums to 100
+  deliverable        String    @default("")
+  tranchePct         Decimal   @db.Decimal(5, 2) // FR-302: sums to 100
   evidenceDefinition Json // FR-302: proof type + source, immutable once published
+  // The on-chain milestone deadline (create_campaign's MilestoneInput.deadline).
+  expectedAt         DateTime?
 
   claims MilestoneClaim[]
 
@@ -736,6 +791,98 @@ model OnChainEvent {
   @@index([campaignId, eventType, blockTime(sort: Desc)])
 }
 
+// FR-303: a versioned, auditable record of the creator accepting the published
+// campaign terms. A wallet signature authorises a transaction; it is not, by
+// itself, acceptance of terms, so the two are recorded separately.
+model CampaignTermsAcceptance {
+  id           String   @id @default(cuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId       String
+  termsVersion String
+  termsHash    String
+  acceptedAt   DateTime @default(now())
+
+  @@unique([campaignId, termsVersion, termsHash])
+  @@index([userId, acceptedAt])
+}
+
+// One escrow deployment per campaign. Re-preparing returns this row instead of
+// creating a second attempt, which is what makes a retry after a timeout safe:
+// the creator can never be asked to pay or sign twice by accident. An attempt is
+// only replaced after it reaches a terminal state and a reconciliation has
+// explicitly released it.
+model CampaignDeployment {
+  id         String   @id @default(cuid())
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  status    CampaignDeploymentStatus @default(NOT_STARTED)
+  attemptNo Int                      @default(1)
+
+  // Everything below is server-derived and never taken from the browser.
+  cluster          String
+  programId        String
+  creatorWallet    String
+  tokenMint        String
+  campaignIdBytes  String // hex(sha256("inverge.campaign-id.v1:<cuid>")), 32 bytes
+  termsHash        String
+  termsVersion     String
+  instructionData  String // base64 Anchor `create_campaign` data, built server-side
+  expectedAccounts Json // canonical account metas + derivation seeds
+  feeBreakdown     Json // human-readable, non-floating breakdown returned to the creator
+
+  // Observed chain state, written only after verification against RPC.
+  campaignPda  String?
+  escrowVault  String?
+  txSignature  String?   @unique
+  commitment   String?
+  verifiedAt   DateTime?
+  onChainState Json?
+  blockTime    DateTime?
+
+  // Reconciliation bookkeeping.
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  reconcileAttempts Int       @default(0)
+  nextReconcileAt   DateTime?
+
+  // The fee is a separate lifecycle. Its default is NOT_REQUIRED because the
+  // escrow programme has no instruction that collects a platform fee (see
+  // docs/campaign-deployment.md §Fee policy).
+  feeStatus     CampaignDeploymentFeeStatus @default(NOT_REQUIRED)
+  feeMode       String                      @default("not_required")
+  feeAmount     Decimal?                    @db.Decimal(10, 2)
+  feeCurrency   String?
+  feeChargeId   String?                     @unique
+  feeVerifiedAt DateTime?
+
+  preparedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  events CampaignDeploymentEvent[]
+
+  @@index([status, nextReconcileAt])
+  @@index([creatorWallet])
+}
+
+// Append-only deployment audit trail. Application code never updates or deletes
+// these rows; the deployment row is the current projection.
+model CampaignDeploymentEvent {
+  id           String                      @id @default(cuid())
+  deploymentId String
+  deployment   CampaignDeployment          @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  type         CampaignDeploymentEventType
+  fromStatus   CampaignDeploymentStatus?
+  toStatus     CampaignDeploymentStatus?
+  actorId      String?
+  detail       Json?
+  createdAt    DateTime                    @default(now())
+
+  @@index([deploymentId, createdAt])
+}
+
 // FR-901 / FR-904: admin-configurable platform parameters (fees, thresholds, windows).
 model PlatformParam {
   key       String   @id
@@ -785,26 +932,26 @@ enum AnalyticsSignalType {
 }
 
 model ProductAnalyticsEvent {
-  id         String                    @id @default(cuid())
-  name       ProductAnalyticsEventName
-  userId     String? // internal id only; never an email, wallet or provider subject
-  user       User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  sessionId  String? // anonymous, session-scoped random id; mutually exclusive with userId
-  ideaId     String?
-  campaignId String?
-  signalType AnalyticsSignalType?
-  source     String? // feed | search | direct, from a closed set validated in code
-  position   Int?
-  step       String? // creator-flow step, from a closed set validated in code
-  durationMs Int?
+  id          String                    @id @default(cuid())
+  name        ProductAnalyticsEventName
+  userId      String? // internal id only; never an email, wallet or provider subject
+  user        User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId   String? // anonymous, session-scoped random id; mutually exclusive with userId
+  ideaId      String?
+  campaignId  String?
+  signalType  AnalyticsSignalType?
+  source      String? // feed | search | direct, from a closed set validated in code
+  position    Int?
+  step        String? // creator-flow step, from a closed set validated in code
+  durationMs  Int?
   queryLength Int?
   resultCount Int?
-  filterKeys  String[] @default([])
+  filterKeys  String[]                  @default([])
   amountMinor BigInt?
   currency    String?
-  countryCode String?  @db.Char(2) // coarse, from a trusted edge header only
+  countryCode String?                   @db.Char(2) // coarse, from a trusted edge header only
   occurredAt  DateTime
-  receivedAt  DateTime @default(now())
+  receivedAt  DateTime                  @default(now())
 
   @@index([name, occurredAt])
   @@index([ideaId, name, occurredAt])
@@ -816,14 +963,14 @@ model ProductAnalyticsEvent {
 // Daily roll-up of idea signals. Derived only from ProductAnalyticsEvent; rebuilt
 // idempotently per (ideaId, day), never incremented by a request path.
 model IdeaSignalDailyMetric {
-  id              String   @id @default(cuid())
-  ideaId          String
-  day             DateTime @db.Date
-  supportCount    Int      @default(0)
-  prePledgeCount  Int      @default(0)
-  uniqueActors    Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  ideaId         String
+  day            DateTime @db.Date
+  supportCount   Int      @default(0)
+  prePledgeCount Int      @default(0)
+  uniqueActors   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([ideaId, day])
   @@index([day])
@@ -878,26 +1025,26 @@ enum AdEventType {
 // The creative. `approved` is permission to serve, not a schedule: serving also
 // requires startsAt <= now < endsAt and the placement relation.
 model Advertisement {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   advertiser      String
   headline        String
   body            String
   ctaLabel        String
   destination     String
   format          AdCreativeFormat
-  kind            AdCreativeKind    @default(FIRST_PARTY)
-  status          AdCreativeStatus  @default(DRAFT)
-  priority        Int               @default(0)
+  kind            AdCreativeKind   @default(FIRST_PARTY)
+  status          AdCreativeStatus @default(DRAFT)
+  priority        Int              @default(0)
   startsAt        DateTime
   endsAt          DateTime
-  categories      String[]          @default([])
-  regions         String[]          @default([])
+  categories      String[]         @default([])
+  regions         String[]         @default([])
   createdById     String
   approvedById    String?
   approvedAt      DateTime?
   rejectionReason String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   placements AdvertisementPlacement[]
   reviews    AdvertisementReviewEvent[]
@@ -920,15 +1067,15 @@ model AdvertisementPlacement {
 // Append-only review trail. actorId is not an FK for the same reason as
 // PlatformParamAudit.changedBy: the trail must survive an account deletion.
 model AdvertisementReviewEvent {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   advertisementId String
-  advertisement   Advertisement     @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  advertisement   Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   actorId         String
   action          AdReviewAction
   fromStatus      AdCreativeStatus
   toStatus        AdCreativeStatus
   reason          String?
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime         @default(now())
 
   @@index([advertisementId, createdAt])
   @@index([createdAt])
@@ -938,14 +1085,14 @@ model AdvertisementReviewEvent {
 // free text. `dedupeKey` closes the client retry gap. Raw rows are retained for
 // 90 days, then only daily aggregates remain (see analytics-privacy.md).
 model AdvertisementEvent {
-  id          String       @id @default(cuid())
+  id          String      @id @default(cuid())
   creativeId  String
   placementId String
   type        AdEventType
   sessionId   String
-  dedupeKey   String       @unique
+  dedupeKey   String      @unique
   occurredAt  DateTime
-  receivedAt  DateTime     @default(now())
+  receivedAt  DateTime    @default(now())
 
   @@index([creativeId, occurredAt])
   @@index([placementId, occurredAt])
@@ -956,17 +1103,17 @@ model AdvertisementEvent {
 // external channel is a separate, retryable step. `dedupeKey` makes a repeated
 // domain event (for example a replayed campaign conversion) idempotent.
 model Notification {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  template         String
-  data             Json?
-  dedupeKey        String?   @unique
-  readAt           DateTime?
-  dispatchedAt     DateTime?
-  dispatchAttempts Int       @default(0)
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template          String
+  data              Json?
+  dedupeKey         String?   @unique
+  readAt            DateTime?
+  dispatchedAt      DateTime?
+  dispatchAttempts  Int       @default(0)
   lastDispatchError String?
-  createdAt        DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])

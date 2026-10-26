@@ -14,6 +14,7 @@ same surface as the committed document.
 |---|---|---|
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
+| [campaign-deployment.md](../campaign-deployment.md) | Draft persistence, escrow deployment, on-chain verification, reconciliation, fee policy, blockers | Implemented against programme source; not yet verified against a deployed binary |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
 | [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
@@ -73,6 +74,12 @@ source of truth. It does not query Postgres or Redis.
 
 ## Status of the underlying system
 
-Campaign, milestone, contribution, refund and transparency endpoints do **not**
-exist yet. They depend on an Anchor escrow program and an event indexer that are
-not in either repository. Do not stub them; see [gaps.md](./gaps.md).
+Campaign drafts, their escrow deployment attempt and publication now exist:
+`POST /campaigns`, `PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
+`/campaigns/:id/deployment/{prepare,submit,reconcile}`. See
+[campaign-deployment.md](../campaign-deployment.md); the escrow programme has no
+committed IDL, so verification against a deployed binary is still an open blocker.
+
+Contribution, refund, milestone-claim and transparency endpoints do **not** exist.
+They depend on an event indexer that is not in either repository, and chain-owned
+state is never synthesised off-chain. Do not stub them; see [gaps.md](./gaps.md).

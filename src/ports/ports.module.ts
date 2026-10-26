@@ -29,6 +29,9 @@ import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
 import { DUPLICATE_DETECTOR_PORT } from './dedup/dedup.port';
 import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
 
+import { ESCROW_CHAIN_PORT } from './escrow/escrow-chain.port';
+import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
+
 // Binds each port token to an adapter selected by env. Adapters are all constructed
 // (cheap), the factory picks one — so swapping a vendor is an env flip, and adding a
 // new vendor is a new adapter file. No business logic references a concrete vendor.
@@ -48,6 +51,7 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
     StubModerationAdapter,
     AiModerationAdapter,
     StubShingleDetector,
+    SolanaRpcAdapter,
     {
       provide: EMBEDDED_WALLET_PORT,
       inject: [
@@ -120,6 +124,12 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
       // Deterministic shingle detector now; a semantic adapter can drop in later.
       useFactory: (stub: StubShingleDetector) => stub,
     },
+    {
+      // Single adapter for now; it reports `configured: false` when the chain is
+      // switched off, so callers get a 503 instead of a fabricated success.
+      provide: ESCROW_CHAIN_PORT,
+      useExisting: SolanaRpcAdapter,
+    },
   ],
   exports: [
     EMBEDDED_WALLET_PORT,
@@ -129,6 +139,7 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
     QUALITY_SCORER_PORT,
     MODERATION_CLASSIFIER_PORT,
     DUPLICATE_DETECTOR_PORT,
+    ESCROW_CHAIN_PORT,
   ],
 })
 export class PortsModule {}
