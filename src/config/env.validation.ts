@@ -45,8 +45,9 @@ export const envSchema = z
   LOG_HASH_SALT: z.string().default('inverge-log'),
 
   // Product analytics retention (docs/api/analytics-privacy.md): raw events 90 days,
-  // daily aggregates 25 months. There is no public ingestion route; these bounds are
-  // enforced by the nightly maintenance job.
+  // daily aggregates 25 months. There is no public browser ingestion route; views
+  // arrive through the signed service-to-service route below. The nightly
+  // maintenance job enforces these bounds.
   ANALYTICS_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(90),
   ANALYTICS_AGGREGATE_RETENTION_MONTHS: z.coerce
     .number()
@@ -54,6 +55,24 @@ export const envSchema = z
     .min(1)
     .max(120)
     .default(25),
+
+  // Service-to-service view ingest. Off by default: the web server must be
+  // configured with the same secret before the route accepts anything.
+  ANALYTICS_INGEST_ENABLED: booleanFlag.default(false),
+  ANALYTICS_INGEST_SECRET: z.string().min(32).optional(),
+  ANALYTICS_INGEST_CLOCK_SKEW_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(30)
+    .max(900)
+    .default(300),
+  ANALYTICS_INGEST_MAX_BODY_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(1024 * 1024)
+    .default(64 * 1024),
+  ANALYTICS_READ_ENABLED: booleanFlag.default(true),
 
   WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
@@ -172,6 +191,16 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SOLANA_RPC_URL'],
         message: 'SOLANA_RPC_URL is required when ESCROW_CHAIN_PROVIDER=solana-rpc',
+      });
+    }
+
+    // Enabling ingest without a secret would leave the route unable to
+    // authenticate a caller; fail at boot rather than at the first request.
+    if (env.ANALYTICS_INGEST_ENABLED && !env.ANALYTICS_INGEST_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ANALYTICS_INGEST_SECRET'],
+        message: 'ANALYTICS_INGEST_SECRET is required when ingest is enabled',
       });
     }
   });

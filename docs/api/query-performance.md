@@ -174,3 +174,68 @@ node scripts/load-public-reads.mjs \
 Use `--concurrency 1` for per-request latency. Set `REDIS_ENABLED=false` for the
 origin path and `REDIS_ENABLED=true` with a reachable `REDIS_URL` for the cache
 path. The probe is a smoke-level baseline, not a load-testing framework.
+
+## Analytics aggregate reads: per-request operation budget
+
+The analytics reports are a separate read surface: they resolve an owner, check
+an entitlement, and read daily roll-ups. The SQL timings above do not cover
+them, so the Phase 1 e2e suite measures the operation count for every report and
+fails if a route grows an N+1.
+
+### Method
+
+- Fresh PostgreSQL 16, `prisma migrate deploy`, one published idea, one active
+  campaign, and one view event per resource. No volume fixture is needed: the
+  budget is about query shape, not data size.
+- `REDIS_ENABLED=false`, `QUEUE_ENABLED=false`; the cache cannot mask an extra
+  query.
+- `test/prisma-query-counter.ts` wraps Prisma model delegates and raw-query
+  methods and counts one operation per call. Prisma v7's `$on('query')` is a
+  no-op unless the client is constructed with a query log target, which
+  production deliberately does not do.
+- Each count includes the session guard's `User` lookup, because it is part of
+  the real request. An anonymous request is rejected before the report runs and
+  is not measured here.
+
+### Measured budgets
+
+| Route | Prisma operations | Why that is the ceiling |
+|---|---:|---|
+| `GET /ideas/:id/analytics/summary` | 7 | auth, owner, reach, exact uniques, validation pair, last aggregate day |
+| `GET /ideas/:id/analytics/timeseries` | 4 | auth, owner, reach, signal series |
+| `GET /ideas/:id/analytics/validation` | 7 | auth, owner, entitlement pair, reach, validation pair |
+| `GET /ideas/:id/analytics/acquisition` | 5 | auth, owner, entitlement pair, source group |
+| `GET /ideas/:id/analytics/geography` | 5 | auth, owner, entitlement pair, country group |
+| `GET /campaigns/:id/analytics/summary` | 7 | auth, owner, reach, exact uniques, funnel, confirmed backing, last aggregate day |
+| `GET /campaigns/:id/analytics/funnel` | 8 | auth, owner, entitlement pair, reach, exact uniques, funnel, confirmed backing |
+| `GET /analytics/access` | 3 | auth, creator tier, grant |
+| `GET /admin/analytics/overview` | 4 | auth, reach group, last day, platform exact uniques |
+| `GET /admin/analytics/access-requests` | 2 | auth, keyset page |
+
+The e2e assertions are exact, not "roughly bounded". A change that adds a query
+to a report fails the suite and requires a deliberate budget update here.
+
+### Indexes behind the budgets
+
+- `ResourceReachDailyMetric(resourceType, resourceId, day)` is unique, so reach
+  and last-day reads are index seeks.
+- `ResourceAcquisitionDailyMetric(resourceType, resourceId, day, source)` and
+  `ResourceCountryDailyMetric(resourceType, resourceId, day, countryCode)` are
+  unique; the reports group by the trailing low-cardinality key.
+- `CampaignFunnelDailyMetric(campaignId, day)` is unique.
+- `IdeaSignalDailyMetric(ideaId, day)` is unique.
+- `AnalyticsAccessGrant(userId, feature)` is unique; the admin list uses
+  `AnalyticsAccessGrant(status, requestedAt)`.
+- Exact unique-session reads use `ProductAnalyticsEvent(resourceType,
+  resourceId, name, occurredAt)` only inside the raw retention window. Outside
+  it, the report returns the sum of daily uniques and sets
+  `uniqueSessionsExact: false`.
+
+### What this does not prove
+
+- It is an operation count, not a wall-clock latency measurement. The public
+  read probe above remains the latency baseline.
+- It does not include Redis round trips when the cache is enabled; a cache hit
+  removes the Postgres work but adds one network call.
+- It does not include the admin approval write path or the access-request POST,
+  which are low-frequency writes and are covered by their own e2e assertions.

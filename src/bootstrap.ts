@@ -1,6 +1,6 @@
 import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, type Request } from 'express';
 import helmet from 'helmet';
 import { Env } from './config/env.validation';
 import { requestIdMiddleware } from './common/http/request-id';
@@ -31,7 +31,17 @@ export function configureApp(app: INestApplication): void {
   // Correlation id first so every later log line and error body has one.
   app.use(requestIdMiddleware);
 
-  app.use(json({ limit: config.get('JSON_BODY_LIMIT', { infer: true }) }));
+  // Capture the exact bytes even when this parser wins the race with Nest's own
+  // rawBody parser. Webhook and analytics HMAC checks sign the received body, not
+  // a re-serialised object whose key order may differ.
+  app.use(
+    json({
+      limit: config.get('JSON_BODY_LIMIT', { infer: true }),
+      verify: (request, _response, buffer) => {
+        (request as Request & { rawBody?: Buffer }).rawBody = buffer;
+      },
+    }),
+  );
   app.use(
     urlencoded({
       limit: config.get('JSON_BODY_LIMIT', { infer: true }),

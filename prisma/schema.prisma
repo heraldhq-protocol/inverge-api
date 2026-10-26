@@ -253,6 +253,7 @@ model User {
   contributions          Contribution[]
   objections             MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
+  analyticsAccessGrants  AnalyticsAccessGrant[]
   notifications          Notification[]
 
   createdAt DateTime @default(now())
@@ -911,13 +912,16 @@ model PlatformParamAudit {
 // No IP, user agent, cookie, fingerprint, free text or wallet address is stored.
 // Authenticated events carry the internal user id; anonymous events carry only a
 // session-scoped random id. Raw events are retained 90 days; daily aggregates 25
-// months. There is no public ingest route: domain code writes after its own
-// transaction commits, and a failed write never fails the user action.
+// months. There is no public browser ingest route. Views arrive through a signed
+// service-to-service route; confirmed domain events are written after their own
+// transaction commits. A failed analytics write never fails the user action.
 // ---------------------------------------------------------------------------
 
 enum ProductAnalyticsEventName {
+  PAGE_VIEWED
   IDEA_VIEWED
   IDEA_SIGNAL
+  FEEDBACK_SUBMITTED
   CAMPAIGN_VIEWED
   CAMPAIGN_STEP_STARTED
   CAMPAIGN_STEP_COMPLETED
@@ -931,31 +935,45 @@ enum AnalyticsSignalType {
   PRE_PLEDGE
 }
 
+// The closed resource vocabulary. A generic type/id pair lets one reach pipeline
+// serve ideas, campaigns and fixed page keys without a nullable column per surface.
+enum AnalyticsResourceType {
+  IDEA
+  CAMPAIGN
+  PAGE
+}
+
 model ProductAnalyticsEvent {
-  id          String                    @id @default(cuid())
-  name        ProductAnalyticsEventName
-  userId      String? // internal id only; never an email, wallet or provider subject
-  user        User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  sessionId   String? // anonymous, session-scoped random id; mutually exclusive with userId
-  ideaId      String?
-  campaignId  String?
-  signalType  AnalyticsSignalType?
-  source      String? // feed | search | direct, from a closed set validated in code
-  position    Int?
-  step        String? // creator-flow step, from a closed set validated in code
-  durationMs  Int?
-  queryLength Int?
-  resultCount Int?
-  filterKeys  String[]                  @default([])
-  amountMinor BigInt?
-  currency    String?
-  countryCode String?                   @db.Char(2) // coarse, from a trusted edge header only
-  occurredAt  DateTime
-  receivedAt  DateTime                  @default(now())
+  id            String                    @id @default(cuid())
+  eventKey      String                    @unique // caller idempotency key; domain rows use their own id
+  schemaVersion Int                       @default(1)
+  name          ProductAnalyticsEventName
+  userId        String? // internal id only; never an email, wallet or provider subject
+  user          User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId     String? // anonymous, session-scoped random id; mutually exclusive with userId
+  ideaId        String?
+  campaignId    String?
+  resourceType  AnalyticsResourceType?
+  resourceId    String? // idea/campaign id, or a closed page key
+  signalType    AnalyticsSignalType?
+  source        String? // feed | search | direct | internal, from a closed set validated in code
+  position      Int?
+  step          String? // creator-flow step, from a closed set validated in code
+  durationMs    Int?
+  queryLength   Int?
+  resultCount   Int?
+  filterKeys    String[] @default([])
+  amountMinor   BigInt?
+  currency      String?
+  countryCode   String?  @db.Char(2) // coarse, from a trusted edge header only
+  occurredAt    DateTime
+  receivedAt    DateTime @default(now())
 
   @@index([name, occurredAt])
   @@index([ideaId, name, occurredAt])
   @@index([campaignId, name, occurredAt])
+  @@index([resourceType, resourceId, name, occurredAt])
+  @@index([resourceType, resourceId, source, occurredAt])
   @@index([userId, occurredAt])
   @@index([receivedAt])
 }
@@ -974,6 +992,110 @@ model IdeaSignalDailyMetric {
 
   @@unique([ideaId, day])
   @@index([day])
+}
+
+// Reach roll-up: one row per resource per UTC day. Rebuilt from raw events, so a
+// rerun replaces the day's counts. `uniqueSessions` is distinct by userId when
+// signed in, otherwise by the anonymous session id; a missing actor is not counted.
+model ResourceReachDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Acquisition roll-up by the closed source vocabulary. A missing source is stored
+// as `direct`; no referrer URL or query string is ever written.
+model ResourceAcquisitionDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  source         String
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day, source])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Country roll-up from the trusted edge header. The IP is discarded before the
+// event is written; unknown countries are excluded rather than stored as a guess.
+model ResourceCountryDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  countryCode    String                @db.Char(2)
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day, countryCode])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Creator-flow funnel roll-up. Views and unique sessions live in the reach table;
+// this table stores only the step and backing-start counts so the two cannot drift.
+model CampaignFunnelDailyMetric {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  day                 DateTime @db.Date
+  stepStarted         Int      @default(0)
+  stepCompleted       Int      @default(0)
+  contributionStarted Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([campaignId, day])
+  @@index([day])
+}
+
+// Premium analytics access. Collection is free; the richer reports are gated by an
+// explicit grant so the same row can later be issued by a paid checkout without a
+// schema change. `feature` is a closed code (`analytics.premium`), not user text.
+enum AnalyticsAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AnalyticsAccessSource {
+  REQUEST
+  ADMIN
+  PAID
+}
+
+model AnalyticsAccessGrant {
+  id                String                @id @default(cuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature           String                @default("analytics.premium")
+  status            AnalyticsAccessStatus @default(PENDING)
+  source            AnalyticsAccessSource @default(REQUEST)
+  requestedAt       DateTime              @default(now())
+  decidedAt         DateTime?
+  decidedBy         String? // admin user id; no relation so the audit row survives an admin deletion
+  expiresAt         DateTime? // null = no expiry; a paid grant sets the paid-through instant
+  externalReference String?               @db.VarChar(128) // future payment reference; never raw card data
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([userId, feature])
+  @@index([status, requestedAt])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import { buildAccountCapabilities, CapabilityInput } from './capabilities';
+import { analyticsEntitlement } from '../analytics/analytics-entitlements';
 
 const NOW = new Date('2026-10-22T12:00:00.000Z');
 
@@ -134,5 +135,54 @@ describe('buildAccountCapabilities', () => {
 
     // #then the payload advertises its own freshness
     expect(caps.asOf).toBe('2026-10-22T12:00:00.000Z');
+  });
+
+  it('reports basic analytics with an open request for an ordinary account', () => {
+    // #given an account with no analytics grant
+    const caps = buildAccountCapabilities(base(), NOW);
+
+    // #then only basic reports are advertised and the request CTA is open
+    expect(caps.analytics).toMatchObject({
+      tier: 'basic',
+      premium: false,
+      requestStatus: 'NONE',
+      canRequest: true,
+    });
+  });
+
+  it('reports admin analytics for an admin account', () => {
+    // #given an admin with no grant row
+    const caps = buildAccountCapabilities(base({ role: 'ADMIN' }), NOW);
+
+    // #then admin reports are advertised without a request
+    expect(caps.analytics).toMatchObject({
+      tier: 'admin',
+      premium: true,
+      requestStatus: 'NOT_REQUIRED',
+      canRequest: false,
+      available: true,
+    });
+  });
+
+  it('reports analytics availability separately from entitlement', () => {
+    // #given an approved account while the read surface is disabled
+    const caps = buildAccountCapabilities(
+      base({
+        analytics: analyticsEntitlement({
+          role: 'USER',
+          access: { status: 'APPROVED', source: 'ADMIN', expiresAt: null },
+          available: false,
+          now: NOW,
+        }),
+      }),
+      NOW,
+    );
+
+    // #then the grant is still reported but the surface is marked unavailable
+    expect(caps.analytics).toMatchObject({
+      available: false,
+      premium: true,
+      requestStatus: 'APPROVED',
+    });
   });
 });

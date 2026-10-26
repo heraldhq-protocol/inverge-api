@@ -19,15 +19,36 @@ export class AnalyticsRetentionService {
       this.config.get('ANALYTICS_AGGREGATE_RETENTION_MONTHS', { infer: true }),
     );
 
-    const [events, aggregates] = await this.prisma.$transaction([
-      this.prisma.productAnalyticsEvent.deleteMany({
-        where: { receivedAt: { lt: cutoffs.eventsBefore } },
-      }),
-      this.prisma.ideaSignalDailyMetric.deleteMany({
-        where: { day: { lt: cutoffs.aggregatesBefore } },
-      }),
-    ]);
+    const [events, signals, reach, acquisition, countries, funnel] =
+      await this.prisma.$transaction([
+        this.prisma.productAnalyticsEvent.deleteMany({
+          where: { receivedAt: { lt: cutoffs.eventsBefore } },
+        }),
+        this.prisma.ideaSignalDailyMetric.deleteMany({
+          where: { day: { lt: cutoffs.aggregatesBefore } },
+        }),
+        this.prisma.resourceReachDailyMetric.deleteMany({
+          where: { day: { lt: cutoffs.aggregatesBefore } },
+        }),
+        this.prisma.resourceAcquisitionDailyMetric.deleteMany({
+          where: { day: { lt: cutoffs.aggregatesBefore } },
+        }),
+        this.prisma.resourceCountryDailyMetric.deleteMany({
+          where: { day: { lt: cutoffs.aggregatesBefore } },
+        }),
+        this.prisma.campaignFunnelDailyMetric.deleteMany({
+          where: { day: { lt: cutoffs.aggregatesBefore } },
+        }),
+      ]);
 
-    return { events: events.count, aggregates: aggregates.count };
+    return {
+      events: events.count,
+      aggregates:
+        signals.count +
+        reach.count +
+        acquisition.count +
+        countries.count +
+        funnel.count,
+    };
   }
 }

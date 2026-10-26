@@ -1,4 +1,8 @@
 import {
+  AnalyticsEntitlement,
+  analyticsEntitlement,
+} from '../analytics/analytics-entitlements';
+import {
   fundsEligibilityReasons,
   isFundsEligible,
   isIdentityVerified,
@@ -21,6 +25,7 @@ export interface CapabilityInput {
   amlStatus: string;
   displayName: string | null;
   username: string | null;
+  analytics?: AnalyticsEntitlement;
 }
 
 export interface AccountCapabilities {
@@ -42,6 +47,7 @@ export interface AccountCapabilities {
     moderateContent: boolean;
     managePlatform: boolean;
   };
+  analytics: AnalyticsEntitlement;
   asOf: string;
 }
 
@@ -83,6 +89,9 @@ export function buildAccountCapabilities(
       moderateContent: isAdmin,
       managePlatform: isAdmin,
     },
+    analytics:
+      input.analytics ??
+      analyticsEntitlement({ role: input.role, now }),
     asOf: now.toISOString(),
   };
 }
