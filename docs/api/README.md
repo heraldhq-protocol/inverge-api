@@ -4,7 +4,7 @@ Versioned REST API for Inverge: idea validation, campaigns, identity, and the
 off-chain projections of a milestone-escrowed crowdfunding system.
 
 **Base URL:** `/api/v1`
-**Contract:** [`openapi.json`](./openapi.json) — generated from the running decorators, committed, and drift-checked in CI.
+**Contract:** [`openapi.json`](./openapi.json) - generated from the running decorators, committed, and drift-checked by `pnpm openapi:check`.
 **Human reference:** `/docs` (Swagger UI), served by the same process. It exposes the
 same surface as the committed document.
 
@@ -18,7 +18,9 @@ same surface as the committed document.
 | [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |
-| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Implemented for server-side signal events |
+| [analytics.md](./analytics.md) | Ingest contract, owner/admin reports, premium access, frontend rules | Implemented (Phase 1) |
+| [product-analytics.md](./product-analytics.md) | Pipeline, taxonomy, aggregation, retention | Implemented (Phase 1) |
+| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention, consent boundary | Implemented for server-side views and signals; Phase 2 target |
 | [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe | Implemented |
 | [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |

@@ -423,18 +423,19 @@ export class IdeasService {
       where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
       select: { id: true },
     });
-    const result = await this.prisma.$transaction(async (tx) => {
-      await tx.ideaSignal.upsert({
+    const { result, signalId } = await this.prisma.$transaction(async (tx) => {
+      const signal = await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'SUPPORT' } },
         update: {},
         create: { ideaId: id, userId, type: 'SUPPORT' },
       });
-      return this.metrics.recompute(tx, id);
+      return { result: await this.metrics.recompute(tx, id), signalId: signal.id };
     });
     this.invalidateIdea();
     // Analytics is written after the domain commit and never fails the action.
     if (!existing) {
       await this.analytics?.record({
+        eventKey: `IDEA_SIGNAL:${signalId}`,
         name: 'IDEA_SIGNAL',
         userId,
         ideaId: id,
@@ -469,8 +470,8 @@ export class IdeasService {
       where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
       select: { id: true },
     });
-    const result = await this.prisma.$transaction(async (tx) => {
-      await tx.ideaSignal.upsert({
+    const { result, signalId } = await this.prisma.$transaction(async (tx) => {
+      const signal = await tx.ideaSignal.upsert({
         where: { ideaId_userId_type: { ideaId: id, userId, type: 'PRE_PLEDGE' } },
         update: { amount: dto.amount, currency, amountUsd },
         create: {
@@ -482,11 +483,12 @@ export class IdeasService {
           amountUsd,
         },
       });
-      return this.metrics.recompute(tx, id);
+      return { result: await this.metrics.recompute(tx, id), signalId: signal.id };
     });
     this.invalidateIdea();
     if (!existing) {
       await this.analytics?.record({
+        eventKey: `IDEA_SIGNAL:${signalId}`,
         name: 'IDEA_SIGNAL',
         userId,
         ideaId: id,

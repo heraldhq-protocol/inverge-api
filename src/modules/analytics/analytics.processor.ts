@@ -9,8 +9,8 @@ export const ANALYTICS_QUEUE = 'analytics-maintenance';
 
 export type AnalyticsJobData = { day?: string };
 
-// One nightly pass: rebuild yesterday's idea-signal roll-up, then enforce retention.
-// Both steps are idempotent, so retries and manual reruns are safe.
+// One nightly pass: rebuild yesterday's roll-ups, then enforce retention. Every
+// step is idempotent, so retries and manual reruns are safe.
 @Processor(ANALYTICS_QUEUE)
 export class AnalyticsProcessor extends WorkerHost {
   private readonly logger = new Logger(AnalyticsProcessor.name);
@@ -32,14 +32,20 @@ export class AnalyticsProcessor extends WorkerHost {
 
   async process(job: Job<AnalyticsJobData>) {
     const day = job.data?.day ?? previousUtcDay(new Date());
-    const aggregated = await this.aggregation.aggregateIdeaSignals(day);
+    const signals = await this.aggregation.aggregateIdeaSignals(day);
+    const reach = await this.aggregation.aggregateReach(day);
+    const acquisition = await this.aggregation.aggregateAcquisition(day);
+    const countries = await this.aggregation.aggregateCountries(day);
+    const funnel = await this.aggregation.aggregateCampaignFunnel(day);
     const purged = await this.retention.purge(new Date());
 
     this.logger.log(
-      `Analytics maintenance ${day}: ${aggregated.ideas} idea roll-up(s), ` +
+      `Analytics maintenance ${day}: ${signals.ideas} idea roll-up(s), ` +
+        `${reach.resources} reach row(s), ${acquisition.resources} acquisition row(s), ` +
+        `${countries.resources} country row(s), ${funnel.campaigns} funnel row(s), ` +
         `${purged.events} raw event(s), ${purged.aggregates} aggregate(s) purged`,
     );
 
-    return { ...aggregated, ...purged };
+    return { day, signals, reach, acquisition, countries, funnel, purged };
   }
 }

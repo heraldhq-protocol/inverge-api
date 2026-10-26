@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { ProductAnalyticsService } from '../analytics/product-analytics.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SetSurveyDto, SubmitResponseDto } from './dto/survey.dto';
 import {
@@ -23,6 +24,7 @@ export class SurveyService {
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
     @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly analytics?: ProductAnalyticsService,
   ) {}
 
   private async resolveIdea(idOrSlug: string) {
@@ -89,15 +91,27 @@ export class SurveyService {
     const { normalized, problems } = validateAnswers(refs, dto.answers as Answer[]);
     if (problems.length) throw new BadRequestException(problems);
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      await tx.surveyResponse.upsert({
+    const { result, responseId } = await this.prisma.$transaction(async (tx) => {
+      const response = await tx.surveyResponse.upsert({
         where: { ideaId_userId: { ideaId, userId } },
         update: { answers: normalized as object },
         create: { ideaId, userId, answers: normalized as object },
       });
-      return this.metrics.recompute(tx, ideaId);
+      return {
+        result: await this.metrics.recompute(tx, ideaId),
+        responseId: response.id,
+      };
     });
     this.invalidateIdea();
+    // One confirmed feedback event per response row; editing the same response
+    // updates the domain row without inflating the analytics count.
+    await this.analytics?.record({
+      eventKey: `FEEDBACK_SUBMITTED:${responseId}`,
+      name: 'FEEDBACK_SUBMITTED',
+      userId,
+      ideaId,
+      occurredAt: new Date(),
+    });
     return result;
   }
 

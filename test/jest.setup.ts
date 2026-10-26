@@ -15,3 +15,10 @@ const redisE2e = process.env.REDIS_E2E === 'true';
 process.env.REDIS_ENABLED = redisE2e ? 'true' : 'false';
 process.env.QUEUE_ENABLED = 'false';
 process.env.RATE_LIMIT_ENABLED = redisE2e ? 'true' : 'false';
+
+// The signed ingest route is exercised by the analytics suite. A fixed test secret
+// keeps the HMAC assertion deterministic; production requires its own value.
+process.env.ANALYTICS_INGEST_ENABLED = 'true';
+process.env.ANALYTICS_INGEST_SECRET =
+  'e2e-analytics-ingest-secret-0000000000000000';
+process.env.ANALYTICS_READ_ENABLED = 'true';
