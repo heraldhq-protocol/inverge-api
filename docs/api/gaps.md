@@ -56,7 +56,9 @@ exists; **deferred** = planned, not next.
 
 | Feature | Route | Status | Gap |
 |---|---|---|---|
-| Create campaign | — | missing | Creator flow is fixtures; only convert/submit exist |
+| Create campaign | `POST /campaigns`, `PATCH /campaigns/{id}` | implemented | Persistent draft with optimistic concurrency; see [campaign-deployment.md](../campaign-deployment.md) |
+| Deployment | `POST /campaigns/{id}/deployment/prepare`, `…/submit`, `…/reconcile`, `GET …/deployment` | implemented against programme source | Verification needs a deployed binary/IDL and a devnet run before mainnet |
+| Publish | `POST /campaigns/{id}/publish` | implemented | Requires review approval + verified deployment + fee |
 | Submit for review | `POST /campaigns/{id}/submit` | implemented | Requires KYC + fee; correct |
 | Own campaigns | `GET /campaigns?mine=true` | implemented | - |
 | Admin review queue | `GET /admin/campaigns` | implemented | — |
