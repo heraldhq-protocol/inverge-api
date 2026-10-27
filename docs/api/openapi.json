@@ -672,6 +672,43 @@
         ],
         "type": "object"
       },
+      "PlatformSummaryDto": {
+        "properties": {
+          "activeCampaigns": {
+            "description": "Campaigns with status ACTIVE.",
+            "example": 12,
+            "type": "number"
+          },
+          "asOf": {
+            "description": "When the counters were read. The response may be served from a 60 s cache.",
+            "example": "2026-10-26T09:30:00.000Z",
+            "type": "string"
+          },
+          "completedCampaigns": {
+            "description": "Campaigns with status COMPLETED.",
+            "example": 34,
+            "type": "number"
+          },
+          "publishedIdeas": {
+            "description": "Ideas a visitor can find through GET /ideas: published (VALIDATING or THRESHOLD_MET) and discoverable (DISCOVERABLE or FEATURED).",
+            "example": 128,
+            "type": "number"
+          },
+          "totalCampaigns": {
+            "description": "Campaigns in any public state (ACTIVE, FUNDED, FAILED, COMPLETED). Drafts, review and rejected rows are excluded.",
+            "example": 58,
+            "type": "number"
+          }
+        },
+        "required": [
+          "asOf",
+          "publishedIdeas",
+          "activeCampaigns",
+          "completedCampaigns",
+          "totalCampaigns"
+        ],
+        "type": "object"
+      },
       "PrePledgeDto": {
         "properties": {
           "amount": {
@@ -2175,6 +2212,7 @@
     },
     "/api/v1/campaigns/{id}": {
       "get": {
+        "description": "A campaign is publicly readable in ACTIVE, FUNDED, FAILED or COMPLETED. A draft, in-review or rejected campaign resolves only for its creator; every other caller receives 404.",
         "operationId": "CampaignsController_get",
         "parameters": [
           {
@@ -2201,7 +2239,7 @@
             "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
-        "summary": "Get campaign details by ID",
+        "summary": "Get a public campaign by id or source-idea slug",
         "tags": [
           "campaigns"
         ]
@@ -4124,7 +4162,7 @@
     },
     "/api/v1/platform/escrow": {
       "get": {
-        "operationId": "PlatformEscrowController_getEscrowStats",
+        "operationId": "PlatformController_getEscrowStats",
         "parameters": [],
         "responses": {
           "200": {
@@ -4142,6 +4180,39 @@
           }
         },
         "summary": "Get aggregate platform escrow figures (FR-801)",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/api/v1/platform/summary": {
+      "get": {
+        "description": "Counts only: published ideas a visitor can discover, plus active, completed and total public campaigns. No escrow balance, funding total or per-user data is returned. Cached for 60 s; read `asOf` for freshness.",
+        "operationId": "PlatformController_getSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformSummaryDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Get public platform counters",
         "tags": [
           "platform"
         ]

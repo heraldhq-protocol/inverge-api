@@ -7,7 +7,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -19,6 +24,7 @@ import {
   ListCampaignsQueryDto,
   SubmitCampaignDto,
 } from './dto/campaign.dto';
+import { PlatformSummaryDto } from './dto/platform-summary.dto';
 
 @ApiTags('campaigns')
 @Controller('campaigns')
@@ -37,9 +43,13 @@ export class CampaignsController {
 
   @Get(':id')
   @UseGuards(OptionalPrivyAuthGuard)
-  @ApiOperation({ summary: 'Get campaign details by ID' })
-  get(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
-    return this.campaigns.get(id, user?.id);
+  @ApiOperation({
+    summary: 'Get a public campaign by id or source-idea slug',
+    description:
+      'A campaign is publicly readable in ACTIVE, FUNDED, FAILED or COMPLETED. A draft, in-review or rejected campaign resolves only for its creator; every other caller receives 404.',
+  })
+  get(@Param('id') idOrSlug: string, @CurrentUser() user?: AuthenticatedUser) {
+    return this.campaigns.get(idOrSlug, user?.id);
   }
 
   @Post(':id/submit')
@@ -57,8 +67,20 @@ export class CampaignsController {
 
 @ApiTags('platform')
 @Controller('platform')
-export class PlatformEscrowController {
+export class PlatformController {
   constructor(private readonly campaigns: CampaignsService) {}
+
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Get public platform counters',
+    description:
+      'Counts only: published ideas a visitor can discover, plus active, completed and total public campaigns. ' +
+      'No escrow balance, funding total or per-user data is returned. Cached for 60 s; read `asOf` for freshness.',
+  })
+  @ApiOkResponse({ type: PlatformSummaryDto })
+  getSummary() {
+    return this.campaigns.getPlatformSummary();
+  }
 
   @Get('escrow')
   @ApiOperation({ summary: 'Get aggregate platform escrow figures (FR-801)' })
