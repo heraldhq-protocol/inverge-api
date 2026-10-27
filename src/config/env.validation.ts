@@ -45,8 +45,9 @@ export const envSchema = z
   LOG_HASH_SALT: z.string().default('inverge-log'),
 
   // Product analytics retention (docs/api/analytics-privacy.md): raw events 90 days,
-  // daily aggregates 25 months. There is no public ingestion route; these bounds are
-  // enforced by the nightly maintenance job.
+  // daily aggregates 25 months. There is no public browser ingestion route; views
+  // arrive through the signed service-to-service route below. The nightly
+  // maintenance job enforces these bounds.
   ANALYTICS_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(90),
   ANALYTICS_AGGREGATE_RETENTION_MONTHS: z.coerce
     .number()
@@ -54,6 +55,24 @@ export const envSchema = z
     .min(1)
     .max(120)
     .default(25),
+
+  // Service-to-service view ingest. Off by default: the web server must be
+  // configured with the same secret before the route accepts anything.
+  ANALYTICS_INGEST_ENABLED: booleanFlag.default(false),
+  ANALYTICS_INGEST_SECRET: z.string().min(32).optional(),
+  ANALYTICS_INGEST_CLOCK_SKEW_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(30)
+    .max(900)
+    .default(300),
+  ANALYTICS_INGEST_MAX_BODY_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(1024 * 1024)
+    .default(64 * 1024),
+  ANALYTICS_READ_ENABLED: booleanFlag.default(true),
 
   WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
@@ -92,18 +111,81 @@ export const envSchema = z
   // idea-validation identity (grants the VERIFIED pre-pledge tier) and a KYC+AML one for
   // funds handlers (creators / threshold backers). Keys/secret live in .env only.
   DIDIT_API_KEY: z.string().optional(),
-  DIDIT_BASE_URL: z.string().default('https://verification.didit.me/v3'),
+  DIDIT_BASE_URL: z.string().url().default('https://verification.didit.me/v3'),
   DIDIT_KYC_WORKFLOW_ID: z.string().optional(), // identity only (no AML)
   DIDIT_KYC_AML_WORKFLOW_ID: z.string().optional(), // identity + AML screening
   DIDIT_KYB_WORKFLOW_ID: z.string().optional(), // business KYB (registry + docs + UBOs + AML)
   DIDIT_WEBHOOK_SECRET: z.string().optional(), // secret_shared_key for HMAC verification
-  DIDIT_CALLBACK_URL: z.string().optional(), // where the user returns after verifying
+  // Only set for up to 24h while rotating DIDIT_WEBHOOK_SECRET: verifies `*-Previous` headers.
+  DIDIT_WEBHOOK_SECRET_PREVIOUS: z.string().optional(),
+  DIDIT_CALLBACK_URL: z.string().url().optional(), // where the user returns after verifying
+
+  // Verification policy (FR-103 / FR-104). Threshold values live in PlatformParam;
+  // these control the verification domain itself.
+  VERIFICATION_POLICY_VERSION: z.string().default('2026-10-27'),
+  // A KYB workflow that does not run KYB_KEY_PEOPLE has not checked directors/UBOs.
+  // Keep true unless the provider workflow is known to verify key people elsewhere.
+  DIDIT_KYB_REQUIRE_KEY_PEOPLE: booleanFlag.default(true),
+  VERIFICATION_RETRY_MAX_PER_DAY: z.coerce.number().int().min(1).max(50).default(5),
+  VERIFICATION_RECONCILE_AFTER_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1440)
+    .default(15),
+  VERIFICATION_RECONCILE_INTERVAL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1440)
+    .default(10),
+  VERIFICATION_RECONCILE_BATCH: z.coerce.number().int().min(1).max(200).default(25),
+  VERIFICATION_RECONCILE_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(5),
+  VERIFICATION_AUTHORIZATION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(3600)
+    .default(900),
 
   HERALD_GATEWAY_URL: z.string().optional(),
   HERALD_API_KEY: z.string().optional(),
 
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
+
+  // Campaign escrow deployment (FR-303/FR-305). `disabled` refuses to prepare a
+  // deployment; there is no adapter that fabricates a confirmed transaction.
+  ESCROW_CHAIN_PROVIDER: z.enum(['disabled', 'solana-rpc']).default('disabled'),
+  // The only programme this API will verify a deployment against. A client value
+  // is never read; an operator override is an allowlist of exactly one.
+  ESCROW_PROGRAM_ID: z
+    .string()
+    .min(32)
+    .max(44)
+    .default('38rarxmrSL3rjCN2bwdDfQNLtpYRgLGp96xfkPXv39S1'),
+  SOLANA_CLUSTER: z.enum(['devnet', 'mainnet-beta']).default('devnet'),
+  // Finalized by default: a deployment unlocks funding, so a weaker commitment
+  // would let a reorged-away transaction look permanent.
+  SOLANA_COMMITMENT: z.enum(['confirmed', 'finalized']).default('finalized'),
+  // JSON map of TokenType -> SPL mint. USDC defaults per cluster are built in;
+  // cNGN has no canonical mint and must be configured explicitly.
+  SOLANA_TOKEN_MINTS: z.string().optional(),
+  SOLANA_USDC_MINT: z.string().optional(),
+
+  // Fee policy for a deployment. `flat_fee` links an existing SUCCEEDED
+  // APPLICATION_FEE charge (the FR-311 rail). The escrow programme has no
+  // instruction that collects a platform fee, so `not_required` is the only mode
+  // that is truthful without a contract change.
+  CAMPAIGN_DEPLOYMENT_FEE_MODE: z
+    .enum(['not_required', 'flat_fee'])
+    .default('not_required'),
+  CAMPAIGN_DEPLOYMENT_FEE_USD: z.coerce.number().positive().default(10),
 
   SESSION_JWT_SECRET: z.string().min(1).default(DEFAULT_SESSION_JWT_SECRET),
 
@@ -123,6 +205,58 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SESSION_JWT_SECRET'],
         message: 'SESSION_JWT_SECRET must be set to a real secret in production',
+      });
+    }
+
+    // Mainnet is a deliberate deployment, never something a local `pnpm start`
+    // can reach by leaving an env var at its default.
+    if (env.SOLANA_CLUSTER === 'mainnet-beta' && env.NODE_ENV !== 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SOLANA_CLUSTER'],
+        message: 'SOLANA_CLUSTER=mainnet-beta is only allowed with NODE_ENV=production',
+      });
+    }
+
+    // A configured RPC without a provider switch (or the reverse) is a
+    // half-configured deployment. Refuse to boot rather than silently disabling
+    // the workflow.
+    if (env.ESCROW_CHAIN_PROVIDER === 'solana-rpc' && !env.SOLANA_RPC_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SOLANA_RPC_URL'],
+        message: 'SOLANA_RPC_URL is required when ESCROW_CHAIN_PROVIDER=solana-rpc',
+      });
+    }
+
+    // A production boot that cannot verify a provider callback must not start: an
+    // unverified webhook is a shadow approval path. Dev may run without a secret, in
+    // which case the endpoint rejects every callback and reconciliation is the only sync.
+    if (env.NODE_ENV === 'production' && env.KYC_PROVIDER === 'didit') {
+      for (const key of [
+        'DIDIT_API_KEY',
+        'DIDIT_WEBHOOK_SECRET',
+        'DIDIT_KYC_WORKFLOW_ID',
+        'DIDIT_KYC_AML_WORKFLOW_ID',
+        'DIDIT_KYB_WORKFLOW_ID',
+      ] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when KYC_PROVIDER=didit in production`,
+          });
+        }
+      }
+    }
+
+    // Enabling ingest without a secret would leave the route unable to
+    // authenticate a caller; fail at boot rather than at the first request.
+    if (env.ANALYTICS_INGEST_ENABLED && !env.ANALYTICS_INGEST_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ANALYTICS_INGEST_SECRET'],
+        message: 'ANALYTICS_INGEST_SECRET is required when ingest is enabled',
       });
     }
   });

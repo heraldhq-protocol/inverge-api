@@ -11,20 +11,24 @@ import {
   StartVerificationParams,
   StartVerificationResult,
 } from './kyc-provider.port';
+import type { DiditStatus } from '../../modules/kyc/verification-status';
 
 // Offline dev/test adapter. No network, fully deterministic.
 //   - startVerification returns a dev URL whose ref encodes the purpose, so the round trip
 //     knows whether AML was part of the flow.
 //   - getDecision resolves that ref to a happy-path decision (VERIFIED; AML CLEAR for funds
 //     purposes, null for identity-only).
-//   - parseWebhook accepts a plain JSON body (dev POST) — no signature required offline.
+//   - parseWebhook accepts a plain JSON body (dev POST) - no signature required offline.
 //   - screenAml applies simple keyword rules so the FLAGGED / IN_REVIEW branches are testable
 //     without a provider (mirrors the deterministic moderation stub).
 @Injectable()
 export class StubKycAdapter implements KycProviderPort {
-  // Remembers the outcome a session was "completed" with (via dev-complete → parseWebhook) so
-  // getDecision can echo it authoritatively — the stub is a faithful in-process simulator.
-  private readonly completed = new Map<string, { status: KycOutcome; aml: AmlOutcome | null }>();
+  // Remembers the outcome a session was "completed" with (via dev-complete -> parseWebhook) so
+  // getDecision can echo it authoritatively - the stub is a faithful in-process simulator.
+  private readonly completed = new Map<
+    string,
+    { status: KycOutcome; aml: AmlOutcome | null }
+  >();
 
   async startVerification(
     params: StartVerificationParams,
@@ -32,23 +36,51 @@ export class StubKycAdapter implements KycProviderPort {
     const providerRef = `stubkyc_${params.purpose}_${randomUUID()}`;
     const url = new URL('http://localhost:3000/kyc/dev-complete');
     url.searchParams.set('ref', providerRef);
-    url.searchParams.set('user', params.userId);
-    return { providerRef, verificationUrl: url.toString() };
+    url.searchParams.set('user', params.vendorData);
+    return {
+      providerRef,
+      sessionKind:
+        params.purpose === 'BUSINESS_VERIFICATION' ? 'business' : 'user',
+      verificationUrl: url.toString(),
+      workflowId: null,
+    };
   }
 
   async getDecision(providerRef: string): Promise<KycDecision> {
     const runsAml = refRequiresAml(providerRef);
+    const isBusiness = providerRef.includes('BUSINESS_VERIFICATION');
     const done = this.completed.get(providerRef);
     const status: KycOutcome = done?.status ?? 'VERIFIED';
     // AML only applies to a passing identity result on an AML workflow.
     const aml: AmlOutcome | null =
       status === 'VERIFIED' && runsAml ? (done?.aml ?? 'CLEAR') : null;
+    const features = [
+      ...(isBusiness
+        ? ['KYB_REGISTRY', 'KYB_DOCUMENTS', 'KYB_KEY_PEOPLE']
+        : ['ID_VERIFICATION', 'LIVENESS', 'FACE_MATCH']),
+      ...(runsAml ? ['AML'] : []),
+    ];
     return {
-      providerRef,
-      status,
       aml,
-      amlSummary: aml ? { totalHits: aml === 'CLEAR' ? 0 : 1, topRiskScore: aml === 'CLEAR' ? 0 : 100, datasets: aml === 'CLEAR' ? [] : ['Sanctions'] } : null,
-      raw: { stub: true, providerRef },
+      amlSummary: aml
+        ? {
+            datasets: aml === 'CLEAR' ? [] : ['Sanctions'],
+            topRiskScore: aml === 'CLEAR' ? 0 : 100,
+            totalHits: aml === 'CLEAR' ? 0 : 1,
+          }
+        : null,
+      createdAt: new Date().toISOString(),
+      decisionId: providerRef,
+      features,
+      providerRef,
+      providerStatus: diditLabelFor(status),
+      status,
+      warningCodes:
+        status === 'VERIFIED'
+          ? []
+          : status === 'REJECTED'
+            ? ['STUB_DECLINED']
+            : ['STUB_REVIEW'],
     };
   }
 
@@ -64,11 +96,26 @@ export class StubKycAdapter implements KycProviderPort {
     const status = normalizeStubStatus(evt?.status);
     const aml = normalizeStubAml(evt?.aml);
     this.completed.set(providerRef, { status, aml });
+    const timestamp = Number.isFinite(Number(evt?.timestamp))
+      ? Number(evt.timestamp)
+      : Math.floor(Date.now() / 1000);
     return {
-      providerRef,
-      vendorData: evt?.vendor_data ?? evt?.vendorData ?? null,
-      status,
       aml,
+      businessEntityRef: null,
+      eventId:
+        typeof evt?.event_id === 'string'
+          ? evt.event_id
+          : `stub:${providerRef}:${status}:${evt?.aml ?? 'NONE'}:${timestamp}`,
+      occurredAt: new Date(timestamp * 1000),
+      payloadAuthenticated: true,
+      providerRef,
+      providerStatus: diditLabelFor(status),
+      status,
+      vendorData: evt?.vendor_data ?? evt?.vendorData ?? null,
+      webhookType:
+        typeof evt?.webhook_type === 'string'
+          ? evt.webhook_type
+          : 'status.updated',
     };
   }
 
@@ -76,11 +123,17 @@ export class StubKycAdapter implements KycProviderPort {
     const status = keywordAml(params.fullName);
     const hit = status !== 'CLEAR';
     return {
+      datasets:
+        status === 'FLAGGED'
+          ? ['Sanctions']
+          : status === 'IN_REVIEW'
+            ? ['PEP']
+            : [],
+      providerRequestId: `stubaml_${randomUUID()}`,
       status,
+      topRiskScore:
+        status === 'FLAGGED' ? 100 : status === 'IN_REVIEW' ? 85 : 0,
       totalHits: hit ? 1 : 0,
-      topRiskScore: status === 'FLAGGED' ? 100 : status === 'IN_REVIEW' ? 85 : 0,
-      datasets: status === 'FLAGGED' ? ['Sanctions'] : status === 'IN_REVIEW' ? ['PEP'] : [],
-      raw: { stub: true, screened: params.fullName },
     };
   }
 }
@@ -104,10 +157,18 @@ function normalizeStubStatus(s: unknown): KycOutcome {
     case 'In Review':
       return 'IN_REVIEW';
     case 'PENDING':
+    case 'In Progress':
       return 'PENDING';
     default:
       return 'VERIFIED';
   }
+}
+
+function diditLabelFor(status: KycOutcome): DiditStatus {
+  if (status === 'VERIFIED') return 'Approved';
+  if (status === 'REJECTED') return 'Declined';
+  if (status === 'IN_REVIEW') return 'In Review';
+  return 'In Progress';
 }
 
 function normalizeStubAml(a: unknown): AmlOutcome | null {

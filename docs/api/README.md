@@ -4,7 +4,7 @@ Versioned REST API for Inverge: idea validation, campaigns, identity, and the
 off-chain projections of a milestone-escrowed crowdfunding system.
 
 **Base URL:** `/api/v1`
-**Contract:** [`openapi.json`](./openapi.json) — generated from the running decorators, committed, and drift-checked in CI.
+**Contract:** [`openapi.json`](./openapi.json) - generated from the running decorators, committed, and drift-checked by `pnpm openapi:check`.
 **Human reference:** `/docs` (Swagger UI), served by the same process. It exposes the
 same surface as the committed document.
 
@@ -14,11 +14,14 @@ same surface as the committed document.
 |---|---|---|
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
+| [campaign-deployment.md](../campaign-deployment.md) | Draft persistence, escrow deployment, on-chain verification, reconciliation, fee policy, blockers | Implemented against programme source; not yet verified against a deployed binary |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
 | [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |
-| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention | Implemented for server-side signal events |
+| [analytics.md](./analytics.md) | Ingest contract, owner/admin reports, premium access, frontend rules | Implemented (Phase 1) |
+| [product-analytics.md](./product-analytics.md) | Pipeline, taxonomy, aggregation, retention | Implemented (Phase 1) |
+| [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention, consent boundary | Implemented for server-side views and signals; Phase 2 target |
 | [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe | Implemented |
 | [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
@@ -73,9 +76,16 @@ source of truth. It does not query Postgres or Redis.
 
 ## Status of the underlying system
 
-Campaign read and review endpoints exist (`GET /campaigns`, `GET /campaigns/{idOrSlug}`,
-`POST /campaigns/{id}/submit`, the admin review queue). Contribution, refund and
-transparency endpoints do **not** exist yet. They depend on an Anchor escrow
-program deployment and an event indexer that are not running in either repository.
-Do not stub them; see [gaps.md](./gaps.md). Public marketing pages therefore show
-campaign totals as the API's indexed record and never as a live escrow balance.
+Campaign reads and review exist (`GET /campaigns`, `GET /campaigns/{idOrSlug}`,
+`POST /campaigns/{id}/submit`, the admin review queue). Campaign drafts, their
+escrow deployment attempt and publication exist too: `POST /campaigns`,
+`PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
+`/campaigns/:id/deployment/{prepare,submit,reconcile}`. See
+[campaign-deployment.md](../campaign-deployment.md); the escrow programme has no
+committed IDL, so verification against a deployed binary is still an open blocker.
+
+Contribution, refund, milestone-claim and transparency endpoints do **not** exist.
+They depend on an event indexer that is not in either repository, and chain-owned
+state is never synthesised off-chain. Do not stub them; see [gaps.md](./gaps.md).
+Public marketing pages therefore show campaign totals as the API's indexed record
+and never as a live escrow balance.

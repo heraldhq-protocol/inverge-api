@@ -13,6 +13,11 @@
 > the creator campaign flow (`inverge-web` `docs/campaign-brief.md` §11, and
 > `docs/campaign-data-contract.md` §2 for the shapes the web is built against). None of them is P0.
 >
+> Items 20–25 were added 2026-10-16 while rebuilding the public ideas surfaces in `inverge-web`
+> (`feature/ideas-ui`): the editorial homepage, the category catalogue, the public idea page and the topic
+> pages, plus the community-loop plan in `docs/idea-community-loop-plan.md`. Item 25 is a bug rather than
+> an enhancement: it breaks the one path every authenticated web screen depends on.
+>
 > **P0 items block web work that is otherwise ready to build.** P1 unblocks screens that have a
 > documented fallback. P2 is real but deferrable.
 
@@ -41,6 +46,12 @@
 | 9 | One-line `summary` on `Idea` | P2 | OpenGraph text, share copy |
 | 10 | Objection threshold and window as readable params | P2 | Rendering the rule instead of hard-coding 30% and 7 days |
 | 11 | Public aggregate support view | P2 | A public community tab |
+| 25 | Session token on `POST /auth/session` | **P0** | Every authenticated web call returns 401 |
+| 20 | Committed OpenAPI document + generated typed client | P1 | Types the web's TanStack Query + `openapi-typescript` stack |
+| 21 | Topics/category browse endpoint | P1 | The topic directory and `/topics/[slug]` |
+| 23 | Public idea detail fields (story, risks, updates) | P1 | `/ideas/[id]` renders a real page, not a fixture stub |
+| 22 | Feed pagination and total | P2 | A real load-more instead of client-side paging |
+| 24 | Community loop endpoints (challenges, standings, judging) | P2 | Planned; see `docs/idea-community-loop-plan.md` |
 
 **What the web is running on meanwhile.** Every campaign surface reads from
 `inverge-web/src/lib/campaigns/campaigns-api.ts`, which returns fixtures behind one `USE_FIXTURES`
@@ -55,7 +66,7 @@ contract, so the swap when item 6 lands is one file rather than a rewrite of eve
 ### 1. Public creator identity
 
 **Problem.** There is no display name, avatar or bio anywhere in the data model. `User` holds
-`privyDid`, `email`, verification state and preferences; `CreatorProfile` holds tier and track record.
+`providerUserId`, `email`, verification state and preferences; `CreatorProfile` holds tier and track record.
 So `GET /feed` returns `creatorId` and nothing renderable, and the same is true of `GET /ideas/:id`.
 
 Three separate web surfaces are blocked by this one gap: the idea card (creator line and avatar), the
@@ -87,7 +98,7 @@ Write path: `PATCH /me/profile`.
 - **Never fall back to `email`** for a missing display name, in any projection, ever. An email is not
   a display name and leaking one through a public feed would be a privacy incident. Fall back to
   `null` and let the client render initials.
-- Do not expose `kycStatus`, `amlStatus`, `bannedAt`, `privyDid`, `oauthSubject`, `role` or
+- Do not expose `kycStatus`, `amlStatus`, `bannedAt`, `providerUserId`, `oauthSubject`, `role` or
   `institutionalCosign` publicly. `identityVerified` is a derived boolean and the only leak permitted.
 - `activeStrikes` stays internal. Track record may affect ranking; it must never become a public
   scarlet letter (FR-270 doc: no silent shadow-ban, and equally no public one).
@@ -294,18 +305,23 @@ The web app derives what each stage releases from two different bases, and getti
 bug rather than a rendering one:
 
 ```
-upfront = workingCapitalPct%  of  targetAmount          (FR-503a)
-stages  = tranchePct%         of  (totalRaised - upfront)
+initial = 20%                 of  targetAmount                 (FR-503a, fixed)
+stages  = tranchePct%         of  (totalRaised - initial)      (weights sum to 10,000)
 ```
 
-The upfront is a share of the **target** because it is the only money that moves before anything is
-verified: pegged to the raise, a $1,000 target that raises $20,000 pays out $4,000 against nothing. The
-stages divide the **raise** because a campaign that overfunds is being asked to do more, and the extra
-must be available while the work happens. The two always sum to exactly the amount raised.
+The initial tranche is 20% of the **target** because it is the only money that moves before anything
+is verified, and because a creator should not receive more up front just for overfunding: pegged to
+the raise, a $1,000 target that raises $20,000 would pay $4,000 against nothing. The milestone weights
+divide the **raise after that tranche**, so a campaign that overfunds keeps the extra under the same
+milestone and objection rules. The last milestone absorbs the integer remainder, so the stages sum to
+exactly `totalRaised - initial`; the initial plus the stages sum to the amount raised.
 
-If the API or the on-chain programme derives these too, all three must agree. Put it in one pure module
-— the same treatment as milestone state in item 6 — and consider returning the derived amounts so the
-client is not a second implementation.
+If the API or the on-chain programme derives these too, all three must agree. The web now has one pure
+module (`inverge-web/src/features/campaigns/lib/allocation.ts`) and the API's readiness gate enforces
+the same fixed 20% / 10,000 split. Returning the derived amounts from the API is still preferable to
+the client being a second implementation, and the indexer must eventually make `totalRaised`
+authoritative rather than a fixture. No release endpoint or `TrancheRelease` projection exists yet, so
+none of these amounts is evidence that a transfer happened.
 
 ### 19. Reward tiers
 
@@ -372,6 +388,93 @@ Creator dashboard covers the need until then.
 
 ---
 
+## Items 20–25 — ideas discovery, detail and topics
+
+Raised 2026-10-16 by rebuilding the public ideas surfaces in `inverge-web` (`feature/ideas-ui`): the
+editorial homepage, the category catalogue (`/ideas`), the public idea page (`/ideas/[id]`) and the topic
+pages (`/topics/[slug]`). All additive.
+
+### 25. Session token on `POST /auth/session` — **P0**
+
+**Problem.** `AuthController.session` calls `AuthService.authenticate`, which returns
+`token: privyAccessToken` — the *provider* token echoed straight back — and never calls
+`SessionService.sign`. But `PrivyAuthGuard` verifies an HS256 session JWT through
+`SessionService.verify`. So the token `/auth/session` hands out can never pass a guarded route:
+`GET /auth/me`, `PATCH /auth/me/profile`, `GET /ideas?mine=true` and every future authenticated call
+return 401. The web app has no network layer yet, and that is the only reason this has stayed hidden.
+
+**Proposed.** Mint the session in `authenticate` (or the controller): `const sessionToken = await
+this.sessions.sign(user.id)` and return it. Name it `sessionToken`, not `token`, to stop conflating it with
+the provider token, and keep the provider token out of the response body. Align the web client and the e2e
+expectation on the one field name.
+
+**Tests.** E2E: `/auth/session` returns a token that `GET /auth/me` accepts; a garbage or expired token
+401s; the provider token never appears in the response body.
+
+### 20. Committed OpenAPI document and generated typed client — P1
+
+**Problem.** Swagger is wired (`main.ts`: `DocumentBuilder` + `SwaggerModule.setup('docs', ...)`), so a
+spec exists at runtime under `/docs` and `/docs-json`. It is not committed or versioned, and it is thin on
+*responses*: the `@nestjs/swagger` CLI plugin is not enabled in `nest-cli.json`, and most controllers
+return plain service objects, so many responses carry no schema. The web's approved stack (TanStack Query
+plus `openapi-typescript`) needs a stable, committed `openapi.json` to generate from.
+
+**Proposed.** Enable the `@nestjs/swagger` CLI plugin (or annotate response DTOs and add `@ApiOkResponse`),
+add a script that emits `openapi.json` at build, and publish it — commit it, or serve a versioned
+`/openapi.json`. Generate the web types from that artefact.
+
+**Invariants.** The emitted spec is a public interface: generate it from the same projections the runtime
+uses, so it cannot describe a forbidden field (see item 1's list).
+
+**Tests.** A CI drift guard: regenerate and fail if the committed spec differs from the live one.
+
+### 21. Topics and categories as a browse axis — P1
+
+**Problem.** The catalogue's category chips, the topic directory and `/topics/[slug]` all read from web
+fixtures (`inverge-web/src/features/ideas/content/topics.ts`). Nothing lists topics or filters ideas by one.
+
+**Proposed.** `GET /topics` (`slug`, `title`, `description`, `publicIdeaCount`) and either
+`GET /topics/:slug/ideas` or a `topic=` filter on `GET /ideas`, matching the feed's existing query idiom.
+
+**Invariants.** A topic's count respects visibility: it counts public ideas only and must never surface or
+count an unlisted/private idea (the web scopes with `ideasInTopic(topic, ideas, "public")`). Counts follow
+the recompute-never-increment rule, not a stored counter.
+
+**Open question.** Does the API already model a browse axis (category enum, tags) that topics map onto, or
+is this net-new taxonomy? Confirm before building.
+
+### 23. Public idea detail fields — P1
+
+**Problem.** `/ideas/[id]` now renders a full page — pitch story, FR-204 gate progress and a published date
+— but all of it comes from the web fixture (`inverge-web/src/features/ideas/content/preview-details.ts`).
+The public `GET /ideas/:id` projection still returns no `story`, `risks`, `publishedAt` or `updates`, so
+the page cannot leave preview mode. Items 1, 5 and 9 supply the creator, the gate thresholds and a
+one-line summary; the rest are unlisted.
+
+**Proposed.** Widen the public `GET /ideas/:id` projection with `story` (the pitch body, rich text),
+`risks` (item 8), `publishedAt`, and `updates: { id, title, body, createdAt }[]`. Gate thresholds and
+progress arrive through item 5. No new endpoint — a widening of the existing detail read, reusing the
+item 1 creator projection and the item 2 author rules wherever comments appear.
+
+**Invariants.** Same forbidden-field rules as item 1. The story is user-supplied public content: moderate
+on write, strip control characters, cap length.
+
+### 22. Feed pagination and total — P2
+
+**Problem.** The catalogue's "Show more" pages client-side over the whole fixture set. `GET /ideas` accepts
+`skip`/`take` but returns no total or cursor, so a real load-more cannot know when to stop.
+
+**Proposed.** Add `total` (and/or `nextCursor`) to the feed response, keeping the existing `skip`/`take`.
+
+### 24. Community loop endpoints — P2, planned
+
+The weekly challenges, monthly ideathon, weighted standings, judging and reputation badges are specified in
+`docs/idea-community-loop-plan.md` (schema, endpoints, phasing A/B/C, anti-gaming and judge-conflict
+rules). Grouped here so this document stays the single index of web-driven API asks. Not scheduled until
+that plan is approved.
+
+---
+
 ## Explicitly not asks
 
 Recorded so nobody "helpfully" adds them:
@@ -415,3 +518,104 @@ split. It costs nothing today and is expensive the moment a tranche has been rel
 wrong base.
 
 **Then the P2s**, in whatever order suits.
+
+**Items 20–25, raised 2026-10-16, slot in as follows.** Item 25 comes first regardless of the rest: it is
+the one that is a bug, and it gates every authenticated web screen. Then, after the existing ideas run
+(1 → 2 → 4 → 5 → 3): 21 → 23 → 20 → 22. Item 24 waits on the community-loop plan being approved.
+
+---
+
+## Verification domain — delivered 2026-10-27
+
+The creator/backer verification work (FR-103, FR-104, FR-105, FR-311) landed as one domain rather than
+the three separate asks this document would otherwise have carried. It is recorded here because the web
+consumer contract lives here too. Source: `inverge-api src/modules/kyc/` (verification domain),
+`docs/campaign-review-sprint.md` (submission gate), `inverge-web/docs/DECISIONS.md` D-047.
+
+### Endpoints
+
+Creator-facing, all behind `PrivyAuthGuard`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/verification/state` | Normalised account state: account type, per-subject case, requirements, blockers, `nextAction`, `policyVersion`, `identityVerified`, `fundsCleared`, `complianceHold` |
+| `GET` | `/verification/eligibility?purpose=` | Gate preview for one purpose (`IDEA_VALIDATION`, `CAMPAIGN_CREATOR`, `BACKER_THRESHOLD`): `eligible`, stable `code`, `blockers`, `requirements` |
+| `POST` | `/verification/session` | Start/restart a hosted session (`subject`, `purpose`); returns `caseId` + `verificationUrl` |
+| `POST` | `/verification/business/session` | Register the business and start KYB (legal name required) |
+| `GET` | `/verification/business` | Business registration + KYB/AML projection |
+| `POST` | `/verification/account-type` | Switch `INDIVIDUAL`/`BUSINESS`; cases stay attached to their type |
+| `POST` | `/verification/contributions/authorize` | FR-104 cumulative-threshold authorisation with reserved headroom |
+| `POST` | `/verification/webhook` | Provider callback (public, signature-verified, acknowledges fast) |
+
+Compliance-facing, behind `PrivyAuthGuard` + `ComplianceReviewerGuard` (ADMIN and the new
+`COMPLIANCE_REVIEWER` role; least privilege is enforced server-side):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/verification/admin/queues` | Pending/escalated queues, status counts, provider errors, review-open, policy version |
+| `GET` | `/verification/admin/cases` | Paginated case list: `status`, `risk`, `type`, `requiresReview`, `cursor`, `limit` |
+| `GET` | `/verification/admin/cases/:id` | Case, subject, business, append-only event history |
+| `POST` | `/verification/admin/cases/:id/resolve` | Reasoned risk resolution (`decision`, `reasonCode`, `reason`); audited, never automatic |
+
+Legacy `/kyc/*` and `/kyb/*` remain as a compatibility facade over the same domain so already-shipped
+clients are not broken. Their `reasons` field is the new `blockers` list under the old name.
+
+### Status model
+
+`NOT_STARTED · SESSION_CREATED · AWAITING_USER · SUBMITTED · IN_REVIEW · APPROVED · DECLINED ·
+ACTION_REQUIRED · EXPIRED · CANCELLED · ERROR`, with `RiskOutcome = NOT_ASSESSED | CLEAR | REVIEW |
+FLAGGED`. Provider strings (`Not Started`, `In Progress`, `Awaiting User`, `Approved`, `Declined`,
+`In Review`, `Resubmitted`, `Expired`, `Abandoned`, `Kyc Expired`) are case-sensitive and never escape
+the adapter. An unmapped string becomes `ERROR`, which is a support signal, not a decline.
+
+### Stable error codes
+
+`VERIFICATION_REQUIRED`, `VERIFICATION_IN_PROGRESS`, `VERIFICATION_IN_REVIEW`,
+`VERIFICATION_ACTION_REQUIRED`, `VERIFICATION_DECLINED`, `VERIFICATION_EXPIRED`,
+`VERIFICATION_PROVIDER_ERROR`, `VERIFICATION_COMPLIANCE_HOLD`, `VERIFICATION_BUSINESS_PROFILE_REQUIRED`,
+`VERIFICATION_ACCOUNT_TYPE_MISMATCH`, `VERIFICATION_ATTEMPTS_EXCEEDED`, `VERIFICATION_UNAVAILABLE`,
+`CONTRIBUTION_THRESHOLD_EXCEEDED`, `CONTRIBUTION_CAMPAIGN_NOT_FUNDABLE`, plus
+`APPLICATION_FEE_REQUIRED` from the campaign review gate. Clients switch on `code`; the message is copy.
+
+### Gates
+
+- **Campaign submission** (`POST /campaigns/:id/submit`) evaluates the verification domain before the
+  transaction and the review preconditions inside it: ownership, submittable status, identity/funds
+  clearance, no compliance hold, and a succeeded application fee bound to this creator and campaign.
+- **Backer threshold** (`POST /verification/contributions/authorize`) serialises per user with
+  `pg_advisory_xact_lock`, so two concurrent pledges cannot both sit below the cumulative threshold.
+  A reservation has a TTL (`VERIFICATION_AUTHORIZATION_TTL_SECONDS`).
+
+### Webhook and reconciliation
+
+Signature schemes: `X-Signature-V2` (canonical JSON), `X-Signature` (raw bytes), `X-Signature-Simple`
+(envelope only; not treated as authenticating the payload), plus `*-Previous` rotation headers verified
+against `DIDIT_WEBHOOK_SECRET_PREVIOUS`. `X-Timestamp` is bounded to ±300 s. Events are deduplicated on
+`providerEventReference`; a replay is acknowledged without re-applying. The handler never trusts the
+callback's decision body: it re-fetches the decision from the provider before writing, and heavy work is
+queued when `QUEUE_ENABLED` (otherwise processed inline).
+
+A reconciliation job sweeps cases whose last provider sync is older than
+`VERIFICATION_RECONCILE_AFTER_MINUTES`, with bounded exponential backoff and jitter
+(`VERIFICATION_RECONCILE_MAX_ATTEMPTS`), then stops and flags the case as escalated rather than looping.
+Redis is a queue, not the record: every state transition is persisted, so a queue outage only delays sync.
+
+### Provider configuration still to do (Didit console, not code)
+
+1. Publish the identity workflow used for `DIDIT_KYC_WORKFLOW_ID` — the one currently in the console
+   ("Free KYC") is a draft, and a draft workflow cannot start a session.
+2. Register the webhook destination: `POST https://<api-host>/api/v1/verification/webhook`, subscribed to
+   `status.updated` and `data.updated`, with the same secret as `DIDIT_WEBHOOK_SECRET`. Browser redirects
+   are never used as the source of truth.
+3. Confirm the KYB workflow actually runs the key-people step. If it does not, leave
+   `DIDIT_KYB_REQUIRE_KEY_PEOPLE=true`: the domain will refuse to treat KYB as complete, which is correct.
+
+### Deferred, and deliberately not invented
+
+- Risk thresholds for auto-`REVIEW` vs `FLAGGED`, country/sanctions-list policy, and which optional
+  provider checks are mandatory are product/compliance decisions. The domain implements the mechanism and
+  a configurable policy version; the values are open.
+- Ongoing AML re-screening schedules, on-chain/wallet L1 gates and geo restrictions are not part of this
+  change.
+- Document deletion/retention jobs are specified but not scheduled; no raw documents or identity numbers
+  are stored by this domain in any case.

@@ -91,15 +91,71 @@ enum AmlScreeningSource {
   STANDALONE
 }
 
+// Who an account acts as. It is an account shape, not a role: neither value grants
+// creator status or any permission. A BUSINESS account must still have its
+// authorised representative individually verified (FR-103).
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+// The subject of a verification case. INDIVIDUAL verifies a person; BUSINESS
+// verifies a legal entity (and, through its configured KYB workflow, its key people).
+enum VerificationType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+// The one internal lifecycle every provider maps onto (verification policy model).
+// Provider-specific strings are stored separately on the case for support/audit and
+// never used for eligibility decisions.
+enum VerificationStatus {
+  NOT_STARTED
+  SESSION_CREATED
+  AWAITING_USER
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  DECLINED
+  ACTION_REQUIRED
+  EXPIRED
+  CANCELLED
+  ERROR
+}
+
+enum VerificationProvider {
+  DIDIT
+  STUB
+}
+
+enum VerificationEventSource {
+  PROVIDER_WEBHOOK
+  RECONCILIATION
+  ADMIN_ACTION
+  SYSTEM
+}
+
+// Normalised AML/sanctions outcome. REVIEW and FLAGGED both block funds until an
+// authorised reviewer resolves them; neither is an automatic finding of wrongdoing.
+enum RiskOutcome {
+  NOT_ASSESSED
+  CLEAR
+  REVIEW
+  FLAGGED
+}
+
 enum WalletRole {
   FUNDING
   PAYOUT
 }
 
 // FR-901: platform access tier. ADMIN unlocks the /admin surface (param + boost-price
-// config, audit log, user management). Bootstrapped via ADMIN_ALLOWLIST (see env).
+// config, audit log, user management). COMPLIANCE_REVIEWER may only read verification
+// cases and record a reasoned risk-review decision; it cannot administer the platform.
+// Bootstrapped via ADMIN_ALLOWLIST (see env).
 enum UserRole {
   USER
+  COMPLIANCE_REVIEWER
   ADMIN
 }
 
@@ -152,6 +208,46 @@ enum CampaignReviewAction {
   REJECT
 }
 
+// The escrow-deployment lifecycle. Deliberately separate from CampaignStatus
+// (funding/publication) and CampaignReviewStatus (curation): a campaign may stay
+// a DRAFT while its deployment is awaiting a signature, and a FAILED deployment
+// never changes what backers see.
+enum CampaignDeploymentStatus {
+  NOT_STARTED
+  READY
+  AWAITING_SIGNATURE
+  SUBMITTED
+  CONFIRMING
+  CONFIRMED
+  FAILED
+  NEEDS_RECONCILIATION
+}
+
+// The deployment-fee lifecycle. Separate from the deployment itself because a fee
+// can settle before or after escrow creation, and the two must reconcile
+// independently without ever charging twice.
+enum CampaignDeploymentFeeStatus {
+  NOT_REQUIRED
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  NEEDS_RECONCILIATION
+}
+
+enum CampaignDeploymentEventType {
+  PREPARED
+  SIGNATURE_REQUESTED
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  RECONCILE_REQUESTED
+  NEEDS_RECONCILIATION
+  FEE_CONFIRMED
+  FEE_FAILED
+  PUBLISHED
+}
+
 enum ClaimStatus {
   UNDER_REVIEW
   APPROVED
@@ -183,6 +279,7 @@ model User {
   kycProviderRef String? // NFR-12: reference only, never raw documents
   amlStatus      AmlStatus @default(NOT_SCREENED) // sanctions/PEP outcome, separate from KYC
   amlScreenedAt  DateTime? // when amlStatus was last set from a screening
+  accountType    AccountType @default(INDIVIDUAL) // personal vs business creator (onboarding)
   bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
   role           UserRole  @default(USER) // FR-901: gates the /admin surface
 
@@ -195,24 +292,27 @@ model User {
   // Admin-settable; feeds the feed TrustScore, never any validation metric.
   institutionalCosign Boolean  @default(false)
 
-  wallets           WalletAccount[]
-  creatorProfile    CreatorProfile?
-  business          BusinessProfile?
-  ideas             Idea[]                @relation("IdeaCreator")
-  signals           IdeaSignal[]
-  surveyResponses   SurveyResponse[]
-  comments          IdeaComment[]
-  commentLikes      CommentLike[]
-  boostsPurchased   IdeaBoost[]
-  kycEvents         KycStatusEvent[]
-  amlScreenings     AmlScreening[]
-  flatFeeCharges    FlatFeeCharge[]
-  campaigns         Campaign[]            @relation("CampaignCreator")
-  reviewedCampaigns Campaign[]            @relation("CampaignReviewer")
-  campaignReviews   CampaignReviewEvent[] @relation("CampaignReviewActor")
-  contributions     Contribution[]
-  objections        MilestoneObjection[]
+  wallets                WalletAccount[]
+  creatorProfile         CreatorProfile?
+  business               BusinessProfile?
+  ideas                  Idea[]                  @relation("IdeaCreator")
+  signals                IdeaSignal[]
+  surveyResponses        SurveyResponse[]
+  comments               IdeaComment[]
+  commentLikes           CommentLike[]
+  boostsPurchased        IdeaBoost[]
+  kycEvents              KycStatusEvent[]
+  amlScreenings          AmlScreening[]
+  verificationCases      VerificationCase[]
+  ContributionAuthorizations ContributionAuthorization[]
+  flatFeeCharges         FlatFeeCharge[]
+  campaigns              Campaign[]              @relation("CampaignCreator")
+  reviewedCampaigns      Campaign[]              @relation("CampaignReviewer")
+  campaignReviews        CampaignReviewEvent[]   @relation("CampaignReviewActor")
+  contributions          Contribution[]
+  objections             MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
+  analyticsAccessGrants  AnalyticsAccessGrant[]
   notifications          Notification[]
 
   createdAt DateTime @default(now())
@@ -279,15 +379,117 @@ model BusinessProfile {
   user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   legalName          String
   registrationNumber String? // company / registration number
-  country            String? // ISO country of registration
-  kybStatus          KycStatus @default(NOT_REQUIRED) // reuses the KYC status vocabulary
+  country            String? // ISO 3166-1 alpha-2 country of registration
+  // Creator-supplied context for the KYB reviewer; not a substitute for the
+  // provider's registry/document checks and never a public projection.
+  businessType       String? // e.g. sole proprietorship, limited company, NGO
+  registeredAddress  String?
+  representativeName String? // authorised representative (the account holder)
+  representativeRole String?
+  kybStatus          KycStatus @default(NOT_REQUIRED) // derived projection of the latest business case
   amlStatus          AmlStatus @default(NOT_SCREENED) // business AML (sanctions/PEP/adverse media)
   amlScreenedAt      DateTime?
-  kybProviderRef     String? // Didit KYB session id
+  kybProviderRef     String? // Didit KYB session id (latest)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  verificationCases VerificationCase[]
+
   @@index([kybProviderRef])
+}
+
+// One verification case per attempt for a person or a business. The provider's
+// session is authoritative; this row is Inverge's normalised projection of it,
+// plus the compliance decisions Inverge itself made (risk outcome, human review).
+// Raw documents, selfies and full provider reports are never stored here.
+model VerificationCase {
+  id                   String               @id @default(cuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId           String? // set only for a BUSINESS case
+  business             BusinessProfile?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  type                 VerificationType
+  provider             VerificationProvider
+  providerSessionId    String               @unique // Didit session_id; never reused across cases
+  providerWorkflowId   String?
+  providerStatus       String? // exact provider label, retained for support/audit only
+  status               VerificationStatus   @default(SESSION_CREATED)
+  purpose              String? // KycPurpose that selected the workflow (for resume/retry)
+  decisionCode         String? // provider warning/decision code, not free text
+  features             String[]             @default([]) // provider feature codes the decision reported
+  riskOutcome          RiskOutcome          @default(NOT_ASSESSED)
+  riskReasonCodes      String[]             @default([]) // warning codes / dataset names, no personal data
+  requiresHumanReview  Boolean              @default(false)
+  attempt              Int                  @default(1)
+  submittedAt          DateTime?
+  decidedAt            DateTime?
+  expiresAt            DateTime?
+  lastProviderSyncAt   DateTime?
+  lastErrorCode        String?
+  lastErrorMessage     String?
+  reconcileAttempts    Int                  @default(0)
+  nextReconcileAt      DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  events VerificationEvent[]
+
+  @@index([userId, type, createdAt(sort: Desc)])
+  @@index([businessId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+  @@index([riskOutcome, updatedAt])
+}
+
+// Append-only audit of every case transition, webhook receipt and reviewer action.
+// providerEventReference is the provider's event_id, so duplicate deliveries cannot
+// append a second event. Safe metadata is whitelisted; full payloads are never kept.
+model VerificationEvent {
+  id                     String                 @id @default(cuid())
+  caseId                 String
+  case                   VerificationCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventType              String // e.g. status.updated, reconciled, risk_resolved
+  previousStatus         VerificationStatus?
+  newStatus              VerificationStatus?
+  source                 VerificationEventSource
+  providerEventReference String?                @unique
+  actorId                String? // reviewer for ADMIN_ACTION
+  reasonCode             String?
+  metadata               Json?
+  occurredAt             DateTime
+  processedAt            DateTime               @default(now())
+  createdAt              DateTime               @default(now())
+
+  @@index([caseId, createdAt(sort: Desc)])
+  @@index([source, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+}
+
+enum ContributionAuthorizationStatus {
+  ALLOWED
+  BLOCKED
+}
+
+// FR-104 backer threshold. A short-lived authorisation is what a contribution must
+// present before it is submitted. A live ALLOWED row reserves its amount against the
+// cumulative threshold, so two concurrent requests cannot both sit under the limit.
+// Expired rows stop reserving; a BLOCKED row records why the gate refused.
+model ContributionAuthorization {
+  id                   String                          @id @default(cuid())
+  userId               String
+  user                 User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId           String
+  campaign             Campaign                        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  amountUsd            Decimal                         @db.Decimal(14, 2)
+  thresholdUsd         Decimal                         @db.Decimal(14, 2)
+  cumulativeUsd        Decimal                         @db.Decimal(14, 2)
+  status               ContributionAuthorizationStatus @default(ALLOWED)
+  verificationRequired Boolean                         @default(false)
+  blockedReason        String?
+  expiresAt            DateTime
+  createdAt            DateTime                        @default(now())
+
+  @@index([userId, status, expiresAt])
+  @@index([campaignId, createdAt(sort: Desc)])
 }
 
 // FR-306 family — Phase 3 logic, schema present now.
@@ -315,12 +517,12 @@ model CreatorProfile {
 // Assignments on Idea and Campaign are validated at the API boundary and carry no
 // foreign key, so an instance can serve while the reference data is reseeded.
 model TaxonomyCategory {
-  slug          String @id
+  slug          String                @id
   label         String
   sortOrder     Int
   subcategories TaxonomySubcategory[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 }
 
 model TaxonomySubcategory {
@@ -329,8 +531,8 @@ model TaxonomySubcategory {
   slug         String
   label        String
   sortOrder    Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@id([categorySlug, slug])
   @@index([categorySlug, sortOrder])
@@ -351,18 +553,18 @@ model Idea {
   status    IdeaStatus @default(DRAFT)
 
   // FR-270 structured pitch (nullable for back-compat; required at the DTO for new ideas).
-  targetUser         String? // who specifically has the problem
-  currentAlternative String? // what they do today + why it's insufficient
-  askBreakdown       Json? // indicative breakdown of what the ask buys
-  roadmapSteps       Json? // >=2 dated steps [{ date, description }]
-  category           String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
+  targetUser              String? // who specifically has the problem
+  currentAlternative      String? // what they do today + why it's insufficient
+  askBreakdown            Json? // indicative breakdown of what the ask buys
+  roadmapSteps            Json? // >=2 dated steps [{ date, description }]
+  category                String? // legacy broad bucket (software | agriculture | ...); new discovery reads taxonomy
   taxonomyCategorySlug    String? // canonical discovery taxonomy (D-038); validated against taxonomy.data.ts
   taxonomySubcategorySlug String? // only meaningful with taxonomyCategorySlug
-  region             String? // creator-declared region/origin — personalization + "From Lagos" chip
-  coverImageUrl      String? // P1 web UI gap: media on idea
-  risks              String? // P2 web UI gap: risks and challenges section
-  problemDoc         Json? // Rich text problem document
-  solutionDoc        Json? // Rich text solution document
+  region                  String? // creator-declared region/origin — personalization + "From Lagos" chip
+  coverImageUrl           String? // P1 web UI gap: media on idea
+  risks                   String? // P2 web UI gap: risks and challenges section
+  problemDoc              Json? // Rich text problem document
+  solutionDoc             Json? // Rich text solution document
 
   // FR-271/272 quality & discoverability.
   qualityScore        Decimal?            @db.Decimal(5, 4) // 0..1, latest computed
@@ -593,10 +795,17 @@ model Campaign {
   type                     CampaignType   @default(ALL_OR_NOTHING)
   status                   CampaignStatus @default(DRAFT)
   tokenType                TokenType
+  title                    String         @default("") // required before deployment; empty until the creator names it
+  summary                  String         @default("")
+  // The authored campaign document (story, media, use of funds, disclosures,
+  // location). Presentation-only fields stay here so a schema column is added
+  // only when the lifecycle or money depends on it.
+  story                    Json?
   targetAmount             Decimal        @db.Decimal(14, 2)
   fundingFloorPct          Int? // Flexible Funding only (FR-306)
   deadline                 DateTime
   termsHash                String? // FR-303: content hash, stored on-chain once published
+  objectionWindowDays      Int? // FR-602; must be inside the programme's allowed range at deployment
   workingCapitalPct        Decimal        @default(0) @db.Decimal(5, 2) // FR-503a: capped 20–25%
   workingCapitalReleasedAt DateTime?
   escrowPdaAddress         String?
@@ -617,8 +826,15 @@ model Campaign {
   reviewedBy   User?                 @relation("CampaignReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewEvents CampaignReviewEvent[]
 
+  // Optimistic concurrency for creator autosave. A save carries the version it
+  // read; the update only applies when the stored version still matches.
+  draftVersion     Int                       @default(0)
+  deployment       CampaignDeployment?
+  termsAcceptances CampaignTermsAcceptance[]
+
   milestones    Milestone[]
   contributions Contribution[]
+  ContributionAuthorizations ContributionAuthorization[]
   onChainEvents OnChainEvent[]
 
   createdAt  DateTime  @default(now())
@@ -654,14 +870,16 @@ model CampaignReviewEvent {
 }
 
 model Milestone {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   campaignId         String
-  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign           Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   index              Int
   title              String
-  deliverable        String   @default("")
-  tranchePct         Decimal  @db.Decimal(5, 2) // FR-302: sums to 100
+  deliverable        String    @default("")
+  tranchePct         Decimal   @db.Decimal(5, 2) // FR-302: sums to 100
   evidenceDefinition Json // FR-302: proof type + source, immutable once published
+  // The on-chain milestone deadline (create_campaign's MilestoneInput.deadline).
+  expectedAt         DateTime?
 
   claims MilestoneClaim[]
 
@@ -736,6 +954,98 @@ model OnChainEvent {
   @@index([campaignId, eventType, blockTime(sort: Desc)])
 }
 
+// FR-303: a versioned, auditable record of the creator accepting the published
+// campaign terms. A wallet signature authorises a transaction; it is not, by
+// itself, acceptance of terms, so the two are recorded separately.
+model CampaignTermsAcceptance {
+  id           String   @id @default(cuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId       String
+  termsVersion String
+  termsHash    String
+  acceptedAt   DateTime @default(now())
+
+  @@unique([campaignId, termsVersion, termsHash])
+  @@index([userId, acceptedAt])
+}
+
+// One escrow deployment per campaign. Re-preparing returns this row instead of
+// creating a second attempt, which is what makes a retry after a timeout safe:
+// the creator can never be asked to pay or sign twice by accident. An attempt is
+// only replaced after it reaches a terminal state and a reconciliation has
+// explicitly released it.
+model CampaignDeployment {
+  id         String   @id @default(cuid())
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  status    CampaignDeploymentStatus @default(NOT_STARTED)
+  attemptNo Int                      @default(1)
+
+  // Everything below is server-derived and never taken from the browser.
+  cluster          String
+  programId        String
+  creatorWallet    String
+  tokenMint        String
+  campaignIdBytes  String // hex(sha256("inverge.campaign-id.v1:<cuid>")), 32 bytes
+  termsHash        String
+  termsVersion     String
+  instructionData  String // base64 Anchor `create_campaign` data, built server-side
+  expectedAccounts Json // canonical account metas + derivation seeds
+  feeBreakdown     Json // human-readable, non-floating breakdown returned to the creator
+
+  // Observed chain state, written only after verification against RPC.
+  campaignPda  String?
+  escrowVault  String?
+  txSignature  String?   @unique
+  commitment   String?
+  verifiedAt   DateTime?
+  onChainState Json?
+  blockTime    DateTime?
+
+  // Reconciliation bookkeeping.
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  reconcileAttempts Int       @default(0)
+  nextReconcileAt   DateTime?
+
+  // The fee is a separate lifecycle. Its default is NOT_REQUIRED because the
+  // escrow programme has no instruction that collects a platform fee (see
+  // docs/campaign-deployment.md §Fee policy).
+  feeStatus     CampaignDeploymentFeeStatus @default(NOT_REQUIRED)
+  feeMode       String                      @default("not_required")
+  feeAmount     Decimal?                    @db.Decimal(10, 2)
+  feeCurrency   String?
+  feeChargeId   String?                     @unique
+  feeVerifiedAt DateTime?
+
+  preparedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  events CampaignDeploymentEvent[]
+
+  @@index([status, nextReconcileAt])
+  @@index([creatorWallet])
+}
+
+// Append-only deployment audit trail. Application code never updates or deletes
+// these rows; the deployment row is the current projection.
+model CampaignDeploymentEvent {
+  id           String                      @id @default(cuid())
+  deploymentId String
+  deployment   CampaignDeployment          @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  type         CampaignDeploymentEventType
+  fromStatus   CampaignDeploymentStatus?
+  toStatus     CampaignDeploymentStatus?
+  actorId      String?
+  detail       Json?
+  createdAt    DateTime                    @default(now())
+
+  @@index([deploymentId, createdAt])
+}
+
 // FR-901 / FR-904: admin-configurable platform parameters (fees, thresholds, windows).
 model PlatformParam {
   key       String   @id
@@ -764,13 +1074,16 @@ model PlatformParamAudit {
 // No IP, user agent, cookie, fingerprint, free text or wallet address is stored.
 // Authenticated events carry the internal user id; anonymous events carry only a
 // session-scoped random id. Raw events are retained 90 days; daily aggregates 25
-// months. There is no public ingest route: domain code writes after its own
-// transaction commits, and a failed write never fails the user action.
+// months. There is no public browser ingest route. Views arrive through a signed
+// service-to-service route; confirmed domain events are written after their own
+// transaction commits. A failed analytics write never fails the user action.
 // ---------------------------------------------------------------------------
 
 enum ProductAnalyticsEventName {
+  PAGE_VIEWED
   IDEA_VIEWED
   IDEA_SIGNAL
+  FEEDBACK_SUBMITTED
   CAMPAIGN_VIEWED
   CAMPAIGN_STEP_STARTED
   CAMPAIGN_STEP_COMPLETED
@@ -784,31 +1097,45 @@ enum AnalyticsSignalType {
   PRE_PLEDGE
 }
 
+// The closed resource vocabulary. A generic type/id pair lets one reach pipeline
+// serve ideas, campaigns and fixed page keys without a nullable column per surface.
+enum AnalyticsResourceType {
+  IDEA
+  CAMPAIGN
+  PAGE
+}
+
 model ProductAnalyticsEvent {
-  id         String                    @id @default(cuid())
-  name       ProductAnalyticsEventName
-  userId     String? // internal id only; never an email, wallet or provider subject
-  user       User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  sessionId  String? // anonymous, session-scoped random id; mutually exclusive with userId
-  ideaId     String?
-  campaignId String?
-  signalType AnalyticsSignalType?
-  source     String? // feed | search | direct, from a closed set validated in code
-  position   Int?
-  step       String? // creator-flow step, from a closed set validated in code
-  durationMs Int?
-  queryLength Int?
-  resultCount Int?
-  filterKeys  String[] @default([])
-  amountMinor BigInt?
-  currency    String?
-  countryCode String?  @db.Char(2) // coarse, from a trusted edge header only
-  occurredAt  DateTime
-  receivedAt  DateTime @default(now())
+  id            String                    @id @default(cuid())
+  eventKey      String                    @unique // caller idempotency key; domain rows use their own id
+  schemaVersion Int                       @default(1)
+  name          ProductAnalyticsEventName
+  userId        String? // internal id only; never an email, wallet or provider subject
+  user          User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId     String? // anonymous, session-scoped random id; mutually exclusive with userId
+  ideaId        String?
+  campaignId    String?
+  resourceType  AnalyticsResourceType?
+  resourceId    String? // idea/campaign id, or a closed page key
+  signalType    AnalyticsSignalType?
+  source        String? // feed | search | direct | internal, from a closed set validated in code
+  position      Int?
+  step          String? // creator-flow step, from a closed set validated in code
+  durationMs    Int?
+  queryLength   Int?
+  resultCount   Int?
+  filterKeys    String[] @default([])
+  amountMinor   BigInt?
+  currency      String?
+  countryCode   String?  @db.Char(2) // coarse, from a trusted edge header only
+  occurredAt    DateTime
+  receivedAt    DateTime @default(now())
 
   @@index([name, occurredAt])
   @@index([ideaId, name, occurredAt])
   @@index([campaignId, name, occurredAt])
+  @@index([resourceType, resourceId, name, occurredAt])
+  @@index([resourceType, resourceId, source, occurredAt])
   @@index([userId, occurredAt])
   @@index([receivedAt])
 }
@@ -816,17 +1143,121 @@ model ProductAnalyticsEvent {
 // Daily roll-up of idea signals. Derived only from ProductAnalyticsEvent; rebuilt
 // idempotently per (ideaId, day), never incremented by a request path.
 model IdeaSignalDailyMetric {
-  id              String   @id @default(cuid())
-  ideaId          String
-  day             DateTime @db.Date
-  supportCount    Int      @default(0)
-  prePledgeCount  Int      @default(0)
-  uniqueActors    Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  ideaId         String
+  day            DateTime @db.Date
+  supportCount   Int      @default(0)
+  prePledgeCount Int      @default(0)
+  uniqueActors   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([ideaId, day])
   @@index([day])
+}
+
+// Reach roll-up: one row per resource per UTC day. Rebuilt from raw events, so a
+// rerun replaces the day's counts. `uniqueSessions` is distinct by userId when
+// signed in, otherwise by the anonymous session id; a missing actor is not counted.
+model ResourceReachDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Acquisition roll-up by the closed source vocabulary. A missing source is stored
+// as `direct`; no referrer URL or query string is ever written.
+model ResourceAcquisitionDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  source         String
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day, source])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Country roll-up from the trusted edge header. The IP is discarded before the
+// event is written; unknown countries are excluded rather than stored as a guess.
+model ResourceCountryDailyMetric {
+  id             String                @id @default(cuid())
+  resourceType   AnalyticsResourceType
+  resourceId     String
+  day            DateTime              @db.Date
+  countryCode    String                @db.Char(2)
+  views          Int                   @default(0)
+  uniqueSessions Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([resourceType, resourceId, day, countryCode])
+  @@index([day])
+  @@index([resourceType, day])
+}
+
+// Creator-flow funnel roll-up. Views and unique sessions live in the reach table;
+// this table stores only the step and backing-start counts so the two cannot drift.
+model CampaignFunnelDailyMetric {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  day                 DateTime @db.Date
+  stepStarted         Int      @default(0)
+  stepCompleted       Int      @default(0)
+  contributionStarted Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([campaignId, day])
+  @@index([day])
+}
+
+// Premium analytics access. Collection is free; the richer reports are gated by an
+// explicit grant so the same row can later be issued by a paid checkout without a
+// schema change. `feature` is a closed code (`analytics.premium`), not user text.
+enum AnalyticsAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AnalyticsAccessSource {
+  REQUEST
+  ADMIN
+  PAID
+}
+
+model AnalyticsAccessGrant {
+  id                String                @id @default(cuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature           String                @default("analytics.premium")
+  status            AnalyticsAccessStatus @default(PENDING)
+  source            AnalyticsAccessSource @default(REQUEST)
+  requestedAt       DateTime              @default(now())
+  decidedAt         DateTime?
+  decidedBy         String? // admin user id; no relation so the audit row survives an admin deletion
+  expiresAt         DateTime? // null = no expiry; a paid grant sets the paid-through instant
+  externalReference String?               @db.VarChar(128) // future payment reference; never raw card data
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([userId, feature])
+  @@index([status, requestedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -878,26 +1309,26 @@ enum AdEventType {
 // The creative. `approved` is permission to serve, not a schedule: serving also
 // requires startsAt <= now < endsAt and the placement relation.
 model Advertisement {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   advertiser      String
   headline        String
   body            String
   ctaLabel        String
   destination     String
   format          AdCreativeFormat
-  kind            AdCreativeKind    @default(FIRST_PARTY)
-  status          AdCreativeStatus  @default(DRAFT)
-  priority        Int               @default(0)
+  kind            AdCreativeKind   @default(FIRST_PARTY)
+  status          AdCreativeStatus @default(DRAFT)
+  priority        Int              @default(0)
   startsAt        DateTime
   endsAt          DateTime
-  categories      String[]          @default([])
-  regions         String[]          @default([])
+  categories      String[]         @default([])
+  regions         String[]         @default([])
   createdById     String
   approvedById    String?
   approvedAt      DateTime?
   rejectionReason String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   placements AdvertisementPlacement[]
   reviews    AdvertisementReviewEvent[]
@@ -920,15 +1351,15 @@ model AdvertisementPlacement {
 // Append-only review trail. actorId is not an FK for the same reason as
 // PlatformParamAudit.changedBy: the trail must survive an account deletion.
 model AdvertisementReviewEvent {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   advertisementId String
-  advertisement   Advertisement     @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  advertisement   Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   actorId         String
   action          AdReviewAction
   fromStatus      AdCreativeStatus
   toStatus        AdCreativeStatus
   reason          String?
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime         @default(now())
 
   @@index([advertisementId, createdAt])
   @@index([createdAt])
@@ -938,14 +1369,14 @@ model AdvertisementReviewEvent {
 // free text. `dedupeKey` closes the client retry gap. Raw rows are retained for
 // 90 days, then only daily aggregates remain (see analytics-privacy.md).
 model AdvertisementEvent {
-  id          String       @id @default(cuid())
+  id          String      @id @default(cuid())
   creativeId  String
   placementId String
   type        AdEventType
   sessionId   String
-  dedupeKey   String       @unique
+  dedupeKey   String      @unique
   occurredAt  DateTime
-  receivedAt  DateTime     @default(now())
+  receivedAt  DateTime    @default(now())
 
   @@index([creativeId, occurredAt])
   @@index([placementId, occurredAt])
@@ -956,17 +1387,17 @@ model AdvertisementEvent {
 // external channel is a separate, retryable step. `dedupeKey` makes a repeated
 // domain event (for example a replayed campaign conversion) idempotent.
 model Notification {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  template         String
-  data             Json?
-  dedupeKey        String?   @unique
-  readAt           DateTime?
-  dispatchedAt     DateTime?
-  dispatchAttempts Int       @default(0)
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template          String
+  data              Json?
+  dedupeKey         String?   @unique
+  readAt            DateTime?
+  dispatchedAt      DateTime?
+  dispatchAttempts  Int       @default(0)
   lastDispatchError String?
-  createdAt        DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])

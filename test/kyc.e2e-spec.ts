@@ -138,7 +138,12 @@ describe('KYC/AML routes (e2e)', () => {
         .set(auth(u.token))
         .expect(200);
       expect(creator.body.eligible).toBe(false);
-      expect(creator.body.reasons).toContain('AML screening is required');
+      expect(creator.body.code).toBe('VERIFICATION_REQUIRED');
+      expect(creator.body.blockers).toContain(
+        'Sanctions, PEP and adverse-media screening',
+      );
+      // Legacy alias for the same list while old clients migrate.
+      expect(creator.body.reasons).toEqual(creator.body.blockers);
 
       // FR-105 audit trail: a status event was recorded.
       const events = await prisma.kycStatusEvent.count({ where: { userId: u.id } });
@@ -188,7 +193,10 @@ describe('KYC/AML routes (e2e)', () => {
         .set(auth(u.token))
         .expect(200);
       expect(elig.body.eligible).toBe(false);
-      expect(elig.body.reasons).toContain('Identity verification was declined');
+      expect(elig.body.code).toBe('VERIFICATION_DECLINED');
+      expect(elig.body.blockers).toContain(
+        'Identity document, selfie and liveness',
+      );
     });
   });
 
@@ -310,7 +318,20 @@ describe('KYC/AML routes (e2e)', () => {
       expect(status.body).toMatchObject({ kybStatus: 'VERIFIED', amlStatus: 'CLEAR' });
 
       const elig = await http().get('/api/v1/kyb/eligibility').set(auth(u.token)).expect(200);
-      expect(elig.body).toMatchObject({ registered: true, eligible: true });
+      // FR-103: KYB alone is not a funds clearance. The person acting for the business
+      // must also pass personal identity verification before the account is eligible.
+      expect(elig.body).toMatchObject({ registered: true, eligible: false });
+      expect(elig.body.reasons).toContain('Authorised representative identity');
+
+      const representative = await http()
+        .post('/api/v1/kyc/session')
+        .set(auth(u.token))
+        .send({ purpose: 'CAMPAIGN_CREATOR' })
+        .expect(201);
+      await complete(representative.body.providerRef, u.id).expect(200);
+
+      const cleared = await http().get('/api/v1/kyb/eligibility').set(auth(u.token)).expect(200);
+      expect(cleared.body).toMatchObject({ registered: true, eligible: true });
 
       // The AML result was recorded against the business (KYC_SESSION source).
       const screenings = await prisma.amlScreening.findMany({ where: { businessId: start.body.businessId } });

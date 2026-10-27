@@ -31,6 +31,18 @@ export interface CampaignReviewGateInput {
   creator: CampaignCreatorGateFacts;
   business: CampaignBusinessGateFacts | null;
   applicationFee: ApplicationFeeGateFacts | null;
+  /**
+   * The verification domain's decision. When present it is authoritative: the legacy
+   * `creator`/`business` status pair is only a fallback for callers that have not been
+   * migrated and for fixtures.
+   */
+  verification?: {
+    eligible: boolean;
+    code: string | null;
+    blockers: string[];
+    accountType: string;
+    complianceHold: boolean;
+  };
 }
 
 export interface CampaignReviewGateCheck {
@@ -42,6 +54,7 @@ export interface CampaignReviewGateCheck {
 
 export interface CampaignReviewGateResult {
   eligible: boolean;
+  code: string | null;
   blockers: string[];
   checks: CampaignReviewGateCheck[];
 }
@@ -58,7 +71,29 @@ function evaluateIdentity(input: CampaignReviewGateInput): {
   satisfied: boolean;
   detail: string;
   blockers: string[];
+  code: string | null;
 } {
+  if (input.verification) {
+    const v = input.verification;
+    if (v.eligible) {
+      return {
+        blockers: [],
+        code: null,
+        detail:
+          v.accountType === 'BUSINESS'
+            ? 'Business is verified (KYB, key people and AML) and the representative is verified'
+            : 'Creator identity is verified and AML screening is clear',
+        satisfied: true,
+      };
+    }
+    return {
+      blockers: v.blockers,
+      code: v.code ?? 'VERIFICATION_REQUIRED',
+      detail: v.blockers.join('; '),
+      satisfied: false,
+    };
+  }
+
   const personalReasons = fundsEligibilityReasons(input.creator);
   const businessReasons = input.business
     ? businessFundsReasons(input.business)
@@ -68,16 +103,18 @@ function evaluateIdentity(input: CampaignReviewGateInput): {
 
   if (personalOk) {
     return {
-      satisfied: true,
-      detail: 'Creator identity is verified and AML screening is clear',
       blockers: [],
+      code: null,
+      detail: 'Creator identity is verified and AML screening is clear',
+      satisfied: true,
     };
   }
   if (businessOk) {
     return {
-      satisfied: true,
-      detail: 'Business is verified (KYB) and its AML screening is clear',
       blockers: [],
+      code: null,
+      detail: 'Business is verified (KYB) and its AML screening is clear',
+      satisfied: true,
     };
   }
 
@@ -87,11 +124,12 @@ function evaluateIdentity(input: CampaignReviewGateInput): {
   }
 
   return {
-    satisfied: false,
+    blockers: blockerLines,
+    code: 'VERIFICATION_REQUIRED',
     detail: input.business
       ? `Creator: ${personalReasons.join('; ')}. Business: ${businessReasons.join('; ')}`
       : personalReasons.join('; '),
-    blockers: blockerLines,
+    satisfied: false,
   };
 }
 
@@ -180,8 +218,12 @@ export function evaluateCampaignReviewGates(
     ...identity.blockers,
     ...(fee.blocker ? [fee.blocker] : []),
   ];
+  const code =
+    identity.code ??
+    (fee.satisfied ? null : 'APPLICATION_FEE_REQUIRED');
 
   return {
+    code,
     eligible: blockers.length === 0,
     blockers,
     checks,

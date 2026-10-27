@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
+import { VerificationService } from '../kyc/verification.service';
 import {
   nextReviewStatus,
   normalizeReviewReason,
@@ -59,6 +60,7 @@ const QUEUE_CAMPAIGN_SELECT = {
 export class CampaignReviewService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly verification: VerificationService,
     @Optional() private readonly cache?: CacheService,
   ) {}
 
@@ -171,6 +173,8 @@ export class CampaignReviewService {
 
     const { creator, milestones, reviewEvents, ...rest } = campaign;
 
+    const verificationGate = await this.verification.campaignGate(campaign.creatorId);
+
     const preconditions = evaluateCampaignReviewGates({
       campaignId: campaign.id,
       creatorId: campaign.creatorId,
@@ -181,6 +185,13 @@ export class CampaignReviewService {
       },
       business: creator.business,
       applicationFee,
+      verification: {
+        accountType: verificationGate.accountType,
+        blockers: verificationGate.blockers,
+        code: verificationGate.code,
+        complianceHold: verificationGate.complianceHold,
+        eligible: verificationGate.eligible,
+      },
     });
 
     return {
@@ -213,6 +224,15 @@ export class CampaignReviewService {
     };
   }
 
+  private async verificationGateForCampaign(campaignId: string) {
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { creatorId: true },
+    });
+    if (!campaign) throw new NotFoundException('Campaign not found');
+    return this.verification.campaignGate(campaign.creatorId);
+  }
+
   async decide(
     actorId: string,
     campaignId: string,
@@ -222,6 +242,15 @@ export class CampaignReviewService {
     if (error) throw new BadRequestException(error);
 
     const reason = normalizeReviewReason(dto.reason);
+
+    // An approval re-checks FR-103/FR-311. The verification domain is read before the
+    // transaction (it is an independent aggregate and must not extend the row lock) and is
+    // authoritative when present: the legacy status pair cannot see a compliance hold or a
+    // business whose representative never verified.
+    const verificationGate =
+      dto.action === 'APPROVE'
+        ? await this.verificationGateForCampaign(campaignId)
+        : null;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const campaign = await tx.campaign.findUnique({
@@ -269,12 +298,24 @@ export class CampaignReviewService {
           creator: campaign.creator,
           business: campaign.creator.business,
           applicationFee,
+          ...(verificationGate === null
+            ? {}
+            : {
+                verification: {
+                  accountType: verificationGate.accountType,
+                  blockers: verificationGate.blockers,
+                  code: verificationGate.code,
+                  complianceHold: verificationGate.complianceHold,
+                  eligible: verificationGate.eligible,
+                },
+              }),
         });
 
         if (!gates.eligible) {
           throw new UnprocessableEntityException({
-            message: 'Campaign is not eligible for approval',
             blockers: gates.blockers,
+            code: gates.code,
+            message: 'Campaign is not eligible for approval',
           });
         }
       }

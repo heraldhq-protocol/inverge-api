@@ -56,7 +56,9 @@ exists; **deferred** = planned, not next.
 
 | Feature | Route | Status | Gap |
 |---|---|---|---|
-| Create campaign | — | missing | Creator flow is fixtures; only convert/submit exist |
+| Create campaign | `POST /campaigns`, `PATCH /campaigns/{id}` | implemented | Persistent draft with optimistic concurrency; see [campaign-deployment.md](../campaign-deployment.md) |
+| Deployment | `POST /campaigns/{id}/deployment/prepare`, `…/submit`, `…/reconcile`, `GET …/deployment` | implemented against programme source | Verification needs a deployed binary/IDL and a devnet run before mainnet |
+| Publish | `POST /campaigns/{id}/publish` | implemented | Requires review approval + verified deployment + fee |
 | Submit for review | `POST /campaigns/{id}/submit` | implemented | Requires KYC + fee; correct |
 | Own campaigns | `GET /campaigns?mine=true` | implemented | - |
 | Admin review queue | `GET /admin/campaigns` | implemented | — |
@@ -95,7 +97,7 @@ exists; **deferred** = planned, not next.
 | Public platform summary | `GET /platform/summary` | implemented | Counts only (published ideas, active/completed/total public campaigns); cached 60 s; no escrow or funding figure |
 | Account capabilities | `GET /auth/capabilities` | implemented | UI projection of role, verification and onboarding; not cached; see plan §19 |
 | Interests | `PUT /me/interests` | implemented | — |
-| Product analytics | no public route | partial | Server-side `IDEA_SIGNAL` only; nightly roll-up and retention run when `QUEUE_ENABLED=true`; creator reads and view/search events are deferred (see [product-analytics.md](./product-analytics.md)) |
+| Product analytics | `/internal/analytics/events`, `/ideas/{id}/analytics/*`, `/campaigns/{id}/analytics/*`, `/analytics/access*`, `/admin/analytics/*` | implemented (Phase 1) | Signed server-to-server ingest for views/steps/search; `IDEA_SIGNAL` and `FEEDBACK_SUBMITTED` after commit; owner basic + request-gated premium reads; nightly roll-up and retention run when `QUEUE_ENABLED=true`. No public browser ingest, device/region/referrer, follow/save/vote or challenge metrics. See [analytics.md](./analytics.md) and [product-analytics.md](./product-analytics.md) |
 | Notification list / read | `GET /me/notifications`, `GET .../unread-count`, `PATCH .../{id}/read`, `POST .../read-all` | implemented | Delivery is best-effort past the adapter call; no user preferences or admin replay |
 | Outbound webhooks | — | deferred | No subscription product |
 | Real-time stream | — | deferred | Decision recorded in [realtime.md](./realtime.md) |

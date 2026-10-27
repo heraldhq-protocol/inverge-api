@@ -14,14 +14,19 @@ README does not: the open backlog and the gotchas that have cost time in this re
 - **The campaign surfaces are built and running on fixtures.** `inverge-web` has a campaign catalogue,
   a seven-tab campaign detail page and a five-step creator flow, none of which call this API — not
   even `POST /ideas/:id/convert`, which is live. They are built against a written contract
-  (`inverge-web/docs/campaign-data-contract.md`), so item 6 turns them on by changing one file. Two
-  things in that contract are worth reading before you implement anything campaign-shaped:
+  (`inverge-web/docs/campaign-data-contract.md`), so item 6 turns them on by changing one file.
+  **Draft, deployment and publication routes now exist** (`POST /campaigns`, `PATCH /campaigns/:id`,
+  `GET /campaigns/:id/draft`, `/campaigns/:id/deployment/*`, `POST /campaigns/:id/publish`); see
+  `docs/campaign-deployment.md` for the contract and its open blockers before wiring the wizard to
+  them. Two things in that contract are worth reading before you implement anything campaign-shaped:
   - **Milestone state is derived, not stored** (contract §3), and
-  - **the escrow split uses two different bases** (contract §2a, gap item 18): the working-capital
-    tranche is a share of `targetAmount`, every milestone tranche is a share of
-    `totalRaised - upfront`, and the two sum to exactly `totalRaised`. Pegging the upfront to the
-    raise pays a campaign that overfunded ten times over more before verification than its whole plan
-    was worth. Settle this before the escrow programme hard-codes something else.
+  - **the escrow split uses two different bases** (contract §2a, gap item 18): the initial tranche
+    is fixed at 20% of `targetAmount`, every milestone weight is a share of
+    `totalRaised - initialTranche`, and the weights total 10,000 on their own. The last milestone
+    absorbs the remainder; any surplus above target stays in escrow under the same plan. Pegging the
+    initial tranche to the raise pays an overfunded campaign more before verification than its whole
+    plan was worth. D-045 in `inverge-web/docs/DECISIONS.md` records the decision; the contract still
+    has to be deployed and verified.
 - KYC/AML follow-ups (prod webhook registration, FR-103/104 gate call-sites on campaigns and
   contributions, ongoing AML monitoring, admin IN_REVIEW review actions, geo/wallet L1 gates) are
   tracked outside this repo in the session backlog, not here.

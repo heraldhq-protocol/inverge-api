@@ -28,7 +28,14 @@ describe('ProductAnalyticsService', () => {
     // #then the row is written and the call reports success
     expect(recorded).toBe(true);
     expect(create).toHaveBeenCalledWith({
-      data: { ...valid, filterKeys: [] },
+      data: expect.objectContaining({
+        ...valid,
+        eventKey: expect.any(String),
+        schemaVersion: 1,
+        resourceType: 'IDEA',
+        resourceId: 'idea-1',
+        filterKeys: [],
+      }),
     });
   });
 
