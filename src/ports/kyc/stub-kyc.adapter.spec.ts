@@ -4,17 +4,17 @@ describe('StubKycAdapter', () => {
   const a = new StubKycAdapter();
 
   it('encodes the purpose in the ref and returns a dev URL', async () => {
-    const r = await a.startVerification({ userId: 'u1', purpose: 'CAMPAIGN_CREATOR' });
+    const r = await a.startVerification({ vendorData: 'u1', purpose: 'CAMPAIGN_CREATOR' });
     expect(r.providerRef).toContain('CAMPAIGN_CREATOR');
     expect(r.verificationUrl).toContain('ref=');
     expect(r.verificationUrl).toContain('user=u1');
   });
 
   it('getDecision runs AML for funds purposes, skips it for idea validation', async () => {
-    const funds = await a.startVerification({ userId: 'u', purpose: 'BACKER_THRESHOLD' });
+    const funds = await a.startVerification({ vendorData: 'u', purpose: 'BACKER_THRESHOLD' });
     expect((await a.getDecision(funds.providerRef)).aml).toBe('CLEAR');
 
-    const idea = await a.startVerification({ userId: 'u', purpose: 'IDEA_VALIDATION' });
+    const idea = await a.startVerification({ vendorData: 'u', purpose: 'IDEA_VALIDATION' });
     expect((await a.getDecision(idea.providerRef)).aml).toBeNull();
   });
 
