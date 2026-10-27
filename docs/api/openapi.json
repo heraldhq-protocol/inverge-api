@@ -41,6 +41,21 @@
         ],
         "type": "object"
       },
+      "AccountTypeDto": {
+        "properties": {
+          "accountType": {
+            "enum": [
+              "INDIVIDUAL",
+              "BUSINESS"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountType"
+        ],
+        "type": "object"
+      },
       "AdminAnalyticsAccessRequestDto": {
         "properties": {
           "creatorTier": {
@@ -802,6 +817,22 @@
           "identityVerified",
           "fundsEligible",
           "blockers"
+        ],
+        "type": "object"
+      },
+      "ContributionAuthorizationDto": {
+        "properties": {
+          "amountUsd": {
+            "description": "Amount in USD, two decimals",
+            "type": "number"
+          },
+          "campaignId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "campaignId",
+          "amountUsd"
         ],
         "type": "object"
       },
@@ -1875,6 +1906,31 @@
         ],
         "type": "object"
       },
+      "ResolveRiskDto": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "CLEAR",
+              "CONFIRM_MATCH"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "description": "Reviewer reasoning recorded in the audit trail",
+            "type": "string"
+          },
+          "reasonCode": {
+            "description": "Stable reason code, never free text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reasonCode",
+          "reason"
+        ],
+        "type": "object"
+      },
       "RoadmapStepDto": {
         "properties": {
           "date": {
@@ -2528,6 +2584,58 @@
         "required": [
           "available"
         ],
+        "type": "object"
+      },
+      "VerificationBusinessDto": {
+        "properties": {
+          "businessType": {
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2 country of registration",
+            "type": "string"
+          },
+          "legalName": {
+            "type": "string"
+          },
+          "registeredAddress": {
+            "type": "string"
+          },
+          "registrationNumber": {
+            "type": "string"
+          },
+          "representativeName": {
+            "type": "string"
+          },
+          "representativeRole": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "legalName"
+        ],
+        "type": "object"
+      },
+      "VerificationSessionDto": {
+        "properties": {
+          "purpose": {
+            "default": "CAMPAIGN_CREATOR",
+            "enum": [
+              "IDEA_VALIDATION",
+              "CAMPAIGN_CREATOR",
+              "BACKER_THRESHOLD"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "default": "INDIVIDUAL",
+            "enum": [
+              "INDIVIDUAL",
+              "BUSINESS"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "WireAnalyticsEventDto": {
@@ -6755,6 +6863,514 @@
         "summary": "Discovery categories and subcategories",
         "tags": [
           "taxonomy"
+        ]
+      }
+    },
+    "/api/v1/verification/account-type": {
+      "post": {
+        "operationId": "VerificationController_accountType",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountTypeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Choose individual or business account shape",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/admin/cases": {
+      "get": {
+        "operationId": "VerificationController_adminCases",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "SESSION_CREATED",
+                "AWAITING_USER",
+                "SUBMITTED",
+                "IN_REVIEW",
+                "APPROVED",
+                "DECLINED",
+                "ACTION_REQUIRED",
+                "EXPIRED",
+                "CANCELLED",
+                "ERROR"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "risk",
+            "required": false,
+            "schema": {
+              "enum": [
+                "NOT_ASSESSED",
+                "CLEAR",
+                "REVIEW",
+                "FLAGGED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "INDIVIDUAL",
+                "BUSINESS"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "requiresReview",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Paginated verification cases for review",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/admin/cases/{id}": {
+      "get": {
+        "operationId": "VerificationController_adminCase",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Case detail and append-only event history",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/admin/cases/{id}/resolve": {
+      "post": {
+        "operationId": "VerificationController_adminResolve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRiskDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a reasoned review of an AML/sanctions outcome",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/admin/queues": {
+      "get": {
+        "operationId": "VerificationController_adminQueues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Review queues, provider errors and reconciliation status",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/business": {
+      "get": {
+        "operationId": "VerificationController_businessStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/business/session": {
+      "post": {
+        "operationId": "VerificationController_businessSession",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationBusinessDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register the business and start KYB",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/contributions/authorize": {
+      "post": {
+        "operationId": "VerificationController_authorizeContribution",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContributionAuthorizationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Authorise a contribution against the FR-104 cumulative threshold",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/eligibility": {
+      "get": {
+        "operationId": "VerificationController_eligibility",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "default": "IDEA_VALIDATION",
+              "enum": [
+                "IDEA_VALIDATION",
+                "CAMPAIGN_CREATOR",
+                "BACKER_THRESHOLD",
+                "BUSINESS_VERIFICATION"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/session": {
+      "post": {
+        "operationId": "VerificationController_session",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start or restart a hosted verification session",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/state": {
+      "get": {
+        "operationId": "VerificationController_state",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Normalised verification state and outstanding requirements",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
+    "/api/v1/verification/webhook": {
+      "post": {
+        "operationId": "VerificationController_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "tags": [
+          "verification"
         ]
       }
     },

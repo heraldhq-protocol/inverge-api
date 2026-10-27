@@ -515,3 +515,100 @@ wrong base.
 **Items 20–25, raised 2026-10-16, slot in as follows.** Item 25 comes first regardless of the rest: it is
 the one that is a bug, and it gates every authenticated web screen. Then, after the existing ideas run
 (1 → 2 → 4 → 5 → 3): 21 → 23 → 20 → 22. Item 24 waits on the community-loop plan being approved.
+
+---
+
+## Verification domain — delivered 2026-10-27
+
+The creator/backer verification work (FR-103, FR-104, FR-105, FR-311) landed as one domain rather than
+the three separate asks this document would otherwise have carried. It is recorded here because the web
+consumer contract lives here too. Source: `inverge-api src/modules/kyc/` (verification domain),
+`docs/campaign-review-sprint.md` (submission gate), `inverge-web/docs/DECISIONS.md` D-047.
+
+### Endpoints
+
+Creator-facing, all behind `PrivyAuthGuard`:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/verification/state` | Normalised account state: account type, per-subject case, requirements, blockers, `nextAction`, `policyVersion`, `identityVerified`, `fundsCleared`, `complianceHold` |
+| `GET` | `/verification/eligibility?purpose=` | Gate preview for one purpose (`IDEA_VALIDATION`, `CAMPAIGN_CREATOR`, `BACKER_THRESHOLD`): `eligible`, stable `code`, `blockers`, `requirements` |
+| `POST` | `/verification/session` | Start/restart a hosted session (`subject`, `purpose`); returns `caseId` + `verificationUrl` |
+| `POST` | `/verification/business/session` | Register the business and start KYB (legal name required) |
+| `GET` | `/verification/business` | Business registration + KYB/AML projection |
+| `POST` | `/verification/account-type` | Switch `INDIVIDUAL`/`BUSINESS`; cases stay attached to their type |
+| `POST` | `/verification/contributions/authorize` | FR-104 cumulative-threshold authorisation with reserved headroom |
+| `POST` | `/verification/webhook` | Provider callback (public, signature-verified, acknowledges fast) |
+
+Compliance-facing, behind `PrivyAuthGuard` + `ComplianceReviewerGuard` (ADMIN and the new
+`COMPLIANCE_REVIEWER` role; least privilege is enforced server-side):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/verification/admin/queues` | Pending/escalated queues, status counts, provider errors, review-open, policy version |
+| `GET` | `/verification/admin/cases` | Paginated case list: `status`, `risk`, `type`, `requiresReview`, `cursor`, `limit` |
+| `GET` | `/verification/admin/cases/:id` | Case, subject, business, append-only event history |
+| `POST` | `/verification/admin/cases/:id/resolve` | Reasoned risk resolution (`decision`, `reasonCode`, `reason`); audited, never automatic |
+
+Legacy `/kyc/*` and `/kyb/*` remain as a compatibility facade over the same domain so already-shipped
+clients are not broken. Their `reasons` field is the new `blockers` list under the old name.
+
+### Status model
+
+`NOT_STARTED · SESSION_CREATED · AWAITING_USER · SUBMITTED · IN_REVIEW · APPROVED · DECLINED ·
+ACTION_REQUIRED · EXPIRED · CANCELLED · ERROR`, with `RiskOutcome = NOT_ASSESSED | CLEAR | REVIEW |
+FLAGGED`. Provider strings (`Not Started`, `In Progress`, `Awaiting User`, `Approved`, `Declined`,
+`In Review`, `Resubmitted`, `Expired`, `Abandoned`, `Kyc Expired`) are case-sensitive and never escape
+the adapter. An unmapped string becomes `ERROR`, which is a support signal, not a decline.
+
+### Stable error codes
+
+`VERIFICATION_REQUIRED`, `VERIFICATION_IN_PROGRESS`, `VERIFICATION_IN_REVIEW`,
+`VERIFICATION_ACTION_REQUIRED`, `VERIFICATION_DECLINED`, `VERIFICATION_EXPIRED`,
+`VERIFICATION_PROVIDER_ERROR`, `VERIFICATION_COMPLIANCE_HOLD`, `VERIFICATION_BUSINESS_PROFILE_REQUIRED`,
+`VERIFICATION_ACCOUNT_TYPE_MISMATCH`, `VERIFICATION_ATTEMPTS_EXCEEDED`, `VERIFICATION_UNAVAILABLE`,
+`CONTRIBUTION_THRESHOLD_EXCEEDED`, `CONTRIBUTION_CAMPAIGN_NOT_FUNDABLE`, plus
+`APPLICATION_FEE_REQUIRED` from the campaign review gate. Clients switch on `code`; the message is copy.
+
+### Gates
+
+- **Campaign submission** (`POST /campaigns/:id/submit`) evaluates the verification domain before the
+  transaction and the review preconditions inside it: ownership, submittable status, identity/funds
+  clearance, no compliance hold, and a succeeded application fee bound to this creator and campaign.
+- **Backer threshold** (`POST /verification/contributions/authorize`) serialises per user with
+  `pg_advisory_xact_lock`, so two concurrent pledges cannot both sit below the cumulative threshold.
+  A reservation has a TTL (`VERIFICATION_AUTHORIZATION_TTL_SECONDS`).
+
+### Webhook and reconciliation
+
+Signature schemes: `X-Signature-V2` (canonical JSON), `X-Signature` (raw bytes), `X-Signature-Simple`
+(envelope only; not treated as authenticating the payload), plus `*-Previous` rotation headers verified
+against `DIDIT_WEBHOOK_SECRET_PREVIOUS`. `X-Timestamp` is bounded to ±300 s. Events are deduplicated on
+`providerEventReference`; a replay is acknowledged without re-applying. The handler never trusts the
+callback's decision body: it re-fetches the decision from the provider before writing, and heavy work is
+queued when `QUEUE_ENABLED` (otherwise processed inline).
+
+A reconciliation job sweeps cases whose last provider sync is older than
+`VERIFICATION_RECONCILE_AFTER_MINUTES`, with bounded exponential backoff and jitter
+(`VERIFICATION_RECONCILE_MAX_ATTEMPTS`), then stops and flags the case as escalated rather than looping.
+Redis is a queue, not the record: every state transition is persisted, so a queue outage only delays sync.
+
+### Provider configuration still to do (Didit console, not code)
+
+1. Publish the identity workflow used for `DIDIT_KYC_WORKFLOW_ID` — the one currently in the console
+   ("Free KYC") is a draft, and a draft workflow cannot start a session.
+2. Register the webhook destination: `POST https://<api-host>/api/v1/verification/webhook`, subscribed to
+   `status.updated` and `data.updated`, with the same secret as `DIDIT_WEBHOOK_SECRET`. Browser redirects
+   are never used as the source of truth.
+3. Confirm the KYB workflow actually runs the key-people step. If it does not, leave
+   `DIDIT_KYB_REQUIRE_KEY_PEOPLE=true`: the domain will refuse to treat KYB as complete, which is correct.
+
+### Deferred, and deliberately not invented
+
+- Risk thresholds for auto-`REVIEW` vs `FLAGGED`, country/sanctions-list policy, and which optional
+  provider checks are mandatory are product/compliance decisions. The domain implements the mechanism and
+  a configurable policy version; the values are open.
+- Ongoing AML re-screening schedules, on-chain/wallet L1 gates and geo restrictions are not part of this
+  change.
+- Document deletion/retention jobs are specified but not scheduled; no raw documents or identity numbers
+  are stored by this domain in any case.
