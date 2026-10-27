@@ -91,15 +91,71 @@ enum AmlScreeningSource {
   STANDALONE
 }
 
+// Who an account acts as. It is an account shape, not a role: neither value grants
+// creator status or any permission. A BUSINESS account must still have its
+// authorised representative individually verified (FR-103).
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+// The subject of a verification case. INDIVIDUAL verifies a person; BUSINESS
+// verifies a legal entity (and, through its configured KYB workflow, its key people).
+enum VerificationType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+// The one internal lifecycle every provider maps onto (verification policy model).
+// Provider-specific strings are stored separately on the case for support/audit and
+// never used for eligibility decisions.
+enum VerificationStatus {
+  NOT_STARTED
+  SESSION_CREATED
+  AWAITING_USER
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  DECLINED
+  ACTION_REQUIRED
+  EXPIRED
+  CANCELLED
+  ERROR
+}
+
+enum VerificationProvider {
+  DIDIT
+  STUB
+}
+
+enum VerificationEventSource {
+  PROVIDER_WEBHOOK
+  RECONCILIATION
+  ADMIN_ACTION
+  SYSTEM
+}
+
+// Normalised AML/sanctions outcome. REVIEW and FLAGGED both block funds until an
+// authorised reviewer resolves them; neither is an automatic finding of wrongdoing.
+enum RiskOutcome {
+  NOT_ASSESSED
+  CLEAR
+  REVIEW
+  FLAGGED
+}
+
 enum WalletRole {
   FUNDING
   PAYOUT
 }
 
 // FR-901: platform access tier. ADMIN unlocks the /admin surface (param + boost-price
-// config, audit log, user management). Bootstrapped via ADMIN_ALLOWLIST (see env).
+// config, audit log, user management). COMPLIANCE_REVIEWER may only read verification
+// cases and record a reasoned risk-review decision; it cannot administer the platform.
+// Bootstrapped via ADMIN_ALLOWLIST (see env).
 enum UserRole {
   USER
+  COMPLIANCE_REVIEWER
   ADMIN
 }
 
@@ -223,6 +279,7 @@ model User {
   kycProviderRef String? // NFR-12: reference only, never raw documents
   amlStatus      AmlStatus @default(NOT_SCREENED) // sanctions/PEP outcome, separate from KYC
   amlScreenedAt  DateTime? // when amlStatus was last set from a screening
+  accountType    AccountType @default(INDIVIDUAL) // personal vs business creator (onboarding)
   bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
   role           UserRole  @default(USER) // FR-901: gates the /admin surface
 
@@ -246,6 +303,8 @@ model User {
   boostsPurchased        IdeaBoost[]
   kycEvents              KycStatusEvent[]
   amlScreenings          AmlScreening[]
+  verificationCases      VerificationCase[]
+  ContributionAuthorizations ContributionAuthorization[]
   flatFeeCharges         FlatFeeCharge[]
   campaigns              Campaign[]              @relation("CampaignCreator")
   reviewedCampaigns      Campaign[]              @relation("CampaignReviewer")
@@ -320,15 +379,117 @@ model BusinessProfile {
   user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   legalName          String
   registrationNumber String? // company / registration number
-  country            String? // ISO country of registration
-  kybStatus          KycStatus @default(NOT_REQUIRED) // reuses the KYC status vocabulary
+  country            String? // ISO 3166-1 alpha-2 country of registration
+  // Creator-supplied context for the KYB reviewer; not a substitute for the
+  // provider's registry/document checks and never a public projection.
+  businessType       String? // e.g. sole proprietorship, limited company, NGO
+  registeredAddress  String?
+  representativeName String? // authorised representative (the account holder)
+  representativeRole String?
+  kybStatus          KycStatus @default(NOT_REQUIRED) // derived projection of the latest business case
   amlStatus          AmlStatus @default(NOT_SCREENED) // business AML (sanctions/PEP/adverse media)
   amlScreenedAt      DateTime?
-  kybProviderRef     String? // Didit KYB session id
+  kybProviderRef     String? // Didit KYB session id (latest)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  verificationCases VerificationCase[]
+
   @@index([kybProviderRef])
+}
+
+// One verification case per attempt for a person or a business. The provider's
+// session is authoritative; this row is Inverge's normalised projection of it,
+// plus the compliance decisions Inverge itself made (risk outcome, human review).
+// Raw documents, selfies and full provider reports are never stored here.
+model VerificationCase {
+  id                   String               @id @default(cuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId           String? // set only for a BUSINESS case
+  business             BusinessProfile?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  type                 VerificationType
+  provider             VerificationProvider
+  providerSessionId    String               @unique // Didit session_id; never reused across cases
+  providerWorkflowId   String?
+  providerStatus       String? // exact provider label, retained for support/audit only
+  status               VerificationStatus   @default(SESSION_CREATED)
+  purpose              String? // KycPurpose that selected the workflow (for resume/retry)
+  decisionCode         String? // provider warning/decision code, not free text
+  features             String[]             @default([]) // provider feature codes the decision reported
+  riskOutcome          RiskOutcome          @default(NOT_ASSESSED)
+  riskReasonCodes      String[]             @default([]) // warning codes / dataset names, no personal data
+  requiresHumanReview  Boolean              @default(false)
+  attempt              Int                  @default(1)
+  submittedAt          DateTime?
+  decidedAt            DateTime?
+  expiresAt            DateTime?
+  lastProviderSyncAt   DateTime?
+  lastErrorCode        String?
+  lastErrorMessage     String?
+  reconcileAttempts    Int                  @default(0)
+  nextReconcileAt      DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  events VerificationEvent[]
+
+  @@index([userId, type, createdAt(sort: Desc)])
+  @@index([businessId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+  @@index([riskOutcome, updatedAt])
+}
+
+// Append-only audit of every case transition, webhook receipt and reviewer action.
+// providerEventReference is the provider's event_id, so duplicate deliveries cannot
+// append a second event. Safe metadata is whitelisted; full payloads are never kept.
+model VerificationEvent {
+  id                     String                 @id @default(cuid())
+  caseId                 String
+  case                   VerificationCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventType              String // e.g. status.updated, reconciled, risk_resolved
+  previousStatus         VerificationStatus?
+  newStatus              VerificationStatus?
+  source                 VerificationEventSource
+  providerEventReference String?                @unique
+  actorId                String? // reviewer for ADMIN_ACTION
+  reasonCode             String?
+  metadata               Json?
+  occurredAt             DateTime
+  processedAt            DateTime               @default(now())
+  createdAt              DateTime               @default(now())
+
+  @@index([caseId, createdAt(sort: Desc)])
+  @@index([source, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+}
+
+enum ContributionAuthorizationStatus {
+  ALLOWED
+  BLOCKED
+}
+
+// FR-104 backer threshold. A short-lived authorisation is what a contribution must
+// present before it is submitted. A live ALLOWED row reserves its amount against the
+// cumulative threshold, so two concurrent requests cannot both sit under the limit.
+// Expired rows stop reserving; a BLOCKED row records why the gate refused.
+model ContributionAuthorization {
+  id                   String                          @id @default(cuid())
+  userId               String
+  user                 User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId           String
+  campaign             Campaign                        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  amountUsd            Decimal                         @db.Decimal(14, 2)
+  thresholdUsd         Decimal                         @db.Decimal(14, 2)
+  cumulativeUsd        Decimal                         @db.Decimal(14, 2)
+  status               ContributionAuthorizationStatus @default(ALLOWED)
+  verificationRequired Boolean                         @default(false)
+  blockedReason        String?
+  expiresAt            DateTime
+  createdAt            DateTime                        @default(now())
+
+  @@index([userId, status, expiresAt])
+  @@index([campaignId, createdAt(sort: Desc)])
 }
 
 // FR-306 family — Phase 3 logic, schema present now.
@@ -673,6 +834,7 @@ model Campaign {
 
   milestones    Milestone[]
   contributions Contribution[]
+  ContributionAuthorizations ContributionAuthorization[]
   onChainEvents OnChainEvent[]
 
   createdAt  DateTime  @default(now())

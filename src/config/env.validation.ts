@@ -111,12 +111,47 @@ export const envSchema = z
   // idea-validation identity (grants the VERIFIED pre-pledge tier) and a KYC+AML one for
   // funds handlers (creators / threshold backers). Keys/secret live in .env only.
   DIDIT_API_KEY: z.string().optional(),
-  DIDIT_BASE_URL: z.string().default('https://verification.didit.me/v3'),
+  DIDIT_BASE_URL: z.string().url().default('https://verification.didit.me/v3'),
   DIDIT_KYC_WORKFLOW_ID: z.string().optional(), // identity only (no AML)
   DIDIT_KYC_AML_WORKFLOW_ID: z.string().optional(), // identity + AML screening
   DIDIT_KYB_WORKFLOW_ID: z.string().optional(), // business KYB (registry + docs + UBOs + AML)
   DIDIT_WEBHOOK_SECRET: z.string().optional(), // secret_shared_key for HMAC verification
-  DIDIT_CALLBACK_URL: z.string().optional(), // where the user returns after verifying
+  // Only set for up to 24h while rotating DIDIT_WEBHOOK_SECRET: verifies `*-Previous` headers.
+  DIDIT_WEBHOOK_SECRET_PREVIOUS: z.string().optional(),
+  DIDIT_CALLBACK_URL: z.string().url().optional(), // where the user returns after verifying
+
+  // Verification policy (FR-103 / FR-104). Threshold values live in PlatformParam;
+  // these control the verification domain itself.
+  VERIFICATION_POLICY_VERSION: z.string().default('2026-10-27'),
+  // A KYB workflow that does not run KYB_KEY_PEOPLE has not checked directors/UBOs.
+  // Keep true unless the provider workflow is known to verify key people elsewhere.
+  DIDIT_KYB_REQUIRE_KEY_PEOPLE: booleanFlag.default(true),
+  VERIFICATION_RETRY_MAX_PER_DAY: z.coerce.number().int().min(1).max(50).default(5),
+  VERIFICATION_RECONCILE_AFTER_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1440)
+    .default(15),
+  VERIFICATION_RECONCILE_INTERVAL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1440)
+    .default(10),
+  VERIFICATION_RECONCILE_BATCH: z.coerce.number().int().min(1).max(200).default(25),
+  VERIFICATION_RECONCILE_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(5),
+  VERIFICATION_AUTHORIZATION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(3600)
+    .default(900),
 
   HERALD_GATEWAY_URL: z.string().optional(),
   HERALD_API_KEY: z.string().optional(),
@@ -192,6 +227,27 @@ export const envSchema = z
         path: ['SOLANA_RPC_URL'],
         message: 'SOLANA_RPC_URL is required when ESCROW_CHAIN_PROVIDER=solana-rpc',
       });
+    }
+
+    // A production boot that cannot verify a provider callback must not start: an
+    // unverified webhook is a shadow approval path. Dev may run without a secret, in
+    // which case the endpoint rejects every callback and reconciliation is the only sync.
+    if (env.NODE_ENV === 'production' && env.KYC_PROVIDER === 'didit') {
+      for (const key of [
+        'DIDIT_API_KEY',
+        'DIDIT_WEBHOOK_SECRET',
+        'DIDIT_KYC_WORKFLOW_ID',
+        'DIDIT_KYC_AML_WORKFLOW_ID',
+        'DIDIT_KYB_WORKFLOW_ID',
+      ] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when KYC_PROVIDER=didit in production`,
+          });
+        }
+      }
     }
 
     // Enabling ingest without a secret would leave the route unable to
