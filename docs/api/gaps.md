@@ -48,7 +48,7 @@ exists; **deferred** = planned, not next.
 |---|---|---|---|
 | Feed | `GET /feed` | partial | Fixed candidate pool, no cursor; parameters come from one snapshot |
 | Campaign catalogue | `GET /campaigns` | implemented | Keyset cursor; `most-delivered` removed until a released-claim counter exists |
-| Campaign detail | `GET /campaigns/{id}` | implemented | Deep includes on a card-shaped read |
+| Campaign detail | `GET /campaigns/{id}` | implemented | Resolves by campaign id or the source idea's public slug. Anonymous reads are limited to `ACTIVE`/`FUNDED`/`FAILED`/`COMPLETED`; a draft, in-review or rejected campaign is 404 to everyone but its creator. Deep includes on a card-shaped read |
 | Search | — | missing | No endpoint; `search_performed` analytics would precede it |
 | Topics / categories | `GET /taxonomy` | partial | Canonical 15/154 taxonomy, assignments and browse filters are implemented; editorial topics and web wiring are missing |
 
@@ -94,6 +94,7 @@ exists; **deferred** = planned, not next.
 | Feature | Route | Status | Gap |
 |---|---|---|---|
 | Health / readiness | `GET /health/live`, `GET /health/ready` | implemented | Outside the version prefix; Redis down reports `degraded`, Postgres down fails readiness |
+| Public platform summary | `GET /platform/summary` | implemented | Counts only (published ideas, active/completed/total public campaigns); cached 60 s; no escrow or funding figure |
 | Account capabilities | `GET /auth/capabilities` | implemented | UI projection of role, verification and onboarding; not cached; see plan §19 |
 | Interests | `PUT /me/interests` | implemented | — |
 | Product analytics | `/internal/analytics/events`, `/ideas/{id}/analytics/*`, `/campaigns/{id}/analytics/*`, `/analytics/access*`, `/admin/analytics/*` | implemented (Phase 1) | Signed server-to-server ingest for views/steps/search; `IDEA_SIGNAL` and `FEEDBACK_SUBMITTED` after commit; owner basic + request-gated premium reads; nightly roll-up and retention run when `QUEUE_ENABLED=true`. No public browser ingest, device/region/referrer, follow/save/vote or challenge metrics. See [analytics.md](./analytics.md) and [product-analytics.md](./product-analytics.md) |
@@ -110,9 +111,11 @@ exists; **deferred** = planned, not next.
   guard enforces it.
 - The boost purchase path has no KYC/AML gate. `submitCampaigns` reflects the gate
   that does exist; `purchaseBoosts` reflects current behaviour, not an endorsement.
-- No route is currently consumed by the web except `/auth/session`, `/auth/me`,
-  `/auth/check-username` and `/auth/me/profile`. Treat the rest as contract-first,
-  not as proof of UI integration.
+- Public marketing surfaces in `inverge-web` consume `/platform/summary`, `/ideas`,
+  `/ideas/{id}`, `/ideas/{id}/comments`, `/campaigns`, `/campaigns/{idOrSlug}` and
+  `/taxonomy`. `/auth/session`, `/auth/me`, `/auth/check-username` and
+  `/auth/me/profile` are consumed by the product shell. Treat every other route as
+  contract-first, not as proof of UI integration.
 
 ## Known contract gaps
 

@@ -27,6 +27,21 @@ import {
   keysetCondition,
 } from '../../common/http/pagination';
 
+/**
+ * The campaign states a visitor may read by direct link.
+ *
+ * DRAFT, IN_REVIEW and a change-requested draft are creator workspaces, not
+ * public pages. `get` therefore resolves them only for the signed-in owner;
+ * everyone else gets the same 404 as an unknown id. The discovery list already
+ * excludes them, so a direct read must not be the bypass.
+ */
+const PUBLIC_CAMPAIGN_STATUSES = [
+  'ACTIVE',
+  'FUNDED',
+  'FAILED',
+  'COMPLETED',
+] as const;
+
 @Injectable()
 export class CampaignsService {
   constructor(
@@ -204,34 +219,59 @@ export class CampaignsService {
       : loadPage();
   }
 
-  async get(id: string, currentUserId?: string) {
+  /**
+   * A campaign by id, or by its source idea's public slug.
+   *
+   * The campaign row has no slug of its own. A campaign converted from an idea
+   * can inherit that idea's already-unique public slug for its marketing URL,
+   * which keeps the web route stable without a schema migration. Ids keep
+   * working, including for campaigns that were never converted from an idea.
+   */
+  async get(idOrSlug: string, currentUserId?: string) {
     const loadCampaign = async () => {
-      const campaign = await this.prisma.campaign.findUnique({
-        where: { id },
-        include: {
-          creator: {
-            include: { creatorProfile: true },
-          },
-          idea: true,
-          milestones: {
-            orderBy: { index: 'asc' },
-            include: {
-              claims: {
-                orderBy: { submittedAt: 'desc' },
-                take: 1,
-              },
+      const detailInclude = {
+        creator: {
+          include: { creatorProfile: true },
+        },
+        idea: true,
+        milestones: {
+          orderBy: { index: 'asc' },
+          include: {
+            claims: {
+              orderBy: { submittedAt: 'desc' },
+              take: 1,
             },
           },
-          contributions: currentUserId
-            ? {
+        },
+        ...(currentUserId
+          ? {
+              contributions: {
                 where: { userId: currentUserId },
                 take: 1,
-              }
-            : false,
-        },
-      });
+              },
+            }
+          : {}),
+      } satisfies Prisma.CampaignInclude;
+
+      const campaign =
+        (await this.prisma.campaign.findUnique({
+          where: { id: idOrSlug },
+          include: detailInclude,
+        })) ??
+        (await this.prisma.campaign.findFirst({
+          where: { idea: { is: { slug: idOrSlug } } },
+          include: detailInclude,
+        }));
 
       if (!campaign) throw new NotFoundException('Campaign not found');
+
+      const isOwner = currentUserId === campaign.creatorId;
+      const isPublic = (
+        PUBLIC_CAMPAIGN_STATUSES as readonly string[]
+      ).includes(campaign.status);
+      if (!isPublic && !isOwner) {
+        throw new NotFoundException('Campaign not found');
+      }
 
       const {
         creator,
@@ -287,7 +327,7 @@ export class CampaignsService {
     // A contribution lookup is viewer-specific: never serve it from a shared key.
     if (currentUserId) return loadCampaign();
     return this.cache
-      ? this.cache.getOrSet('campaign', id, 30, loadCampaign)
+      ? this.cache.getOrSet('campaign', idOrSlug, 30, loadCampaign)
       : loadCampaign();
   }
 
@@ -462,6 +502,47 @@ export class CampaignsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Public counters for the marketing homepage (no money, no per-user data).
+   *
+   * `publishedIdeas` uses exactly the predicate of the public discovery list —
+   * `Idea_public_discovery_idx` — so the figure matches what a visitor can find
+   * with `GET /ideas`. `totalCampaigns` counts the four public campaign states
+   * and therefore excludes DRAFT, IN_REVIEW and REJECTED rows, which are not
+   * marketing-visible. Counts are the only reads: an indexed count per counter,
+   * never a scan of `Contribution` or `OnChainEvent`, and never an escrow figure.
+   */
+  async getPlatformSummary() {
+    const loadSummary = async () => {
+      const [publishedIdeas, activeCampaigns, completedCampaigns, totalCampaigns] =
+        await Promise.all([
+          this.prisma.idea.count({
+            where: {
+              status: { in: ['VALIDATING', 'THRESHOLD_MET'] },
+              discoverabilityTier: { in: ['DISCOVERABLE', 'FEATURED'] },
+            },
+          }),
+          this.prisma.campaign.count({ where: { status: 'ACTIVE' } }),
+          this.prisma.campaign.count({ where: { status: 'COMPLETED' } }),
+          this.prisma.campaign.count({
+            where: { status: { in: ['ACTIVE', 'FUNDED', 'FAILED', 'COMPLETED'] } },
+          }),
+        ]);
+
+      return {
+        asOf: new Date().toISOString(),
+        activeCampaigns,
+        completedCampaigns,
+        publishedIdeas,
+        totalCampaigns,
+      };
+    };
+
+    return this.cache
+      ? this.cache.getOrSet('platform', 'summary', 60, loadSummary)
+      : loadSummary();
   }
 
   async getPlatformEscrowStats() {

@@ -76,8 +76,10 @@ source of truth. It does not query Postgres or Redis.
 
 ## Status of the underlying system
 
-Campaign drafts, their escrow deployment attempt and publication now exist:
-`POST /campaigns`, `PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
+Campaign reads and review exist (`GET /campaigns`, `GET /campaigns/{idOrSlug}`,
+`POST /campaigns/{id}/submit`, the admin review queue). Campaign drafts, their
+escrow deployment attempt and publication exist too: `POST /campaigns`,
+`PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
 `/campaigns/:id/deployment/{prepare,submit,reconcile}`. See
 [campaign-deployment.md](../campaign-deployment.md); the escrow programme has no
 committed IDL, so verification against a deployed binary is still an open blocker.
@@ -85,3 +87,5 @@ committed IDL, so verification against a deployed binary is still an open blocke
 Contribution, refund, milestone-claim and transparency endpoints do **not** exist.
 They depend on an event indexer that is not in either repository, and chain-owned
 state is never synthesised off-chain. Do not stub them; see [gaps.md](./gaps.md).
+Public marketing pages therefore show campaign totals as the API's indexed record
+and never as a live escrow balance.

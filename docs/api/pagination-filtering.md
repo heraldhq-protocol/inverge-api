@@ -80,6 +80,14 @@ The list envelope (`{ data, page }`) is emitted by ideas, campaigns and comments
 Their OpenAPI entries still carry no response schema; typed response DTOs are the
 next contract step.
 
+### Detail identifiers
+
+`GET /ideas/{idOrSlug}` resolves the unique `Idea.id` or the unique `Idea.slug`.
+`GET /campaigns/{idOrSlug}` resolves the unique `Campaign.id` or, on a miss, the
+source idea's unique slug through `Campaign.ideaId`. Both are public reads:
+non-public records are 404 to anyone but their creator. Detail routes are not
+paginated and never return a list envelope.
+
 ## Performance expectations
 
 - A page query is index-backed: `(filter columns, sort column, id)`.

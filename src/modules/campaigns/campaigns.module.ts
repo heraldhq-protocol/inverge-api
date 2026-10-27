@@ -5,7 +5,7 @@ import { KycModule } from '../kyc/kyc.module';
 import { envFlag } from '../../config/feature-flags';
 import { AdminCampaignsController } from './admin-campaigns.controller';
 import { CampaignReviewService } from './campaign-review.service';
-import { CampaignsController, PlatformEscrowController } from './campaigns.controller';
+import { CampaignsController, PlatformController } from './campaigns.controller';
 import { CampaignsService } from './campaigns.service';
 import { CampaignDraftsService } from './deployment/campaign-drafts.service';
 import { CampaignDeploymentService } from './deployment/campaign-deployment.service';
@@ -31,7 +31,7 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
   ],
   controllers: [
     CampaignsController,
-    PlatformEscrowController,
+    PlatformController,
     AdminCampaignsController,
     CampaignDraftsController,
     CampaignDeploymentController,
