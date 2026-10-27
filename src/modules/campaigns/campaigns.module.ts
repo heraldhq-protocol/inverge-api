@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { KycModule } from '../kyc/kyc.module';
 import { envFlag } from '../../config/feature-flags';
 import { AdminCampaignsController } from './admin-campaigns.controller';
 import { CampaignReviewService } from './campaign-review.service';
@@ -23,6 +24,7 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
 @Module({
   imports: [
     forwardRef(() => AuthModule),
+    KycModule,
     ...(queueEnabled
       ? [BullModule.registerQueue({ name: DEPLOYMENT_RECONCILE_QUEUE })]
       : []),
