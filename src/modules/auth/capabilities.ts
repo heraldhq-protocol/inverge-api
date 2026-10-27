@@ -16,7 +16,7 @@ import {
  * the same condition, so the flag can never promise more than the API allows.
  */
 
-export type AccountRole = 'USER' | 'ADMIN';
+export type AccountRole = 'USER' | 'COMPLIANCE_REVIEWER' | 'ADMIN';
 
 export interface CapabilityInput {
   role: AccountRole;
@@ -44,6 +44,7 @@ export interface AccountCapabilities {
     purchaseBoosts: boolean;
     submitCampaigns: boolean;
     reviewCampaigns: boolean;
+    reviewVerification: boolean;
     moderateContent: boolean;
     managePlatform: boolean;
   };
@@ -62,6 +63,7 @@ export function buildAccountCapabilities(
   const identityVerified = isIdentityVerified(verification);
   const fundsEligible = isFundsEligible(verification);
   const isAdmin = input.role === 'ADMIN';
+  const reviewsCompliance = isAdmin || input.role === 'COMPLIANCE_REVIEWER';
 
   return {
     role: input.role,
@@ -86,12 +88,16 @@ export function buildAccountCapabilities(
       submitCampaigns: fundsEligible,
       // Admin-guarded surfaces.
       reviewCampaigns: isAdmin,
+      reviewVerification: reviewsCompliance,
       moderateContent: isAdmin,
       managePlatform: isAdmin,
     },
     analytics:
       input.analytics ??
-      analyticsEntitlement({ role: input.role, now }),
+      analyticsEntitlement({
+        role: isAdmin ? 'ADMIN' : 'USER',
+        now,
+      }),
     asOf: now.toISOString(),
   };
 }

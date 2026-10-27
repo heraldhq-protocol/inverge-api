@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { Env } from '../../config/env.validation';
 import {
   AmlOutcome,
@@ -16,14 +15,37 @@ import {
   StartVerificationParams,
   StartVerificationResult,
 } from './kyc-provider.port';
+import {
+  legacyOutcomeForState,
+  mapDiditStatus,
+} from '../../modules/kyc/verification-status';
+import {
+  parseDiditEnvelope,
+  verifyDiditSignature,
+} from '../../modules/kyc/didit-webhook-verifier';
 
-// Didit KYC/AML adapter (FR-103–105). Talks to the Didit v3 API with an x-api-key.
-//   - Sessions: POST /session/ (hosted ID + liveness + face match [+ AML]) → user gets a URL.
-//   - Decision: GET /session/{id}/decision/ — the authoritative outcome (we re-fetch this on
-//     every webhook so a spoofed/unsigned callback can never set a false status).
-//   - Webhook: HMAC-SHA256 signature + timestamp freshness (defense in depth).
-//   - AML: POST /aml/ — standalone sanctions/PEP/adverse-media screen for ongoing monitoring.
-// Which workflow runs is chosen by purpose: identity-only vs identity+AML.
+// Didit adapter (FR-103-105). Current API: https://verification.didit.me/v3
+//   POST /session/                       create a hosted KYC or KYB session
+//   GET  /session/{id}/decision/         authoritative decision
+//   POST /aml/                           standalone sanctions/PEP/adverse-media screen
+//
+// The adapter is the only place that knows Didit's payload shape. It reduces every
+// response to the port's summary types: identity documents, selfies, presigned media
+// URLs and full provider reports never cross this boundary and are never logged.
+
+const REQUEST_TIMEOUT_MS = 10_000;
+
+interface DiditSessionResponse {
+  session_id?: unknown;
+  session_kind?: unknown;
+  url?: unknown;
+}
+
+export interface ExtractedAml {
+  outcome: AmlOutcome;
+  summary: AmlSummary;
+}
+
 @Injectable()
 export class DiditKycAdapter implements KycProviderPort {
   private readonly logger = new Logger(DiditKycAdapter.name);
@@ -31,7 +53,9 @@ export class DiditKycAdapter implements KycProviderPort {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   private get baseUrl(): string {
-    return this.config.get('DIDIT_BASE_URL', { infer: true }).replace(/\/$/, '');
+    return this.config
+      .get('DIDIT_BASE_URL', { infer: true })
+      .replace(/\/+$/, '');
   }
 
   private get apiKey(): string {
@@ -47,7 +71,7 @@ export class DiditKycAdapter implements KycProviderPort {
         : purposeRequiresAml(purpose)
           ? 'DIDIT_KYC_AML_WORKFLOW_ID'
           : 'DIDIT_KYC_WORKFLOW_ID';
-    const id = this.config.get(key as any, { infer: true }) as string | undefined;
+    const id = this.config.get(key, { infer: true });
     if (!id) throw new Error(`${key} is not configured (needed for purpose ${purpose})`);
     return id;
   }
@@ -57,245 +81,326 @@ export class DiditKycAdapter implements KycProviderPort {
   ): Promise<StartVerificationResult> {
     const body: Record<string, unknown> = {
       workflow_id: this.workflowFor(params.purpose),
-      vendor_data: params.userId,
+      vendor_data: params.vendorData,
+      // Either device may return the user; the redirect is a hint, never proof.
+      callback_method: 'both',
     };
     if (params.callbackUrl) body.callback = params.callbackUrl;
     if (params.language) body.language = params.language;
     if (params.email) body.contact_details = { email: params.email };
 
-    const res = await this.request<any>('POST', '/session/', body);
-    const providerRef = res.session_id ?? res.session_token;
-    if (!providerRef || !res.url) {
-      throw new Error('Didit session response missing session_id/url');
+    if (params.purpose === 'BUSINESS_VERIFICATION' && params.business) {
+      const expected: Record<string, string> = {
+        company_name: params.business.legalName.slice(0, 255),
+      };
+      if (params.business.registrationNumber) {
+        expected.registration_number =
+          params.business.registrationNumber.slice(0, 100);
+      }
+      if (params.business.country) {
+        // Didit expects ISO 3166-1 alpha-2, optionally with a state suffix.
+        expected.registry_country = params.business.country
+          .trim()
+          .toUpperCase()
+          .slice(0, 10);
+      }
+      body.expected_details = expected;
     }
-    return { providerRef, verificationUrl: res.url };
-  }
 
+    const res = await this.request<DiditSessionResponse>('POST', '/session/', body);
+    const providerRef =
+      typeof res.session_id === 'string' ? res.session_id : null;
+    const verificationUrl = typeof res.url === 'string' ? res.url : null;
+    if (!providerRef || !verificationUrl) {
+      throw new Error('Didit session response missing session_id or url');
+    }
+    const sessionKind =
+      res.session_kind === 'business'
+        ? 'business'
+        : res.session_kind === 'user'
+          ? 'user'
+          : null;
+
+    return {
+      providerRef,
+      sessionKind,
+      verificationUrl,
+      workflowId:
+        typeof (res as { workflow_id?: unknown }).workflow_id === 'string'
+          ? ((res as { workflow_id: string }).workflow_id)
+          : this.workflowFor(params.purpose),
+    };
+  }
   async getDecision(providerRef: string): Promise<KycDecision> {
-    const res = await this.request<any>(
+    const res = await this.request<Record<string, unknown>>(
       'GET',
       `/session/${encodeURIComponent(providerRef)}/decision/`,
     );
-    const status = mapKycStatus(res.status);
-    const aml = extractAml(res);
-    return {
-      providerRef,
-      status,
-      aml: aml?.outcome ?? null,
-      amlSummary: aml?.summary ?? null,
-      raw: res,
-    };
+    return extractDiditDecision(providerRef, res);
   }
 
   parseWebhook(
     rawBody: string,
     headers: Record<string, string | undefined>,
   ): KycWebhookEvent | null {
-    if (!this.verifySignature(rawBody, headers)) return null;
-    let evt: any;
-    try {
-      evt = JSON.parse(rawBody);
-    } catch {
+    const verdict = verifyDiditSignature({
+      headers,
+      rawBody,
+      secret: this.config.get('DIDIT_WEBHOOK_SECRET', { infer: true }),
+      previousSecret: this.config.get('DIDIT_WEBHOOK_SECRET_PREVIOUS', { infer: true }),
+    });
+    if (!verdict.ok) {
+      this.logger.warn(`Didit webhook rejected: ${verdict.reason}`);
       return null;
     }
-    const providerRef = evt?.session_id ?? evt?.session?.session_id;
-    if (!providerRef) return null;
-    const aml = evt?.decision ? extractAml(evt.decision) : null;
+
+    const parsed = parseDiditEnvelope({
+      payloadAuthenticated: verdict.authenticatesPayload,
+      rawBody,
+    });
+    if (!parsed.ok) {
+      this.logger.warn(`Didit webhook envelope rejected: ${parsed.reason}`);
+      return null;
+    }
+
+    const event = parsed.event;
+    const mapped = mapDiditStatus(event.status);
+    const aml = event.decision ? extractAml(event.decision) : null;
+
     return {
-      providerRef,
-      vendorData: evt?.vendor_data ?? evt?.decision?.vendor_data ?? null,
-      status: mapKycStatus(evt?.status ?? evt?.decision?.status),
       aml: aml?.outcome ?? null,
+      businessEntityRef: event.vendorBusinessId,
+      eventId: event.eventId,
+      occurredAt: event.occurredAt,
+      payloadAuthenticated: verdict.authenticatesPayload,
+      providerRef: event.sessionId,
+      providerStatus: event.status,
+      status: legacyOutcomeForState(mapped.state),
+      vendorData: event.vendorData,
+      webhookType: event.webhookType,
     };
   }
 
   async screenAml(params: AmlScreeningParams): Promise<AmlScreeningResult> {
     const body: Record<string, unknown> = {
-      full_name: params.fullName,
       entity_type: params.entityType ?? 'person',
+      full_name: params.fullName,
     };
     if (params.dateOfBirth) body.date_of_birth = params.dateOfBirth;
     if (params.nationality) body.nationality = params.nationality;
     if (params.documentNumber) body.document_number = params.documentNumber;
     if (params.vendorData) body.vendor_data = params.vendorData;
+    if (params.includeAdverseMedia !== undefined) {
+      body.include_adverse_media = params.includeAdverseMedia;
+    }
+    if (params.includeOngoingMonitoring !== undefined) {
+      body.include_ongoing_monitoring = params.includeOngoingMonitoring;
+    }
 
-    const res = await this.request<any>('POST', '/aml/', body);
-    const aml = extractAml(res) ?? {
-      outcome: 'CLEAR' as AmlOutcome,
-      summary: { totalHits: 0, topRiskScore: 0, datasets: [] },
-    };
+    const res = await this.request<Record<string, unknown>>('POST', '/aml/', body);
+    const aml = extractAml(res);
     return {
-      status: aml.outcome,
-      totalHits: aml.summary.totalHits,
-      topRiskScore: aml.summary.topRiskScore,
-      datasets: aml.summary.datasets,
-      raw: res,
+      datasets: aml?.summary.datasets ?? [],
+      providerRequestId:
+        typeof res.request_id === 'string' ? res.request_id : null,
+      status: aml?.outcome ?? 'IN_REVIEW',
+      topRiskScore: aml?.summary.topRiskScore ?? null,
+      totalHits: aml?.summary.totalHits ?? 0,
     };
-  }
-
-  // ── Webhook signature verification ────────────────────────────────────────────────
-  // Accepts any Didit signature scheme whose header is present: raw-body HMAC (x-signature),
-  // canonical V2 (x-signature-v2), or simple (x-signature-simple). If no secret is configured
-  // we cannot verify — allow (dev) but warn. With a secret, a present-but-mismatched signature
-  // is rejected; the service still re-fetches the decision authoritatively regardless.
-  verifySignature(
-    rawBody: string,
-    headers: Record<string, string | undefined>,
-  ): boolean {
-    const secret = this.config.get('DIDIT_WEBHOOK_SECRET', { infer: true });
-    if (!secret) {
-      this.logger.warn('DIDIT_WEBHOOK_SECRET unset — skipping webhook signature check');
-      return true;
-    }
-    const h = lower(headers);
-    const timestamp = h['x-timestamp'];
-    if (timestamp && Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
-      this.logger.warn('Didit webhook timestamp outside tolerance');
-      return false;
-    }
-
-    const sig = h['x-signature'];
-    const sigV2 = h['x-signature-v2'];
-    const sigSimple = h['x-signature-simple'];
-    if (!sig && !sigV2 && !sigSimple) {
-      this.logger.warn('Didit webhook has no signature header');
-      return false;
-    }
-
-    if (sig && hmacEq(secret, rawBody, sig)) return true;
-    if (sigV2 && timestamp) {
-      const canonical = canonicalize(safeParse(rawBody));
-      if (hmacEq(secret, `${timestamp}:${canonical}`, sigV2)) return true;
-    }
-    if (sigSimple && timestamp) {
-      const b = safeParse(rawBody) as any;
-      const msg = `${timestamp}:${b?.session_id}:${b?.status}:${b?.webhook_type}`;
-      if (hmacEq(secret, msg, sigSimple)) return true;
-    }
-    this.logger.warn('Didit webhook signature did not verify');
-    return false;
   }
 
   private async request<T>(
-    method: 'GET' | 'POST' | 'PATCH',
+    method: 'GET' | 'POST',
     path: string,
     body?: unknown,
   ): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        'x-api-key': this.apiKey,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(`Didit ${method} ${path} → ${res.status}: ${text.slice(0, 500)}`);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        body: body ? JSON.stringify(body) : undefined,
+        headers: {
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+          'x-api-key': this.apiKey,
+        },
+        method,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'network failure';
+      throw new Error(`Didit ${method} ${path} unavailable: ${message}`);
     }
-    return (text ? JSON.parse(text) : {}) as T;
+
+    const text = await response.text();
+    if (!response.ok) {
+      // Never echo the provider body: it can contain identity data. Status + a
+      // short error code is enough for support and reconciliation.
+      const retryAfter = response.headers.get('retry-after');
+      throw new Error(
+        `Didit ${method} ${path} failed with ${response.status}${
+          retryAfter ? ` (retry-after ${retryAfter})` : ''
+        }`,
+      );
+    }
+
+    if (!text) return {} as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(`Didit ${method} ${path} returned non-JSON`);
+    }
   }
 }
 
-// ── pure mappers (exported for unit tests) ────────────────────────────────────────────
+// ── pure extractors (exported for unit tests) ────────────────────────────────
 
-export function mapKycStatus(s: unknown): KycOutcome {
-  switch (String(s)) {
-    case 'Approved':
-      return 'VERIFIED';
-    case 'Declined':
-      return 'REJECTED';
-    case 'In Review':
-      return 'IN_REVIEW';
-    default: // Not Started | In Progress | Expired | Abandoned | ...
-      return 'PENDING';
-  }
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-export function mapAmlStatus(s: unknown): AmlOutcome {
-  switch (String(s)) {
-    case 'Approved':
-      return 'CLEAR';
-    case 'In Review':
-      return 'IN_REVIEW';
-    case 'Rejected':
-    case 'Declined':
-      return 'FLAGGED';
-    default:
-      return 'CLEAR';
-  }
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
-// Pulls an AML block out of either a standalone /aml/ response, a session decision, or a
-// webhook decision. Handles the object shape ({aml:{...}}) and the array shape
-// ({aml_screenings:[...]}). Returns null when there is no AML data at all.
-export function extractAml(
-  source: any,
-): { outcome: AmlOutcome; summary: AmlSummary } | null {
-  if (!source || typeof source !== 'object') return null;
-  let block: any = null;
-  if (source.aml && typeof source.aml === 'object') block = source.aml;
-  else if (Array.isArray(source.aml_screenings) && source.aml_screenings.length) {
-    block = source.aml_screenings[0];
-  } else if (Array.isArray(source.aml_screenings)) {
-    return null; // ran, but empty — treated as "no AML data" (identity-only path)
+/** Collects stable warning codes from a decision or one feature report. */
+export function extractWarningCodes(source: unknown): string[] {
+  const codes = new Set<string>();
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const record = asObject(value);
+    if (!record) return;
+    for (const warning of asArray(record.warnings)) {
+      const entry = asObject(warning);
+      if (typeof entry?.risk === 'string' && entry.risk.length > 0) {
+        codes.add(entry.risk);
+      }
+    }
+  };
+  visit(source);
+  return [...codes].sort();
+}
+
+/**
+ * Extracts the provider feature codes. V3 returns document-collection features as
+ * `{ feature, node_id }` objects in `features[]`; other deployments return strings.
+ */
+export function extractFeatures(source: unknown): string[] {
+  const record = asObject(source);
+  if (!record) return [];
+  const codes = new Set<string>();
+  for (const entry of asArray(record.features)) {
+    if (typeof entry === 'string' && entry.length > 0) codes.add(entry);
+    else {
+      const object = asObject(entry);
+      if (typeof object?.feature === 'string') codes.add(object.feature);
+    }
+  }
+  const featureKeys: Record<string, string> = {
+    aml_screenings: 'AML',
+    document_verifications: 'KYB_DOCUMENTS',
+    face_matches: 'FACE_MATCH',
+    id_verifications: 'ID_VERIFICATION',
+    key_people_checks: 'KYB_KEY_PEOPLE',
+    liveness_checks: 'LIVENESS',
+    nfc_verifications: 'NFC',
+    poa_verifications: 'PROOF_OF_ADDRESS',
+    registry_checks: 'KYB_REGISTRY',
+  };
+  for (const [key, code] of Object.entries(featureKeys)) {
+    if (asArray(record[key]).length > 0) codes.add(code);
+  }
+  return [...codes].sort();
+}
+
+/** Maps a Didit AML block (decision array item or standalone response). */
+export function extractAml(source: unknown): ExtractedAml | null {
+  const root = asObject(source);
+  if (!root) return null;
+
+  let block: Record<string, unknown> | null = null;
+  if (Array.isArray(root.aml_screenings)) {
+    if (root.aml_screenings.length === 0) return null;
+    block = asObject(root.aml_screenings[0]);
+  } else if (asObject(root.aml)) {
+    block = asObject(root.aml);
+  } else if (typeof root.status === 'string' && 'total_hits' in root) {
+    block = root; // standalone /aml/ response
   }
   if (!block) return null;
 
-  const hits: any[] = Array.isArray(block.hits) ? block.hits : [];
-  const realHits = hits.filter((x) => x?.review_status !== 'False Positive');
-  const datasets = uniq(
-    (realHits.length ? realHits : hits).flatMap((x) =>
-      Array.isArray(x?.datasets) ? x.datasets : [],
+  const hits = asArray(block.hits).map(asObject).filter(isPresent);
+  const realHits = hits.filter((hit) => hit.review_status !== 'False Positive');
+  const datasets = [
+    ...new Set(
+      (realHits.length ? realHits : hits).flatMap((hit) =>
+        asArray(hit.datasets).filter(
+          (dataset): dataset is string => typeof dataset === 'string',
+        ),
+      ),
     ),
-  );
+  ].sort();
+
   const riskScores = realHits
-    .map((x) => Number(x?.risk_score))
-    .filter((n) => Number.isFinite(n));
+    .map((hit) => Number(hit.risk_score))
+    .filter((score) => Number.isFinite(score));
   const topRiskScore = riskScores.length
     ? Math.max(...riskScores)
     : typeof block.score === 'number'
       ? block.score
       : null;
 
+  const status = String(block.status ?? '');
+  const outcome: AmlOutcome =
+    status === 'Approved'
+      ? 'CLEAR'
+      : status === 'In Review' || status === 'Declined'
+        ? 'IN_REVIEW'
+        : status === 'Rejected'
+          ? 'FLAGGED'
+          : hits.some((hit) => hit.review_status === 'Confirmed Match')
+            ? 'FLAGGED'
+            : 'IN_REVIEW';
+
   return {
-    outcome: mapAmlStatus(block.status),
+    outcome,
     summary: {
-      totalHits: typeof block.total_hits === 'number' ? block.total_hits : hits.length,
-      topRiskScore,
       datasets,
+      topRiskScore,
+      totalHits:
+        typeof block.total_hits === 'number'
+          ? block.total_hits
+          : hits.length,
     },
   };
 }
 
-function hmacEq(secret: string, message: string, given: string): boolean {
-  const expected = createHmac('sha256', secret).update(message).digest('hex');
-  const a = Buffer.from(expected);
-  const b = Buffer.from(given);
-  return a.length === b.length && timingSafeEqual(a, b);
+/** Reduces the session decision to what Inverge may persist. */
+export function extractDiditDecision(
+  providerRef: string,
+  source: unknown,
+): KycDecision {
+  const root = asObject(source) ?? {};
+  const mapped = mapDiditStatus(root.status);
+  const aml = extractAml(root);
+  return {
+    aml: aml?.outcome ?? null,
+    amlSummary: aml?.summary ?? null,
+    createdAt: typeof root.created_at === 'string' ? root.created_at : null,
+    decisionId:
+      typeof root.session_id === 'string' ? root.session_id : providerRef,
+    features: extractFeatures(root),
+    providerRef,
+    providerStatus: mapped.providerStatus,
+    status: legacyOutcomeForState(mapped.state),
+    warningCodes: extractWarningCodes(root),
+  };
 }
 
-function canonicalize(v: any): string {
-  if (v === null || typeof v !== 'object') return JSON.stringify(v);
-  if (Array.isArray(v)) return `[${v.map(canonicalize).join(',')}]`;
-  const keys = Object.keys(v).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(v[k])}`).join(',')}}`;
-}
-
-function safeParse(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
-  }
-}
-
-function lower(h: Record<string, string | undefined>): Record<string, string | undefined> {
-  const out: Record<string, string | undefined> = {};
-  for (const [k, val] of Object.entries(h)) out[k.toLowerCase()] = val;
-  return out;
-}
-
-function uniq<T>(arr: T[]): T[] {
-  return [...new Set(arr)];
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
 }

@@ -38,9 +38,12 @@ One provider serves both products; the **purpose** selects the Didit workflow (s
 | `BUSINESS_VERIFICATION` | KYB (registry + docs + directors/UBOs + AML) | `kybStatus` + business `amlStatus` | a business that creates / backs campaigns |
 
 - **Two eligibility bars:** *identity-verified* = KYC VERIFIED (enough for the idea-validation tier); *funds-eligible* = KYC/KYB VERIFIED **and** AML CLEAR. A user may be funds-eligible as an individual **or** as a business.
-- **Webhook security:** `/kyc/webhook` verifies the HMAC signature *and* the service re-fetches the decision from the provider, so a spoofed callback can never set a false status. KYB decisions route to the `BusinessProfile` by ref.
-- **AML records** are retained off-chain (NFR-19); raw identity documents are never stored (NFR-12) — only provider refs + status.
-- Surfaces: `/kyc/*` (status, session, eligibility, admin AML screen + history) and `/kyb/*` (business status, session, eligibility, admin AML). AML sanctions also feed the moderation harness (an AML-FLAGGED submitter is held).
+- **One verification domain owns the decision.** `/verification/*` is the current surface: `state`, `eligibility`, hosted `session`s, business KYB, `contributions/authorize`, the provider `webhook`, and the compliance-review admin routes. It stores normalised `VerificationCase` rows plus an append-only `VerificationEvent` history; provider strings live only in the adapter. `/kyc/*` and `/kyb/*` remain as a compatibility facade with the old payload shapes (their `reasons` is the new `blockers`).
+- **Business ≠ representative.** A business account is funds-eligible only when KYB, business AML, key people **and** the account holder's personal identity are all approved, so switching to a business account cannot bypass the personal check.
+- **Webhook security:** `/verification/webhook` (and legacy `/kyc/webhook`) verifies the signature against the raw body / canonical form per header scheme, bounds the timestamp, re-fetches the decision from the provider, and deduplicates on the provider event reference, so a spoofed, replayed or out-of-order callback cannot set a false status. Heavy work is queued when `QUEUE_ENABLED`; a reconciliation sweep covers missed callbacks with bounded, jittered retries and then escalates to a human.
+- **Gates:** campaign submission (`POST /campaigns/:id/submit`) and the FR-104 cumulative backer threshold (`POST /verification/contributions/authorize`, serialised per user with an advisory lock) both call this domain. Refusals carry a stable `code` (see `verification-errors.ts`) so the web never parses prose.
+- **AML records** are retained off-chain (NFR-19); raw identity documents are never stored (NFR-12) — only provider refs, statuses, feature codes and screening aggregates. A non-clear screening routes to the compliance queue; it never auto-declines, and only a permission-controlled reviewer can resolve it, with a recorded reason.
+- Surfaces: `/verification/*` (creator + compliance) with `/kyc/*` and `/kyb/*` kept for older clients. AML sanctions also feed the moderation harness (an AML-FLAGGED submitter is held).
 
 ## Getting started
 

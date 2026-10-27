@@ -158,7 +158,7 @@ export class AuthService {
         displayName: user.creatorProfile?.displayName ?? null,
         username: user.creatorProfile?.username ?? null,
         analytics: analyticsEntitlement({
-          role: user.role,
+          role: user.role === 'ADMIN' ? 'ADMIN' : 'USER',
           creatorTier: user.creatorProfile?.tier ?? null,
           access,
           available: this.config.get('ANALYTICS_READ_ENABLED', { infer: true }),

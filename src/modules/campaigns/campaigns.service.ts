@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
+import { VerificationService } from '../kyc/verification.service';
 import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
 import {
   resolveTaxonomyPair,
@@ -30,6 +31,7 @@ import {
 export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly verification: VerificationService,
     @Optional() private readonly cache?: CacheService,
   ) {}
 
@@ -294,6 +296,10 @@ export class CampaignsService {
   // state change and inside the same transaction; an existing fee is reused when a
   // change-requested campaign is resubmitted (the fee is non-refundable, FR-311).
   async submit(userId: string, campaignId: string, dto: SubmitCampaignDto) {
+    // Verification is read before the transaction: it is an independent aggregate and
+    // must not extend the lock window of the campaign row. Every blocker has a stable
+    // code so the web can explain the refusal without parsing prose.
+    const verificationGate = await this.verification.campaignGate(userId);
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const campaign = await tx.campaign.findUnique({
@@ -316,7 +322,10 @@ export class CampaignsService {
 
         if (!campaign) throw new NotFoundException('Campaign not found');
         if (campaign.creatorId !== userId) {
-          throw new ForbiddenException('Not your campaign');
+          throw new ForbiddenException({
+            code: 'CAMPAIGN_NOT_OWNED',
+            message: 'Not your campaign',
+          });
         }
 
         const resubmission =
@@ -381,12 +390,20 @@ export class CampaignsService {
           },
           business: campaign.creator.business,
           applicationFee,
+          verification: {
+            accountType: verificationGate.accountType,
+            blockers: verificationGate.blockers,
+            code: verificationGate.code,
+            complianceHold: verificationGate.complianceHold,
+            eligible: verificationGate.eligible,
+          },
         });
 
         if (!gates.eligible) {
           throw new BadRequestException({
-            message: 'Campaign cannot enter review yet',
             blockers: gates.blockers,
+            code: gates.code,
+            message: 'Campaign cannot enter review yet',
           });
         }
 

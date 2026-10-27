@@ -127,7 +127,10 @@ describe('Campaign review (e2e)', () => {
     const campaignId = await createCampaign();
 
     const noKyc = await submit(campaignId).expect(400);
-    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Identity verification/);
+    expect(noKyc.body.error.code).toBe('VERIFICATION_REQUIRED');
+    expect(noKyc.body.error.details.blockers.join(' ')).toMatch(
+      /Identity document/,
+    );
     expect(noKyc.body.error.details.blockers.join(' ')).toMatch(/Application fee/);
 
     let campaign = await prisma.campaign.findUniqueOrThrow({
@@ -145,7 +148,9 @@ describe('Campaign review (e2e)', () => {
     expect(noFee.body.error.details.blockers).toContain(
       'Application fee (FR-311) has not been paid',
     );
-    expect(noFee.body.error.details.blockers.join(' ')).not.toMatch(/Identity verification/);
+    expect(noFee.body.error.details.blockers.join(' ')).not.toMatch(
+      /Identity document/,
+    );
 
     campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
@@ -307,7 +312,10 @@ describe('Campaign review (e2e)', () => {
     });
 
     const res = await decide(campaignId, { action: 'APPROVE' }).expect(422);
-    expect(res.body.error.details.blockers.join(' ')).toMatch(/declined/);
+    expect(res.body.error.code).toBe('VERIFICATION_DECLINED');
+    expect(res.body.error.details.blockers.join(' ')).toMatch(
+      /Identity document/,
+    );
 
     const campaign = await prisma.campaign.findUniqueOrThrow({
       where: { id: campaignId },
