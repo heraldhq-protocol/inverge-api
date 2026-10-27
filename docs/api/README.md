@@ -73,6 +73,9 @@ source of truth. It does not query Postgres or Redis.
 
 ## Status of the underlying system
 
-Campaign, milestone, contribution, refund and transparency endpoints do **not**
-exist yet. They depend on an Anchor escrow program and an event indexer that are
-not in either repository. Do not stub them; see [gaps.md](./gaps.md).
+Campaign read and review endpoints exist (`GET /campaigns`, `GET /campaigns/{idOrSlug}`,
+`POST /campaigns/{id}/submit`, the admin review queue). Contribution, refund and
+transparency endpoints do **not** exist yet. They depend on an Anchor escrow
+program deployment and an event indexer that are not running in either repository.
+Do not stub them; see [gaps.md](./gaps.md). Public marketing pages therefore show
+campaign totals as the API's indexed record and never as a live escrow balance.

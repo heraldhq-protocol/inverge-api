@@ -177,11 +177,18 @@ no drift between what a creator sees and what the public sees.
 
 ### 6. Campaign read endpoints
 
-`GET /campaigns` and `GET /campaigns/:id` per the shapes in the web repo's
-`docs/campaign-data-contract.md` §2. Until they exist the campaign screens run on fixtures behind one
-swap point, which is fine for building and useless for launch.
+> **Status (2026-10-27):** both routes exist. `GET /campaigns` supports status,
+> taxonomy, region, three sorts and a keyset cursor. `GET /campaigns/{id}` also
+> resolves the source idea's public slug and hides non-public campaigns from
+> anonymous callers. The web campaign index and detail route now read them; the
+> detail page still omits sections the API does not publish (updates, receipts,
+> FAQ entities) rather than borrowing fixtures.
 
-Notes for whoever implements this:
+`GET /campaigns` and `GET /campaigns/:idOrSlug` now implement the read half of
+`docs/campaign-data-contract.md` §2. Fixtures remain only for deployments with no
+API configured; an API-backed deployment never falls back to them.
+
+Implementation notes:
 
 - **Milestone state is derived, not stored** — there is no status column on `Milestone`; it comes from
   the latest `MilestoneClaim.status` plus `objectionWindowEndsAt`. The web app derives it in a pure
