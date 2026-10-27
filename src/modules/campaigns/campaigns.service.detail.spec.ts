@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { CacheService } from '../../common/cache/cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { VerificationService } from '../kyc/verification.service';
 import { CampaignsService } from './campaigns.service';
 
 /**
@@ -17,6 +18,7 @@ describe('CampaignsService.get', () => {
   const prisma = {
     campaign: { findFirst, findUnique },
   } as unknown as PrismaService;
+  const verification = {} as unknown as VerificationService;
 
   function campaign(overrides: Record<string, unknown> = {}) {
     return {
@@ -49,7 +51,7 @@ describe('CampaignsService.get', () => {
     findUnique.mockResolvedValue(campaign());
 
     // #when
-    const result = await new CampaignsService(prisma).get('campaign-1');
+    const result = await new CampaignsService(prisma, verification).get('campaign-1');
 
     // #then
     expect(findUnique).toHaveBeenCalledWith(
@@ -69,7 +71,7 @@ describe('CampaignsService.get', () => {
     findFirst.mockResolvedValue(campaign());
 
     // #when
-    const result = await new CampaignsService(prisma).get('stock-tracker');
+    const result = await new CampaignsService(prisma, verification).get('stock-tracker');
 
     // #then
     expect(findFirst).toHaveBeenCalledWith(
@@ -83,7 +85,7 @@ describe('CampaignsService.get', () => {
   it('returns the same 404 for a draft and an unknown id to an anonymous caller', async () => {
     // #given
     findUnique.mockResolvedValueOnce(campaign({ status: 'DRAFT' }));
-    const service = new CampaignsService(prisma);
+    const service = new CampaignsService(prisma, verification);
 
     // #when / #then
     await expect(service.get('campaign-1')).rejects.toBeInstanceOf(
@@ -105,7 +107,7 @@ describe('CampaignsService.get', () => {
     findUnique.mockResolvedValue(campaign({ status: 'DRAFT' }));
 
     // #when
-    const result = await new CampaignsService(prisma).get(
+    const result = await new CampaignsService(prisma, verification).get(
       'campaign-1',
       'creator-1',
     );
@@ -120,7 +122,7 @@ describe('CampaignsService.get', () => {
 
     // #when / #then
     await expect(
-      new CampaignsService(prisma).get('campaign-1', 'someone-else'),
+      new CampaignsService(prisma, verification).get('campaign-1', 'someone-else'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -136,7 +138,7 @@ describe('CampaignsService.get', () => {
         loader: () => Promise<unknown>,
       ) => loader(),
     );
-    const service = new CampaignsService(prisma, {
+    const service = new CampaignsService(prisma, verification, {
       getOrSet,
     } as unknown as CacheService);
 
@@ -156,7 +158,7 @@ describe('CampaignsService.get', () => {
     // #given
     findUnique.mockResolvedValue(campaign());
     const getOrSet = jest.fn();
-    const service = new CampaignsService(prisma, {
+    const service = new CampaignsService(prisma, verification, {
       getOrSet,
     } as unknown as CacheService);
 

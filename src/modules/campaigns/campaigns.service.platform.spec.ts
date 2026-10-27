@@ -1,5 +1,6 @@
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { VerificationService } from '../kyc/verification.service';
 import { CampaignsService } from './campaigns.service';
 
 /**
@@ -17,6 +18,7 @@ describe('CampaignsService.getPlatformSummary', () => {
     idea: { count: ideaCount },
     campaign: { count: campaignCount },
   } as unknown as PrismaService;
+  const verification = {} as unknown as VerificationService;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -29,7 +31,7 @@ describe('CampaignsService.getPlatformSummary', () => {
       .mockResolvedValueOnce(12) // ACTIVE
       .mockResolvedValueOnce(34) // COMPLETED
       .mockResolvedValueOnce(58); // public total
-    const service = new CampaignsService(prisma);
+    const service = new CampaignsService(prisma, verification);
 
     // #when
     const summary = await service.getPlatformSummary();
@@ -48,7 +50,7 @@ describe('CampaignsService.getPlatformSummary', () => {
     // #given
     ideaCount.mockResolvedValue(0);
     campaignCount.mockResolvedValue(0);
-    const service = new CampaignsService(prisma);
+    const service = new CampaignsService(prisma, verification);
 
     // #when
     await service.getPlatformSummary();
@@ -66,7 +68,7 @@ describe('CampaignsService.getPlatformSummary', () => {
     // #given
     ideaCount.mockResolvedValue(0);
     campaignCount.mockResolvedValue(0);
-    const service = new CampaignsService(prisma);
+    const service = new CampaignsService(prisma, verification);
 
     // #when
     await service.getPlatformSummary();
@@ -85,7 +87,7 @@ describe('CampaignsService.getPlatformSummary', () => {
     // #given
     ideaCount.mockResolvedValue(1);
     campaignCount.mockResolvedValue(1);
-    const service = new CampaignsService(prisma);
+    const service = new CampaignsService(prisma, verification);
 
     // #when
     const summary = await service.getPlatformSummary();
@@ -111,7 +113,7 @@ describe('CampaignsService.getPlatformSummary', () => {
       totalCampaigns: 8,
     };
     const getOrSet = jest.fn().mockResolvedValue(cached);
-    const service = new CampaignsService(prisma, {
+    const service = new CampaignsService(prisma, verification, {
       getOrSet,
     } as unknown as CacheService);
 
