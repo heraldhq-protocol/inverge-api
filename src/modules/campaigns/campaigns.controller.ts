@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -12,8 +14,10 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
+import { ApplicationFeeService } from './application-fee.service';
 import { CampaignsService } from './campaigns.service';
 import {
   ListCampaignsQueryDto,
@@ -23,7 +27,10 @@ import {
 @ApiTags('campaigns')
 @Controller('campaigns')
 export class CampaignsController {
-  constructor(private readonly campaigns: CampaignsService) {}
+  constructor(
+    private readonly campaigns: CampaignsService,
+    private readonly applicationFee: ApplicationFeeService,
+  ) {}
 
   @Get()
   @UseGuards(OptionalPrivyAuthGuard)
@@ -40,6 +47,21 @@ export class CampaignsController {
   @ApiOperation({ summary: 'Get campaign details by ID' })
   get(@Param('id') id: string, @CurrentUser() user?: AuthenticatedUser) {
     return this.campaigns.get(id, user?.id);
+  }
+
+  @Post(':id/application-fee')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @UseGuards(PrivyAuthGuard)
+  @RateLimit('financial')
+  @ApiOperation({
+    summary: 'Start or resume the FR-311 application-fee charge for a draft',
+  })
+  applicationFeeCharge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.applicationFee.getOrCreate(user.id, id);
   }
 
   @Post(':id/submit')

@@ -773,6 +773,9 @@ model FlatFeeCharge {
   currency     String               @default("NGN")
   processorRef String               @unique
   status       FlatFeeStatus        @default(PENDING)
+  // The provider's hosted checkout URL. Stored so a creator can resume an
+  // abandoned application-fee payment without creating a second charge.
+  redirectUrl  String?
   metadata     Json? // carries e.g. { ideaId, tier } so the webhook can fulfil without a back-dependency
   boost        IdeaBoost?
   createdAt    DateTime             @default(now())
