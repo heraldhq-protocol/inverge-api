@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import { base58ToHex } from '../../common/utils/base58.util';
@@ -13,6 +13,31 @@ import {
 const SOLANA_PUBLIC_KEY_BYTES = 32;
 /** Tolerated clock drift when rejecting a token whose `iat` is in the future. */
 const FUTURE_IAT_TOLERANCE_SECONDS = 60;
+
+/**
+ * Prefix of a rejected token's routing claims, for diagnostics only.
+ *
+ * Decoded without verification and never trusted — logging the *observed*
+ * `iss`/`kid` next to the expected ones turns "401 on every login" into a
+ * one-line answer. The token itself and the PII claims are never printed.
+ */
+function describeUnverifiedToken(token: string): string {
+  try {
+    const [header, payload] = token.split('.');
+    const head = JSON.parse(Buffer.from(header, 'base64url').toString()) as {
+      alg?: string;
+      kid?: string;
+    };
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as {
+      iss?: string;
+      aud?: string | string[];
+    };
+    const aud = Array.isArray(claims.aud) ? claims.aud.join(',') : claims.aud;
+    return `observed alg=${head.alg} kid=${head.kid} iss=${claims.iss} aud=${aud}`;
+  } catch {
+    return 'observed token=unparsable';
+  }
+}
 
 /** Wallet entry carried in a Web3Auth identity token. */
 interface TokenWalletClaim {
@@ -29,6 +54,60 @@ type Web3AuthClaims = JWTPayload & {
   wallets?: TokenWalletClaim[];
 };
 
+/** One token family: the issuer claim, and the JWKS that publishes its keys. */
+export interface IdentityIssuer {
+  issuer: string;
+  jwksUrl: string;
+}
+
+/**
+ * The social-login families MetaMask Embedded Wallets has shipped. They sign
+ * with disjoint key sets, and the pair on docs.metamask.io is not the one the
+ * current SDK uses: v11 (`@web3auth/modal` >= 11, `getAuthTokenInfo()`) issues
+ * `iss: "web3auth.io"` against the citadel JWKS.
+ *
+ * External-wallet tokens (`iss: https://authjs.web3auth.io`) are deliberately
+ * absent: they attest an on-chain address rather than an app key, which is a
+ * different identity model from the one this service links.
+ */
+const SOCIAL_TOKEN_FAMILIES: readonly IdentityIssuer[] = [
+  {
+    issuer: 'web3auth.io',
+    jwksUrl: 'https://api.web3auth.io/citadel-service/.well-known/jwks.json',
+  },
+  {
+    issuer: 'https://api-auth.web3auth.io',
+    jwksUrl: 'https://api-auth.web3auth.io/jwks',
+  },
+];
+
+/**
+ * Accepted issuers, configured pair first.
+ *
+ * A deployment whose env still pins the pre-v11 pair — or whose SDK is upgraded
+ * across the family boundary — verifies against the other family instead of
+ * failing every login. `audience`, `alg` and expiry are unchanged, so this only
+ * widens which Web3Auth endpoint may have signed the token, never who it is for.
+ *
+ * A family is only skipped when the *whole pair* matches. Matching on either
+ * field alone would let a half-overridden config — the v11 issuer left default
+ * with `WEB3AUTH_JWKS_URL` pointed at the pre-v11 JWKS — silently drop the
+ * citadel family, so both candidates query the same key set, neither owns the
+ * kid, and every login 401s with no hint as to why.
+ */
+export function resolveIdentityIssuers(
+  configured: IdentityIssuer,
+  families: readonly IdentityIssuer[] = SOCIAL_TOKEN_FAMILIES,
+): IdentityIssuer[] {
+  return [
+    configured,
+    ...families.filter(
+      (family) =>
+        family.issuer !== configured.issuer || family.jwksUrl !== configured.jwksUrl,
+    ),
+  ];
+}
+
 // Web3Auth (MetaMask Embedded Wallets) adapter. Verifies the ES256 identity
 // token against the provider's JWKS — no vendor SDK, so swapping providers stays
 // a one-file change. Both `issuer` and `audience` are always checked: all
@@ -36,16 +115,32 @@ type Web3AuthClaims = JWTPayload & {
 // for another project would verify.
 @Injectable()
 export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
-  private jwks?: ReturnType<typeof createRemoteJWKSet>;
+  private readonly jwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-  constructor(private readonly config: ConfigService<Env, true>) {}
+  constructor(
+    private readonly config: ConfigService<Env, true>,
+    // `@Optional()` is required: without it Nest reads the parameter type (Array)
+    // as a provider token and refuses to boot the module. Defaults to the
+    // configured pair plus the other known family; a test or deployment may pin it.
+    @Optional()
+    private readonly issuers?: readonly IdentityIssuer[],
+  ) {}
 
-  private getJwks(): ReturnType<typeof createRemoteJWKSet> {
-    if (!this.jwks) {
-      const url = this.config.get('WEB3AUTH_JWKS_URL', { infer: true });
-      this.jwks = createRemoteJWKSet(new URL(url));
+  private jwksFor(url: string): ReturnType<typeof createRemoteJWKSet> {
+    let set = this.jwks.get(url);
+    if (!set) {
+      set = createRemoteJWKSet(new URL(url));
+      this.jwks.set(url, set);
     }
-    return this.jwks;
+    return set;
+  }
+
+  private candidateIssuers(): IdentityIssuer[] {
+    if (this.issuers) return [...this.issuers];
+    return resolveIdentityIssuers({
+      issuer: this.config.get('WEB3AUTH_TOKEN_ISSUER', { infer: true }),
+      jwksUrl: this.config.get('WEB3AUTH_JWKS_URL', { infer: true }),
+    });
   }
 
   private getClientId(): string {
@@ -63,26 +158,41 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
     // Resolve configuration before the try so a missing client id or malformed
     // JWKS URL surfaces as itself rather than "invalid token".
     const audience = this.getClientId();
-    const jwks = this.getJwks();
-    const issuer = this.config.get('WEB3AUTH_TOKEN_ISSUER', { infer: true });
+    const candidates = this.candidateIssuers();
 
-    let payload: Web3AuthClaims;
-    try {
-      const verified = await jwtVerify(token, jwks, {
-        algorithms: ['ES256'],
-        issuer,
-        audience,
-      });
-      payload = verified.payload as Web3AuthClaims;
-    } catch (error) {
-      // Diagnostics stay server-side and never include the token. `jose` names
-      // the failed check (issuer, audience, expiry, signature), which is the
-      // difference between a configuration mistake and a forged token.
-      if (process.env.NODE_ENV !== 'production') {
+    let payload: Web3AuthClaims | undefined;
+    const failures: string[] = [];
+    for (const candidate of candidates) {
+      try {
+        const verified = await jwtVerify(token, this.jwksFor(candidate.jwksUrl), {
+          algorithms: ['ES256'],
+          issuer: candidate.issuer,
+          audience,
+        });
+        payload = verified.payload as Web3AuthClaims;
+        if (candidate !== candidates[0]) {
+          console.info(
+            `[web3auth] identity token verified with issuer=${candidate.issuer}, not the configured primary`,
+          );
+        }
+        break;
+      } catch (error) {
         const detail =
           error instanceof Error ? `${error.name}: ${error.message}` : 'unknown';
-        console.warn('[web3auth] identity token rejected', detail);
+        failures.push(`${candidate.issuer} (${candidate.jwksUrl}) -> ${detail}`);
       }
+    }
+
+    if (!payload) {
+      // Diagnostics stay server-side and never include the token: the jose
+      // failure names the check that failed, and the observed iss/kid/aud show
+      // which token family actually arrived. Logged in production too — a bare
+      // 401 otherwise leaves the deploy with no way to tell which side is wrong.
+      // Audience is the public client id; the token itself is never printed.
+      console.warn(
+        `[web3auth] identity token rejected; tried ${failures.join(' | ')}; ` +
+          `expected audience=${audience}; ${describeUnverifiedToken(token)}`,
+      );
       throw new UnauthorizedException('Invalid Web3Auth identity token');
     }
 
