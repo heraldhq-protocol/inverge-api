@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import type { Env } from '../../config/env.validation';
+import { assertStubProviderAllowed } from '../stub-guard';
 import {
   AmlOutcome,
   AmlScreeningParams,
@@ -30,9 +33,14 @@ export class StubKycAdapter implements KycProviderPort {
     { status: KycOutcome; aml: AmlOutcome | null }
   >();
 
+  constructor(
+    @Optional() private readonly config?: ConfigService<Env, true>,
+  ) {}
+
   async startVerification(
     params: StartVerificationParams,
   ): Promise<StartVerificationResult> {
+    assertStubProviderAllowed('KYC', this.config);
     const providerRef = `stubkyc_${params.purpose}_${randomUUID()}`;
     const url = new URL('http://localhost:3000/kyc/dev-complete');
     url.searchParams.set('ref', providerRef);
@@ -47,6 +55,7 @@ export class StubKycAdapter implements KycProviderPort {
   }
 
   async getDecision(providerRef: string): Promise<KycDecision> {
+    assertStubProviderAllowed('KYC', this.config);
     const runsAml = refRequiresAml(providerRef);
     const isBusiness = providerRef.includes('BUSINESS_VERIFICATION');
     const done = this.completed.get(providerRef);
@@ -85,6 +94,7 @@ export class StubKycAdapter implements KycProviderPort {
   }
 
   parseWebhook(rawBody: string): KycWebhookEvent | null {
+    assertStubProviderAllowed('KYC', this.config);
     let evt: any;
     try {
       evt = JSON.parse(rawBody);
@@ -120,6 +130,7 @@ export class StubKycAdapter implements KycProviderPort {
   }
 
   async screenAml(params: AmlScreeningParams): Promise<AmlScreeningResult> {
+    assertStubProviderAllowed('KYC', this.config);
     const status = keywordAml(params.fullName);
     const hit = status !== 'CLEAR';
     return {

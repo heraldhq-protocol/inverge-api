@@ -97,6 +97,14 @@ describe('Web3AuthWalletAdapter', () => {
     });
   });
 
+  it('rejects a stub-format token when the real provider is selected', async () => {
+    const { adapter } = await setup();
+
+    await expect(
+      adapter.verifyAccessToken('stub:attacker:attacker@example.test'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('rejects a token minted for a different client', async () => {
     const { adapter, privateKey } = await setup();
     const token = await mint(privateKey, {}, { audience: 'someone-else' });

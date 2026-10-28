@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import type { Env } from '../../config/env.validation';
+import { assertStubProviderAllowed } from '../stub-guard';
 import {
   CreateChargeInput,
   CreateChargeResult,
@@ -11,7 +14,12 @@ import {
 // trusts a plain JSON body { processorRef, status } (no signature) for local testing.
 @Injectable()
 export class StubFlatFeeAdapter implements FlatFeePaymentPort {
+  constructor(
+    @Optional() private readonly config?: ConfigService<Env, true>,
+  ) {}
+
   async createCharge(input: CreateChargeInput): Promise<CreateChargeResult> {
+    assertStubProviderAllowed('flat-fee', this.config);
     const processorRef = `stub_${randomUUID()}`;
     return {
       processorRef,
@@ -20,6 +28,9 @@ export class StubFlatFeeAdapter implements FlatFeePaymentPort {
   }
 
   parseWebhook(rawBody: string): FlatFeeWebhookEvent | null {
+    // An unsigned success body is the whole point of the offline adapter; it must
+    // never be accepted by a production process (audit F-01).
+    assertStubProviderAllowed('flat-fee', this.config);
     try {
       const evt = JSON.parse(rawBody);
       if (!evt?.processorRef) return null;

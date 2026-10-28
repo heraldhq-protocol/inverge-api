@@ -72,6 +72,11 @@ export class KycController {
 
   // Dev-only shortcut (KYC_PROVIDER=stub): simulates the provider completing a session so the
   // offline flow can be exercised end-to-end without a browser or real callback.
+  //
+  // F-01: this route approves identity without a signature, so it must not exist in
+  // production even if a future provider selection change leaves the stub reachable.
+  // A non-disclosing 404 is deliberate: an attacker cannot distinguish this route from
+  // any other unknown path.
   @Get('dev-complete')
   devComplete(
     @Query('ref') ref: string,
@@ -79,7 +84,10 @@ export class KycController {
     @Query('status') status?: string,
     @Query('aml') aml?: string,
   ) {
-    if (this.config.get('KYC_PROVIDER', { infer: true }) !== 'stub') {
+    if (
+      this.config.get('NODE_ENV', { infer: true }) === 'production' ||
+      this.config.get('KYC_PROVIDER', { infer: true }) !== 'stub'
+    ) {
       throw new NotFoundException();
     }
     const body = JSON.stringify({

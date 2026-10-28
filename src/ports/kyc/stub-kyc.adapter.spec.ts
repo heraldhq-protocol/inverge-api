@@ -1,7 +1,53 @@
+import type { ConfigService } from '@nestjs/config';
+import type { Env } from '../../config/env.validation';
 import { StubKycAdapter } from './stub-kyc.adapter';
+
+const configFor = (nodeEnv: Env['NODE_ENV']) =>
+  ({ get: () => nodeEnv }) as unknown as ConfigService<Env, true>;
 
 describe('StubKycAdapter', () => {
   const a = new StubKycAdapter();
+
+  it('refuses every identity operation when the validated environment is production', async () => {
+    const adapter = new StubKycAdapter(configFor('production'));
+
+    await expect(
+      adapter.startVerification({ vendorData: 'u1', purpose: 'IDEA_VALIDATION' }),
+    ).rejects.toThrow(/stub KYC provider is development\/test-only/i);
+    await expect(adapter.getDecision('stubkyc_IDEA_VALIDATION_x')).rejects.toThrow(
+      /production/i,
+    );
+    expect(() =>
+      adapter.parseWebhook(JSON.stringify({ providerRef: 'r', status: 'VERIFIED' })),
+    ).toThrow(/production/i);
+    await expect(adapter.screenAml({ fullName: 'Jane Doe' })).rejects.toThrow(
+      /production/i,
+    );
+  });
+
+  it('refuses when NODE_ENV=production is only in process.env', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(
+        new StubKycAdapter().startVerification({
+          vendorData: 'u1',
+          purpose: 'IDEA_VALIDATION',
+        }),
+      ).rejects.toThrow(/production/i);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('remains usable in test and development', async () => {
+    await expect(
+      new StubKycAdapter(configFor('test')).startVerification({
+        vendorData: 'u1',
+        purpose: 'IDEA_VALIDATION',
+      }),
+    ).resolves.toMatchObject({ providerRef: expect.stringContaining('IDEA_VALIDATION') });
+  });
 
   it('encodes the purpose in the ref and returns a dev URL', async () => {
     const r = await a.startVerification({ vendorData: 'u1', purpose: 'CAMPAIGN_CREATOR' });
