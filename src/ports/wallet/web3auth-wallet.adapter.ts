@@ -14,6 +14,31 @@ const SOLANA_PUBLIC_KEY_BYTES = 32;
 /** Tolerated clock drift when rejecting a token whose `iat` is in the future. */
 const FUTURE_IAT_TOLERANCE_SECONDS = 60;
 
+/**
+ * Prefix of a rejected token's routing claims, for diagnostics only.
+ *
+ * Decoded without verification and never trusted — logging the *observed*
+ * `iss`/`kid` next to the expected ones turns "401 on every login" into a
+ * one-line answer. The token itself and the PII claims are never printed.
+ */
+function describeUnverifiedToken(token: string): string {
+  try {
+    const [header, payload] = token.split('.');
+    const head = JSON.parse(Buffer.from(header, 'base64url').toString()) as {
+      alg?: string;
+      kid?: string;
+    };
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as {
+      iss?: string;
+      aud?: string | string[];
+    };
+    const aud = Array.isArray(claims.aud) ? claims.aud.join(',') : claims.aud;
+    return `observed alg=${head.alg} kid=${head.kid} iss=${claims.iss} aud=${aud}`;
+  } catch {
+    return 'observed token=unparsable';
+  }
+}
+
 /** Wallet entry carried in a Web3Auth identity token. */
 interface TokenWalletClaim {
   public_key?: string; // social logins (app key, hex)
@@ -92,7 +117,8 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
           ? ' (v11: iss=web3auth.io + citadel JWKS; pre-v11: https://api-auth.web3auth.io)'
           : '';
       console.warn(
-        `[web3auth] identity token rejected (${detail}); expected issuer=${issuer} audience=${audience}${family}`,
+        `[web3auth] identity token rejected (${detail}); expected issuer=${issuer} audience=${audience}; ` +
+          `${describeUnverifiedToken(token)}${family}`,
       );
       throw new UnauthorizedException('Invalid Web3Auth identity token');
     }
