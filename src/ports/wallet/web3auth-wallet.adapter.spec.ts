@@ -1,7 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { UnauthorizedException } from '@nestjs/common';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
-import { Web3AuthWalletAdapter } from './web3auth-wallet.adapter';
+import {
+  resolveIdentityIssuers,
+  Web3AuthWalletAdapter,
+} from './web3auth-wallet.adapter';
 
 const CLIENT_ID = 'inverge-test-client';
 const ISSUER = 'https://api-auth.web3auth.io';
@@ -51,7 +54,8 @@ async function setup(overrides: ConfigOverrides = {}) {
   };
 
   const config = { get: jest.fn((key: string) => values[key]) };
-  const adapter = new Web3AuthWalletAdapter(config as never);
+  // Pin to the loopback family so no test ever dials the real JWKS endpoints.
+  const adapter = new Web3AuthWalletAdapter(config as never, [{ issuer: ISSUER, jwksUrl }]);
 
   return { adapter, privateKey };
 }
@@ -196,8 +200,88 @@ describe('Web3AuthWalletAdapter', () => {
     await expect(adapter.verifyAccessToken(token)).rejects.toThrow('no stable subject');
   });
 
+  it('falls back to the other known family when the configured one does not own the key', async () => {
+    // A deployment still pinning the pre-v11 pair, receiving a v11 token: the
+    // configured JWKS has no matching kid, so the second family must verify it.
+    const { publicKey: otherKey } = await generateKeyPair('ES256');
+    const primaryJwks = await serveJwks({
+      ...(await exportJWK(otherKey)),
+      kid: 'pre-v11-key',
+      alg: 'ES256',
+      use: 'sig',
+    });
+    const { publicKey, privateKey } = await generateKeyPair('ES256');
+    const fallbackJwks = await serveJwks({
+      ...(await exportJWK(publicKey)),
+      kid: 'test-key',
+      alg: 'ES256',
+      use: 'sig',
+    });
+
+    const values: Record<string, string> = {
+      WEB3AUTH_CLIENT_ID: CLIENT_ID,
+      WEB3AUTH_JWKS_URL: primaryJwks,
+      WEB3AUTH_TOKEN_ISSUER: 'https://api-auth.web3auth.io',
+    };
+    const config = { get: jest.fn((key: string) => values[key]) };
+    const adapter = new Web3AuthWalletAdapter(config as never, [
+      { issuer: 'https://api-auth.web3auth.io', jwksUrl: primaryJwks },
+      { issuer: 'web3auth.io', jwksUrl: fallbackJwks },
+    ]);
+
+    const token = await mint(privateKey, {}, { issuer: 'web3auth.io' });
+
+    await expect(adapter.verifyAccessToken(token)).resolves.toMatchObject({
+      providerUserId: 'google|user-1',
+    });
+  });
+
+  it('still rejects a token signed for another audience, whichever family matches', async () => {
+    const { adapter, privateKey } = await setup();
+    const token = await mint(privateKey, {}, { audience: 'someone-else' });
+
+    await expect(adapter.verifyAccessToken(token)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
   it('does not fetch a wallet server-side', async () => {
     const { adapter } = await setup();
     await expect(adapter.getEmbeddedWallet()).resolves.toBeNull();
+  });
+});
+
+describe('resolveIdentityIssuers', () => {
+  const V11 = {
+    issuer: 'web3auth.io',
+    jwksUrl: 'https://api.web3auth.io/citadel-service/.well-known/jwks.json',
+  };
+  const PRE_V11 = {
+    issuer: 'https://api-auth.web3auth.io',
+    jwksUrl: 'https://api-auth.web3auth.io/jwks',
+  };
+
+  it('tries the configured pair first', () => {
+    expect(resolveIdentityIssuers(PRE_V11)[0]).toBe(PRE_V11);
+    expect(resolveIdentityIssuers(V11)[0]).toBe(V11);
+  });
+
+  it('adds the other known family so a stale config cannot reject every login', () => {
+    expect(resolveIdentityIssuers(PRE_V11).map((entry) => entry.issuer)).toEqual([
+      PRE_V11.issuer,
+      V11.issuer,
+    ]);
+  });
+
+  it('never repeats the configured pair', () => {
+    const issuers = resolveIdentityIssuers(V11);
+    expect(issuers).toHaveLength(2);
+    expect(new Set(issuers.map((entry) => entry.jwksUrl)).size).toBe(issuers.length);
+  });
+
+  it('keeps a deployment-specific issuer ahead of the known families', () => {
+    const custom = { issuer: 'https://id.example.test', jwksUrl: 'https://id.example.test/jwks' };
+    expect(resolveIdentityIssuers(custom)[0]).toBe(custom);
+    expect(resolveIdentityIssuers(custom)).toHaveLength(3);
   });
 });
