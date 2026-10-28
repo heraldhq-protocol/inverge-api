@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import { base58ToHex } from '../../common/utils/base58.util';
@@ -113,7 +113,10 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
 
   constructor(
     private readonly config: ConfigService<Env, true>,
-    /** Pin the accepted families; defaults to the configured pair plus the other known one. */
+    // `@Optional()` is required: without it Nest reads the parameter type (Array)
+    // as a provider token and refuses to boot the module. Defaults to the
+    // configured pair plus the other known family; a test or deployment may pin it.
+    @Optional()
     private readonly issuers?: readonly IdentityIssuer[],
   ) {}
 
