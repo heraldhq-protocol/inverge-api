@@ -1,6 +1,7 @@
 # Campaign review sprint (API)
 
-Status: implementation in progress. Verification results are appended in section 8.
+Status: implementation complete for the API; the web wizard now calls the fee and
+submit routes. Verification results are appended in section 8.
 
 ## 1. Why
 
@@ -12,10 +13,13 @@ product audit records them as missing or blocked:
 - no Prisma state distinguishes `IN_REVIEW`, `CHANGES_REQUESTED`, `APPROVED` and
   `REJECTED`;
 - FR-103 (KYC before submission) and FR-311 (application fee before entering the
-  queue) are not enforced by `POST /campaigns/:id/submit`.
+  queue) were not enforced by `POST /campaigns/:id/submit`.
 
-This sprint closes those gaps in the API. It does not attempt to connect the web
-preview to the API: the web has no session client or server-side data layer yet.
+This sprint closed those gaps in the API. Phase B added the missing
+application-fee initiation route and wired the creator wizard to it, so the
+submit gate can be satisfied without a manually fabricated charge. The web never
+creates or prices a charge itself; it only asks the API to start or resume the
+one charge a campaign may have.
 
 ## 2. Scope
 
@@ -44,20 +48,29 @@ preview to the API: the web has no session client or server-side data layer yet.
      linked to the campaign.
    The charge id is accepted in the submit body when the campaign has not linked
    one yet. Re-submission after a change request reuses the same paid charge.
-6. **Tests and docs.** Pure rule tests, submission-gate tests, and an e2e suite
-   against Postgres covering RBAC, validation, transitions, audit rows and
-   double-decision conflicts.
+6. **Application-fee initiation (Phase B).**
+   `POST /campaigns/:id/application-fee` starts or resumes the one charge a
+   draft may have. It is authenticated, owner-scoped, verification-gated, and
+   idempotent; the charge carries `metadata.campaignId` before the provider's
+   checkout URL is returned. The draft projection exposes the amount, currency,
+   status, and a resumable redirect URL.
+7. **Tests and docs.** Pure rule tests, submission-gate tests, an application-fee
+   unit suite, and e2e suites against Postgres covering RBAC, validation,
+   transitions, audit rows, double-decision conflicts, and the
+   draft -> fee -> webhook -> submit path.
 
 ## 3. Non-goals
 
 - Publication: no transition to `ACTIVE`, no `termsHash`, no on-chain event.
   `CampaignStatus` stays `IN_REVIEW` after approval until a publication flow
   exists. The API contract says so explicitly.
-- Payment initiation: no Paystack charge creation endpoint is added. The gate
-  verifies an existing successful charge; fabricating a charge is never allowed.
+- Payment initiation: the API starts a charge through the configured
+  `FLATFEE_PROVIDER` port, but production provider hardening and live Paystack
+  certification remain operational work. The API never accepts an amount or a
+  provider reference from the browser.
 - KYC provider work, notifications, escrow, disputes, and the remainder of the
   admin workspace.
-- Connecting `inverge-web` to the API.
+- Production web deployment and live payment reconciliation.
 
 ## 4. Decisions
 
@@ -99,6 +112,42 @@ Failure: 403 not the creator; 400 with `{ message, blockers }` when eligibility
 or fee checks fail; 409 when the current state is not `DRAFT` or
 `CHANGES_REQUESTED`.
 
+### `POST /campaigns/:id/application-fee`
+
+Auth: creator. Body: none. Success: `200` with
+`{ amount, chargeId, currency, redirectUrl, status, alreadyPaid }`.
+`redirectUrl` is the provider checkout URL for a pending charge, or `null` when
+the charge already succeeded. Failure: 403 not the creator; 400 with
+`{ message, code, blockers }` when verification is incomplete; 409 when the
+campaign is not editable, when a pending charge has no resumable URL, or when a
+concurrent request changed the linked charge.
+
+Idempotency is structural: `Campaign.applicationFeeChargeId` is unique. An
+existing `PENDING` charge is returned with its stored URL; an existing
+`SUCCEEDED` charge is returned with `alreadyPaid: true`; a losing concurrent
+charge is voided before the winner is returned. A campaign without a draft
+cannot be charged. The fee is non-refundable and is only created after the
+creator passes the same verification gate used at submission.
+
+The draft response (`GET /campaigns/:id/draft`, and the create/update
+responses) includes:
+
+```json
+{
+  "applicationFee": {
+    "amount": 10000,
+    "chargeId": "fee_...",
+    "currency": "NGN",
+    "redirectUrl": "https://checkout.example/...",
+    "status": "NONE | PENDING | SUCCEEDED | FAILED"
+  }
+}
+```
+
+`NONE` uses the configured price with `chargeId` and `redirectUrl` null, so the
+wizard can show the cost before a charge exists. The price comes from the
+`applicationFeeNGN` platform parameter, falling back to 10000 NGN.
+
 ### `GET /admin/campaigns`
 
 Auth: admin. Query: `reviewStatus` (default `IN_REVIEW`, or `ALL`), `skip`,
@@ -135,12 +184,18 @@ model CampaignReviewEvent {
 
 `Campaign` gains `reviewStatus`, `submittedAt`, `reviewedAt`, `reviewedById`,
 `reviewReason` and `reviewEvents`; `applicationFeeChargeId` becomes unique.
+`FlatFeeCharge` gains nullable `redirectUrl` so an abandoned checkout can be
+resumed without creating a second non-refundable charge.
 
 ## 7. Acceptance criteria
 
 - A non-admin cannot read the queue or decide a review.
 - A campaign cannot enter the queue without funds eligibility and a successful,
   owned application fee; the response names the blockers.
+- An eligible draft can start exactly one non-refundable application-fee charge;
+  a second request resumes the pending checkout or returns the succeeded charge.
+- A charge is never created for an unverified creator, and a charge cannot be
+  claimed by a second campaign.
 - Valid approaches: `IN_REVIEW` -> `APPROVED`, `IN_REVIEW` ->
   `CHANGES_REQUESTED`, `IN_REVIEW` -> `REJECTED`; every decision appends exactly
   one event with actor and reason.
@@ -174,13 +229,34 @@ stub auth identities.
 
 - `campaign-review.rules.spec.ts` and `campaign-review.preconditions.spec.ts` -
   19 unit tests over the transition rules, reason bounds, and FR-103/FR-311 gates.
+- `application-fee.service.spec.ts` - the fee lifecycle: verification refusal
+  before a charge is created, pending-charge resume, succeeded-charge reuse,
+  concurrent-link retirement, and metadata/campaign binding.
 - `campaign-review.e2e-spec.ts` - 10 tests: RBAC denial, submit gates with named
   blockers, application-fee linkage and reuse across resubmission, queue/detail
   privacy (no `kycProviderRef`/`kybProviderRef`/`processorRef`), reason
   validation, request-changes then resubmit, approve-does-not-publish,
   double-decision 409, KYC-revocation 422, terminal rejection, and 404s.
+- `application-fee.e2e-spec.ts` - 3 tests covering draft -> application-fee
+  charge -> stub webhook -> submit, owner scoping, and the already-paid response.
 
-### 8.3 Adjacent repairs required to make the gate meaningful
+### 8.3 Phase B verification
+
+Date: 2026-10-28. Focused checks only; the full suite limitations in 8.4 still
+apply.
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `application-fee.service.spec.ts` | **Passed** | 3 suites / 30 focused tests including the fee, preconditions and flat-fee service specs |
+| `application-fee.e2e-spec.ts` | **Passed 3/3** | Draft -> fee -> unsigned stub webhook -> submit |
+| `campaign-review.e2e-spec.ts` | **Passed 10/10** | Submission gates, fee linkage, review transitions |
+| `tsc --noEmit` | **Passed** | API typecheck |
+| `nest build` | **Passed** | API build |
+| `emit-openapi.ts --check` | **Passed after regeneration** | The fee route and fee projection are in `docs/api/openapi.json` |
+| Web focused tests | **Passed 85/85** | `application-fee`, `draft-api`, and `wizard` suites |
+| Web `tsc --noEmit` | **Passed** | Includes the BFF fee/submit routes and wizard integration |
+
+### 8.4 Adjacent repairs required to make the gate meaningful
 
 Pre-existing defects that this sprint's auth change surfaced or that blocked the
 suites:
@@ -200,7 +276,7 @@ suites:
 - `admin.e2e-spec.ts` used identities that collided under the stub and is now
   run-unique.
 
-### 8.4 Known limitations
+### 8.5 Known limitations
 
 - Redis is not running; BullMQ connection errors are logged and no queued work is
   processed.

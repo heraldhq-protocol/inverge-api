@@ -271,6 +271,11 @@ payload, and a demoted creator projects as their current tier with no marker of 
 `POST /ideas/:id/convert` creates a `DRAFT` that neither the creator nor anyone else can then read,
 so the campaign builder's last step has nowhere to go and the created draft is invisible.
 
+**Status 2026-10-28:** `POST /campaigns/:id/submit` and
+`POST /campaigns/:id/application-fee` are live and wired through the web BFF; the
+wizard can pay the fee and submit the saved draft. Owner visibility through
+`GET /campaigns?mine=true` remains the remaining piece of this gap.
+
 The web builder is built to stop cleanly at a saved draft, so this is not blocking — it is the difference
 between a flow that ends in a dead end and one that ends in a queue.
 
