@@ -273,6 +273,20 @@ describe('resolveIdentityIssuers', () => {
     ]);
   });
 
+  it('keeps the v11 family when only one half of the pair is overridden', () => {
+    // Half-overridden config: v11 issuer left at its default, JWKS pointed at the
+    // pre-v11 endpoint. Both candidates would otherwise share that key set, no
+    // candidate would own a v11 kid, and every login would 401.
+    const halfOverridden = {
+      issuer: V11.issuer,
+      jwksUrl: PRE_V11.jwksUrl,
+    };
+
+    expect(
+      resolveIdentityIssuers(halfOverridden).map((entry) => entry.jwksUrl),
+    ).toContain(V11.jwksUrl);
+  });
+
   it('never repeats the configured pair', () => {
     const issuers = resolveIdentityIssuers(V11);
     expect(issuers).toHaveLength(2);
