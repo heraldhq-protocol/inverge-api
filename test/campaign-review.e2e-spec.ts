@@ -47,6 +47,7 @@ describe('Campaign review (e2e)', () => {
 
   async function createFee(
     label: string,
+    campaignId: string,
     overrides: {
       purpose?: 'APPLICATION_FEE' | 'BOOST';
       status?: 'PENDING' | 'SUCCEEDED' | 'FAILED';
@@ -61,7 +62,7 @@ describe('Campaign review (e2e)', () => {
         currency: 'NGN',
         processorRef: `fee-${RUN}-${label}`,
         status: overrides.status ?? 'SUCCEEDED',
-        metadata: overrides.metadata,
+        metadata: overrides.metadata ?? { campaignId },
       },
     });
     return fee.id;
@@ -161,7 +162,7 @@ describe('Campaign review (e2e)', () => {
 
   it('links a successful application fee and enters the review queue', async () => {
     const campaignId = await createCampaign();
-    const feeId = await createFee('main');
+    const feeId = await createFee('main', campaignId);
 
     const res = await submit(campaignId, feeId).expect(201);
     expect(res.body).toMatchObject({
@@ -303,7 +304,7 @@ describe('Campaign review (e2e)', () => {
 
   it('blocks approval when KYC is revoked after submission', async () => {
     const campaignId = await createCampaign();
-    const feeId = await createFee('revoked');
+    const feeId = await createFee('revoked', campaignId);
     await submit(campaignId, feeId).expect(201);
 
     await prisma.user.update({
@@ -333,7 +334,7 @@ describe('Campaign review (e2e)', () => {
 
   it('rejects terminally with a reason and refuses resubmission', async () => {
     const campaignId = await createCampaign();
-    const feeId = await createFee('rejected');
+    const feeId = await createFee('rejected', campaignId);
     await submit(campaignId, feeId).expect(201);
 
     const res = await decide(campaignId, {

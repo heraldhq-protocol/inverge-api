@@ -16,7 +16,7 @@ const baseInput = (
     userId: 'usr_creator',
     purpose: 'APPLICATION_FEE',
     status: 'SUCCEEDED',
-    metadata: undefined,
+    metadata: { campaignId: 'cmp_1' },
   },
   ...overrides,
 });
@@ -154,5 +154,23 @@ describe('campaign review preconditions (FR-103 + FR-311)', () => {
       }),
     );
     expect(gates.eligible).toBe(true);
+  });
+
+  it('blocks a successful fee that is not bound to any campaign', () => {
+    const gates = evaluateCampaignReviewGates(
+      baseInput({
+        applicationFee: {
+          id: 'fee_1',
+          userId: 'usr_creator',
+          purpose: 'APPLICATION_FEE',
+          status: 'SUCCEEDED',
+          metadata: undefined,
+        },
+      }),
+    );
+    expect(gates.eligible).toBe(false);
+    expect(gates.blockers).toContain(
+      'Application fee (FR-311) is not bound to this campaign',
+    );
   });
 });

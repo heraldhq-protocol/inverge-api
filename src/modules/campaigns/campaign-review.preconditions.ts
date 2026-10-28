@@ -177,12 +177,19 @@ function evaluateApplicationFee(input: CampaignReviewGateInput): {
     };
   }
 
+  // The charge must name this campaign. Accepting an unbound charge would let a
+  // single payment be claimed by any campaign owned by the same creator, which
+  // is exactly the reuse FR-311 forbids.
   const boundCampaign = boundCampaignId(charge.metadata);
-  if (boundCampaign && boundCampaign !== input.campaignId) {
+  if (boundCampaign !== input.campaignId) {
     return {
       satisfied: false,
-      detail: 'The application fee belongs to a different campaign',
-      blocker: 'Application fee (FR-311) belongs to another campaign',
+      detail: boundCampaign
+        ? 'The application fee belongs to a different campaign'
+        : 'The application fee is not bound to this campaign',
+      blocker: boundCampaign
+        ? 'Application fee (FR-311) belongs to another campaign'
+        : 'Application fee (FR-311) is not bound to this campaign',
     };
   }
 
