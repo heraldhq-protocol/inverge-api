@@ -50,6 +50,8 @@ export class AuthService {
       walletAddress,
     });
 
+    const providerAvatarUrl = identity.avatarUrl;
+
     let user = await this.prisma.user.findUnique({
       where: { providerUserId: identity.providerUserId },
       include: { creatorProfile: true },
@@ -61,6 +63,13 @@ export class AuthService {
           providerUserId: identity.providerUserId,
           email: identity.email ?? null,
           role: 'USER',
+          // The verified provider image is an external reference, not an
+          // upload. Creating the profile early keeps the image once the account
+          // finishes onboarding; the shared profile step only fills the
+          // display name and username.
+          ...(providerAvatarUrl
+            ? { creatorProfile: { create: { avatarUrl: providerAvatarUrl } } }
+            : {}),
         },
         include: { creatorProfile: true },
       });
@@ -72,6 +81,18 @@ export class AuthService {
     // exchange-time check; PrivyAuthGuard enforces the same rule on every later
     // request so an already-issued token stops working when a ban lands.
     if (user.bannedAt) throw new ForbiddenException('Account is not permitted');
+
+    // Fill a missing provider image on the first sign-in that carries one. An
+    // existing avatar is never overwritten: it may have been chosen later by the
+    // creator, and the provider is only a default.
+    if (providerAvatarUrl && !user.creatorProfile?.avatarUrl) {
+      const creatorProfile = await this.prisma.creatorProfile.upsert({
+        where: { userId: user.id },
+        update: { avatarUrl: providerAvatarUrl },
+        create: { userId: user.id, avatarUrl: providerAvatarUrl },
+      });
+      user = { ...user, creatorProfile };
+    }
 
     if (identity.wallet) await this.linkWallet(user.id, identity.wallet);
 
