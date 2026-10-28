@@ -168,8 +168,15 @@ refuses to boot without it. If you do not have a test key yet, do not switch sta
 `FLATFEE_PROVIDER=stub` — production configuration rejects it (F-01). Use a non-production
 environment for offline work.
 
-Only boosts reach this rail. No route creates an `APPLICATION_FEE` charge, so campaign
-submission cannot be paid end-to-end (audit F-02).
+Both boosts and the campaign application fee reach this rail. An authenticated
+creator calls `POST /campaigns/:id/application-fee`; the API charges the configured
+NGN price through the selected provider, stores the checkout URL on the charge, and
+binds the charge to the campaign in its metadata before returning the URL. A
+successful webhook makes the FR-311 submit gate pass. The charge is non-refundable,
+and a second request resumes the existing pending checkout or returns the succeeded
+charge instead of charging again (audit F-02 resolved 2026-10-28). The web wizard
+calls this route through its server-side BFF; the browser never receives the
+provider secret or chooses the amount.
 
 ### 3.4 Solana / escrow
 
