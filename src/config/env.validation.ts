@@ -101,8 +101,18 @@ export const envSchema = z
   // would verify, so it is required at exchange time. No client secret is needed
   // for JWKS verification — never put one in this service.
   WEB3AUTH_CLIENT_ID: z.string().optional(),
-  WEB3AUTH_JWKS_URL: z.string().url().default('https://api-auth.web3auth.io/jwks'),
-  WEB3AUTH_TOKEN_ISSUER: z.string().url().default('https://api-auth.web3auth.io'),
+  // v11 SDKs (the web app pins @web3auth/modal 11.4.x) mint social id tokens with
+  // `iss: "web3auth.io"` — a bare host, not a URL — signed by keys published at
+  // the citadel-service JWKS. The pre-v11 contract documented on
+  // docs.metamask.io (`iss: https://api-auth.web3auth.io`, `/jwks`) does not own
+  // those keys, so pointing the defaults at it rejects every real login with
+  // "Invalid Web3Auth identity token". The issuer is therefore validated as a
+  // non-empty string, not a URL, and both values stay overridable per deployment.
+  WEB3AUTH_JWKS_URL: z
+    .string()
+    .url()
+    .default('https://api.web3auth.io/citadel-service/.well-known/jwks.json'),
+  WEB3AUTH_TOKEN_ISSUER: z.string().min(1).default('web3auth.io'),
 
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_WEBHOOK_SECRET: z.string().optional(),

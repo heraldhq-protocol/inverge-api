@@ -77,12 +77,23 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
     } catch (error) {
       // Diagnostics stay server-side and never include the token. `jose` names
       // the failed check (issuer, audience, expiry, signature), which is the
-      // difference between a configuration mistake and a forged token.
-      if (process.env.NODE_ENV !== 'production') {
-        const detail =
-          error instanceof Error ? `${error.name}: ${error.message}` : 'unknown';
-        console.warn('[web3auth] identity token rejected', detail);
-      }
+      // difference between a configuration mistake and a forged token — so it
+      // is logged in production too: a deployment whose audiences disagree
+      // otherwise returns a bare 401 with no way to tell which side is wrong.
+      // The audience is the public client id and the issuer is a public URL;
+      // neither is a secret, and the token itself is never printed.
+      const detail =
+        error instanceof Error ? `${error.name}: ${error.message}` : 'unknown';
+      // The two token families are signed by different keys, so a mismatch is
+      // almost always configuration: v11 SDKs issue `iss=web3auth.io` against the
+      // citadel JWKS, pre-v11 issued `https://api-auth.web3auth.io` against its own.
+      const family =
+        error instanceof Error && /issuer|"iss"|kid|JWKS/i.test(`${error.name} ${error.message}`)
+          ? ' (v11: iss=web3auth.io + citadel JWKS; pre-v11: https://api-auth.web3auth.io)'
+          : '';
+      console.warn(
+        `[web3auth] identity token rejected (${detail}); expected issuer=${issuer} audience=${audience}${family}`,
+      );
       throw new UnauthorizedException('Invalid Web3Auth identity token');
     }
 

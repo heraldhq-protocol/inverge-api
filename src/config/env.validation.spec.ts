@@ -45,3 +45,25 @@ describe('validateEnv — SESSION_JWT_SECRET', () => {
     ).toThrow(/SESSION_JWT_SECRET/);
   });
 });
+
+describe('validateEnv — Web3Auth token contract', () => {
+  it('defaults to the issuer/JWKS pair v11 SDKs actually sign with', () => {
+    const env = validateEnv({ ...base });
+    // @web3auth/modal 11.4.x mints `iss: "web3auth.io"`; the documented
+    // api-auth.web3auth.io pair does not publish those signing keys.
+    expect(env.WEB3AUTH_TOKEN_ISSUER).toBe('web3auth.io');
+    expect(env.WEB3AUTH_JWKS_URL).toBe(
+      'https://api.web3auth.io/citadel-service/.well-known/jwks.json',
+    );
+  });
+
+  it('accepts a bare-host issuer, which a URL-only schema would reject', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        WEB3AUTH_TOKEN_ISSUER: 'web3auth.io',
+        WEB3AUTH_JWKS_URL: 'https://api-auth.web3auth.io/jwks',
+      }),
+    ).not.toThrow();
+  });
+});
