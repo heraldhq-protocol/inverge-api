@@ -253,8 +253,9 @@ apply.
 | `tsc --noEmit` | **Passed** | API typecheck |
 | `nest build` | **Passed** | API build |
 | `emit-openapi.ts --check` | **Passed after regeneration** | The fee route and fee projection are in `docs/api/openapi.json` |
-| Web focused tests | **Passed 85/85** | `application-fee`, `draft-api`, and `wizard` suites |
+| Web focused tests | **Passed 97/97** | `application-fee`, `draft-api`, `wizard`, and both campaign BFF route suites |
 | Web `tsc --noEmit` | **Passed** | Includes the BFF fee/submit routes and wizard integration |
+| Web `next build` | **Passed** | 266 routes generated, including both BFF routes |
 
 ### 8.4 Adjacent repairs required to make the gate meaningful
 
