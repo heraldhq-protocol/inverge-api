@@ -88,6 +88,12 @@ const SOCIAL_TOKEN_FAMILIES: readonly IdentityIssuer[] = [
  * across the family boundary — verifies against the other family instead of
  * failing every login. `audience`, `alg` and expiry are unchanged, so this only
  * widens which Web3Auth endpoint may have signed the token, never who it is for.
+ *
+ * A family is only skipped when the *whole pair* matches. Matching on either
+ * field alone would let a half-overridden config — the v11 issuer left default
+ * with `WEB3AUTH_JWKS_URL` pointed at the pre-v11 JWKS — silently drop the
+ * citadel family, so both candidates query the same key set, neither owns the
+ * kid, and every login 401s with no hint as to why.
  */
 export function resolveIdentityIssuers(
   configured: IdentityIssuer,
@@ -97,7 +103,7 @@ export function resolveIdentityIssuers(
     configured,
     ...families.filter(
       (family) =>
-        family.issuer !== configured.issuer && family.jwksUrl !== configured.jwksUrl,
+        family.issuer !== configured.issuer || family.jwksUrl !== configured.jwksUrl,
     ),
   ];
 }
@@ -173,7 +179,7 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
       } catch (error) {
         const detail =
           error instanceof Error ? `${error.name}: ${error.message}` : 'unknown';
-        failures.push(`${candidate.issuer} -> ${detail}`);
+        failures.push(`${candidate.issuer} (${candidate.jwksUrl}) -> ${detail}`);
       }
     }
 
