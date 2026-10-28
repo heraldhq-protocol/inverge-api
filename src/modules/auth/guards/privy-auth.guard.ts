@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -25,6 +26,9 @@ export class PrivyAuthGuard implements CanActivate {
     const { sub } = await this.sessions.verify(header.slice(7));
     const user = await this.prisma.user.findUnique({ where: { id: sub } });
     if (!user) throw new UnauthorizedException('User not found');
+    // FR-216 / F-11: a ban must end the session immediately. Rejecting here
+    // covers every protected route, not only the sign-in exchange.
+    if (user.bannedAt) throw new ForbiddenException('Account is not permitted');
     req.user = user;
     return true;
   }

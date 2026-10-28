@@ -20,7 +20,9 @@ export class OptionalPrivyAuthGuard implements CanActivate {
       try {
         const { sub } = await this.sessions.verify(header.slice(7));
         const user = await this.prisma.user.findUnique({ where: { id: sub } });
-        if (user) req.user = user;
+        // A banned account is anonymous here, never an authenticated actor. Routes
+        // that need identity also run the strict guard, which returns 403.
+        if (user && !user.bannedAt) req.user = user;
       } catch {
         // Invalid/expired token → treat as anonymous rather than 401.
       }

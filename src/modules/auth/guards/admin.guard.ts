@@ -21,6 +21,9 @@ export class AdminGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException('Admin access requires authentication');
     }
+    // Defence in depth: this guard is normally chained after PrivyAuthGuard, but
+    // must never authorise a banned account if the chain changes.
+    if (user.bannedAt) throw new ForbiddenException('Admin access denied');
     if (user.role === 'ADMIN' || this.isAllowlisted(user)) return true;
     throw new ForbiddenException('Admin access required');
   }

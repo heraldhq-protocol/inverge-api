@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -66,6 +67,11 @@ export class AuthService {
     }
 
     if (!user) throw new UnauthorizedException('Authentication failed');
+
+    // FR-216 / F-11: never mint a session for a banned account. This is the
+    // exchange-time check; PrivyAuthGuard enforces the same rule on every later
+    // request so an already-issued token stops working when a ban lands.
+    if (user.bannedAt) throw new ForbiddenException('Account is not permitted');
 
     if (identity.wallet) await this.linkWallet(user.id, identity.wallet);
 

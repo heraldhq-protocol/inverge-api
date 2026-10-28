@@ -98,4 +98,35 @@ describe('Auth capabilities (e2e)', () => {
     expect(res.body).not.toHaveProperty('providerUserId');
     expect(JSON.stringify(res.body)).not.toContain(PREFIX);
   });
+
+  // F-11 / FR-216: a ban must stop both a new exchange and an already-issued session.
+  it('refuses a new session for a banned account', async () => {
+    const token = await signIn('banned-exchange');
+    const user = await prisma.user.findUniqueOrThrow({
+      where: {
+        providerUserId: `did:privy:stub:${PREFIX}-banned-exchange`,
+      },
+      select: { id: true },
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { bannedAt: new Date() },
+    });
+
+    const res = await http()
+      .post('/api/v1/auth/session')
+      .send({
+        accessToken: `stub:${PREFIX}-banned-exchange:${PREFIX}-banned-exchange@e2e.test`,
+      })
+      .expect(403);
+
+    expect(res.body.sessionToken).toBeUndefined();
+    expect(res.body.user).toBeUndefined();
+
+    // The token minted before the ban is no longer usable either.
+    await http()
+      .get('/api/v1/auth/me')
+      .set(bearer(token))
+      .expect(403);
+  });
 });

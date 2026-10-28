@@ -4,6 +4,26 @@ const base = {
   DATABASE_URL: 'postgresql://inverge:inverge@localhost:5432/inverge',
 };
 
+const realSecret = 'b7f4c2a1d8e6f0a3c5b9d2e7f1a8c4b6';
+
+/** A production configuration in which every enabled provider is real. */
+const productionBase = {
+  ...base,
+  NODE_ENV: 'production',
+  SESSION_JWT_SECRET: realSecret,
+  WALLET_PROVIDER: 'web3auth',
+  WEB3AUTH_CLIENT_ID: 'inverge-client-id',
+  KYC_PROVIDER: 'didit',
+  DIDIT_API_KEY: 'didit-key',
+  DIDIT_WEBHOOK_SECRET: 'didit-webhook-secret',
+  DIDIT_KYC_WORKFLOW_ID: 'wf-kyc',
+  DIDIT_KYC_AML_WORKFLOW_ID: 'wf-kyc-aml',
+  DIDIT_KYB_WORKFLOW_ID: 'wf-kyb',
+  FLATFEE_PROVIDER: 'paystack',
+  PAYSTACK_SECRET_KEY: 'sk_test_example',
+  PAYSTACK_WEBHOOK_SECRET: 'paystack-webhook-secret',
+};
+
 describe('validateEnv — SESSION_JWT_SECRET', () => {
   it('rejects the documented default in production', () => {
     expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(
@@ -21,16 +41,22 @@ describe('validateEnv — SESSION_JWT_SECRET', () => {
     ).toThrow(/SESSION_JWT_SECRET/);
   });
 
-  it('accepts a real secret in production', () => {
-    const secret = 'b7f4c2a1d8e6f0a3c5b9d2e7f1a8c4b6';
+  it('rejects a production secret shorter than 32 characters', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        SESSION_JWT_SECRET: 'too-short',
+      }),
+    ).toThrow(/at least 32 characters/);
+  });
 
+  it('accepts a real secret in production', () => {
     expect(
       validateEnv({
-        ...base,
-        NODE_ENV: 'production',
-        SESSION_JWT_SECRET: secret,
+        ...productionBase,
+        SESSION_JWT_SECRET: realSecret,
       }).SESSION_JWT_SECRET,
-    ).toBe(secret);
+    ).toBe(realSecret);
   });
 
   it('keeps the development default so local setup stays zero-config', () => {
@@ -65,5 +91,169 @@ describe('validateEnv — Web3Auth token contract', () => {
         WEB3AUTH_JWKS_URL: 'https://api-auth.web3auth.io/jwks',
       }),
     ).not.toThrow();
+  });
+});
+
+describe('validateEnv — production provider safety (F-01)', () => {
+  it('accepts a fully configured production deployment', () => {
+    const env = validateEnv(productionBase);
+    expect(env.NODE_ENV).toBe('production');
+    expect(env.WALLET_PROVIDER).toBe('web3auth');
+    expect(env.KYC_PROVIDER).toBe('didit');
+    expect(env.FLATFEE_PROVIDER).toBe('paystack');
+  });
+
+  it.each([
+    ['WALLET_PROVIDER', { WALLET_PROVIDER: 'stub' }],
+    ['KYC_PROVIDER', { KYC_PROVIDER: 'stub' }],
+    ['FLATFEE_PROVIDER', { FLATFEE_PROVIDER: 'stub' }],
+  ] as const)('rejects %s=stub in production', (key, override) => {
+    expect(() => validateEnv({ ...productionBase, ...override })).toThrow(
+      new RegExp(`${key}=stub is not allowed in production`),
+    );
+  });
+
+  it('rejects the default stub selection in production when nothing is configured', () => {
+    expect(() =>
+      validateEnv({
+        DATABASE_URL: base.DATABASE_URL,
+        NODE_ENV: 'production',
+        SESSION_JWT_SECRET: realSecret,
+      }),
+    ).toThrow(/WALLET_PROVIDER=stub|KYC_PROVIDER=stub|FLATFEE_PROVIDER=stub/);
+  });
+
+  it('accepts stubs outside production so offline development and tests work', () => {
+    const env = validateEnv({
+      ...base,
+      NODE_ENV: 'development',
+      WALLET_PROVIDER: 'stub',
+      KYC_PROVIDER: 'stub',
+      FLATFEE_PROVIDER: 'stub',
+    });
+    expect(env.WALLET_PROVIDER).toBe('stub');
+    expect(env.KYC_PROVIDER).toBe('stub');
+    expect(env.FLATFEE_PROVIDER).toBe('stub');
+  });
+
+  it('accepts stubs under NODE_ENV=test', () => {
+    expect(
+      validateEnv({
+        ...base,
+        NODE_ENV: 'test',
+        WALLET_PROVIDER: 'stub',
+        KYC_PROVIDER: 'stub',
+        FLATFEE_PROVIDER: 'stub',
+      }).NODE_ENV,
+    ).toBe('test');
+  });
+});
+
+describe('validateEnv — credentials for enabled providers', () => {
+  it('requires WEB3AUTH_CLIENT_ID when web3auth is selected', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        WEB3AUTH_CLIENT_ID: undefined,
+      }),
+    ).toThrow(/WEB3AUTH_CLIENT_ID/);
+  });
+
+  it('requires Privy app credentials when privy is selected', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        WALLET_PROVIDER: 'privy',
+        PRIVY_APP_ID: undefined,
+        PRIVY_APP_SECRET: undefined,
+      }),
+    ).toThrow(/PRIVY_APP_ID|PRIVY_APP_SECRET/);
+  });
+
+  it('accepts privy in production when both app credentials are present', () => {
+    const env = validateEnv({
+      ...productionBase,
+      WALLET_PROVIDER: 'privy',
+      PRIVY_APP_ID: 'app-id',
+      PRIVY_APP_SECRET: 'app-secret',
+    });
+    expect(env.WALLET_PROVIDER).toBe('privy');
+  });
+
+  it('requires DIDIT_API_KEY when didit is selected', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        DIDIT_API_KEY: undefined,
+      }),
+    ).toThrow(/DIDIT_API_KEY/);
+  });
+
+  it.each([
+    'DIDIT_WEBHOOK_SECRET',
+    'DIDIT_KYC_WORKFLOW_ID',
+    'DIDIT_KYC_AML_WORKFLOW_ID',
+    'DIDIT_KYB_WORKFLOW_ID',
+  ] as const)('requires %s for a production Didit deployment', (key) => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        [key]: undefined,
+      }),
+    ).toThrow(new RegExp(key));
+  });
+
+  it('requires PAYSTACK_SECRET_KEY when paystack is selected', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        PAYSTACK_SECRET_KEY: undefined,
+      }),
+    ).toThrow(/PAYSTACK_SECRET_KEY/);
+  });
+
+  it('requires PAYSTACK_WEBHOOK_SECRET for paystack in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        PAYSTACK_WEBHOOK_SECRET: undefined,
+      }),
+    ).toThrow(/PAYSTACK_WEBHOOK_SECRET/);
+  });
+
+  it('does not require credentials for integrations that are disabled', () => {
+    const env = validateEnv({
+      ...productionBase,
+      // Advisory/notification rails may legitimately stay deterministic or
+      // offline in staging; they are not authentication or payment approval.
+      NOTIFICATION_PROVIDER: 'stub',
+      QUALITY_PROVIDER: 'stub',
+      MODERATION_PROVIDER: 'stub',
+      ANTHROPIC_API_KEY: undefined,
+      HERALD_GATEWAY_URL: undefined,
+      HERALD_API_KEY: undefined,
+    });
+    expect(env.NOTIFICATION_PROVIDER).toBe('stub');
+  });
+});
+
+describe('validateEnv — escrow/provider coupling', () => {
+  it('still requires SOLANA_RPC_URL when the chain adapter is enabled', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        ESCROW_CHAIN_PROVIDER: 'solana-rpc',
+      }),
+    ).toThrow(/SOLANA_RPC_URL/);
+  });
+
+  it('still refuses mainnet outside production', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'development',
+        SOLANA_CLUSTER: 'mainnet-beta',
+      }),
+    ).toThrow(/mainnet-beta/);
   });
 });

@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Env } from '../../config/env.validation';
+import { assertStubProviderAllowed } from '../stub-guard';
 import {
   EmbeddedWalletInfo,
   EmbeddedWalletPort,
@@ -11,7 +14,16 @@ import {
 // The derived address is synthetic — AuthService never persists it.
 @Injectable()
 export class StubWalletAdapter implements EmbeddedWalletPort {
+  constructor(
+    @Optional() private readonly config?: ConfigService<Env, true>,
+  ) {}
+
   async verifyAccessToken(token: string): Promise<VerifiedIdentity> {
+    // Refuse on use rather than on construction: PortsModule instantiates every
+    // adapter so a vendor is one env flip away. A production process with a real
+    // provider must still be able to boot, but this token format must never
+    // authenticate anyone (audit F-01).
+    assertStubProviderAllowed('wallet', this.config);
     if (!token) throw new UnauthorizedException('No token provided');
 
     const parts = token.split(':');
@@ -32,6 +44,7 @@ export class StubWalletAdapter implements EmbeddedWalletPort {
   }
 
   async getEmbeddedWallet(providerUserId: string): Promise<EmbeddedWalletInfo> {
+    assertStubProviderAllowed('wallet', this.config);
     return this.derive(providerUserId);
   }
 
