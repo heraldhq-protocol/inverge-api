@@ -9,6 +9,7 @@ import {
   VerifiedIdentity,
   WalletOwnershipProof,
 } from './embedded-wallet.port';
+import { verifiedGoogleAvatarUrl } from './google-avatar';
 
 const SOLANA_PUBLIC_KEY_BYTES = 32;
 /** Tolerated clock drift when rejecting a token whose `iat` is in the future. */
@@ -51,6 +52,7 @@ type Web3AuthClaims = JWTPayload & {
   userId?: string;
   authConnection?: string;
   email?: string;
+  picture?: string;
   wallets?: TokenWalletClaim[];
 };
 
@@ -208,9 +210,12 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
       ? this.verifyWalletOwnership(payload.wallets ?? [], proof.walletAddress)
       : undefined;
 
+    const avatarUrl = verifiedGoogleAvatarUrl(payload.picture);
+
     return {
       providerUserId,
       email: typeof payload.email === 'string' ? payload.email : undefined,
+      ...(avatarUrl ? { avatarUrl } : {}),
       wallet,
     };
   }

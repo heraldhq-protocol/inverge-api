@@ -10,6 +10,11 @@ export interface EmbeddedWalletInfo {
 export interface VerifiedIdentity {
   providerUserId: string; // stable provider subject — maps to User.providerUserId
   email?: string;
+  /**
+   * Verified provider profile image URL. Adapters only return a URL they have
+   * validated against an allowlist; it is an external reference, not an upload.
+   */
+  avatarUrl?: string;
   wallet?: EmbeddedWalletInfo;
 }
 
