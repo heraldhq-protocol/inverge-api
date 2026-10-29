@@ -139,6 +139,7 @@ export class IdeasService {
   // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
   async create(userId: string, dto: CreateIdeaDto) {
     await this.assertUnderConcurrencyCap(userId);
+    const roadmapSteps = dto.roadmapSteps ?? [];
     const idea = await this.prisma.idea.create({
       data: {
         creatorId: userId,
@@ -148,8 +149,10 @@ export class IdeasService {
         solution: dto.solution,
         targetUser: dto.targetUser,
         currentAlternative: dto.currentAlternative,
-        askBreakdown: dto.askBreakdown as object,
-        roadmapSteps: dto.roadmapSteps as object,
+        // Feedback-only ideas carry askAmount 0 and no breakdown; both columns
+        // are non-null, so the empty object is the stored representation.
+        askBreakdown: (dto.askBreakdown as object) ?? {},
+        roadmapSteps: roadmapSteps as object,
         category: dto.category,
         ...this.taxonomyFields(dto.taxonomy),
         region: dto.region ?? null,
@@ -157,8 +160,10 @@ export class IdeasService {
         risks: dto.risks ?? null,
         problemDoc: (dto.problemDoc as object) ?? null,
         solutionDoc: (dto.solutionDoc as object) ?? null,
-        roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
-        askAmount: dto.askAmount,
+        roadmap:
+          dto.roadmap ??
+          roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
+        askAmount: dto.askAmount ?? 0,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
         status: 'DRAFT',
       },
@@ -201,6 +206,7 @@ export class IdeasService {
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Idea is not in draft');
     }
+    this.assertFundingPlanComplete(idea);
     const id = idea.id;
     // FR-204a: stamp the start of the validation window at publish.
     await this.prisma.idea.update({
@@ -558,6 +564,48 @@ export class IdeasService {
     const idea = await this.findIdea(idOrSlug);
     if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
     return idea;
+  }
+
+  /**
+   * FR-201: a funding idea publishes with a real plan. Feedback-only ideas
+   * (askAmount 0) may publish without a roadmap; the builder no longer forces
+   * a funding ask onto creators who only want validation.
+   */
+  private assertFundingPlanComplete(idea: {
+    askAmount: { toString(): string };
+    roadmapSteps: unknown;
+  }): void {
+    if (Number(idea.askAmount) > 0) {
+      const steps = Array.isArray(idea.roadmapSteps) ? idea.roadmapSteps : [];
+      const complete = steps.filter((step) => {
+        if (!step || typeof step !== 'object') return false;
+        const record = step as Record<string, unknown>;
+        return (
+          typeof record.date === 'string' &&
+          record.date.trim().length > 0 &&
+          typeof record.description === 'string' &&
+          record.description.trim().length > 0
+        );
+      }).length;
+
+      if (complete < 2) {
+        throw new BadRequestException({
+          code: 'FUNDING_REQUIRES_ROADMAP',
+          message:
+            'Add at least two dated roadmap steps before publishing an idea with a funding ask.',
+          details: { completeSteps: complete, requiredSteps: 2 },
+        });
+      }
+    }
+  }
+
+  /**
+   * Owner-scoped lookup for features that need the stored record rather than
+   * the public projection (for example the AI assistant's ownership check).
+   * Keeps 404/403 semantics identical to the editing routes.
+   */
+  getOwned(userId: string, idOrSlug: string) {
+    return this.owned(userId, idOrSlug);
   }
 
   // FR-275: cap concurrent non-archived/non-converted ideas per creator (default 3) to

@@ -93,6 +93,31 @@ export const envSchema = z
   ANTHROPIC_BASE_URL: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
 
+  // Creator Studio assistant (premium). `disabled` keeps every AI route at 503
+  // AI_NOT_CONFIGURED; `stub` is deterministic offline output for development and
+  // tests only; `anthropic` calls the compatible endpoint above (DeepSeek works).
+  // These credentials are separate from the moderation ANTHROPIC_* values.
+  AI_PROVIDER: z.enum(['disabled', 'stub', 'anthropic']).default('disabled'),
+  AI_API_KEY: z.string().optional(),
+  AI_BASE_URL: z.string().optional(),
+  AI_MODEL: z.string().optional(),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(20_000),
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(4_000).default(1_200),
+  // Total characters accepted across the selected field plus its context.
+  AI_MAX_INPUT_CHARS: z.coerce.number().int().min(200).max(20_000).default(6_000),
+  AI_DAILY_REQUESTS_PER_USER: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1_000)
+    .default(30),
+  AI_DAILY_TOKENS_PER_USER: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(1_000_000)
+    .default(60_000),
+
   PRIVY_APP_ID: z.string().optional(),
   PRIVY_APP_SECRET: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),
@@ -362,6 +387,24 @@ export const envSchema = z
         path: ['EMAIL_CODE_SECRET'],
         message:
           'EMAIL_CODE_SECRET must be a unique secret of at least 32 characters in production',
+      });
+    }
+
+    // The assistant's stub is deterministic canned output. Shipping it to
+    // production would present offline placeholder text as a real model answer.
+    if (env.NODE_ENV === 'production' && env.AI_PROVIDER === 'stub') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_PROVIDER'],
+        message:
+          'AI_PROVIDER=stub is not allowed in production; use anthropic or disabled',
+      });
+    }
+    if (env.AI_PROVIDER === 'anthropic' && !env.AI_API_KEY?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_API_KEY'],
+        message: 'AI_API_KEY is required when AI_PROVIDER=anthropic',
       });
     }
 

@@ -208,6 +208,67 @@
         ],
         "type": "object"
       },
+      "AiAccessDto": {
+        "properties": {
+          "canRequest": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "nullable": true,
+            "type": "object"
+          },
+          "feature": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "requestStatus": {
+            "enum": [
+              "NONE",
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED",
+              "NOT_REQUIRED"
+            ],
+            "type": "string"
+          },
+          "requestsPerDay": {
+            "type": "number"
+          },
+          "requestsToday": {
+            "type": "number"
+          },
+          "source": {
+            "nullable": true,
+            "type": "object"
+          },
+          "tokensPerDay": {
+            "type": "number"
+          },
+          "tokensToday": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature",
+          "configured",
+          "premium",
+          "requestStatus",
+          "canRequest",
+          "source",
+          "expiresAt",
+          "requestsToday",
+          "tokensToday",
+          "requestsPerDay",
+          "tokensPerDay"
+        ],
+        "type": "object"
+      },
       "AmlScreenDto": {
         "properties": {
           "dateOfBirth": {
@@ -1033,11 +1094,12 @@
       "CreateIdeaDto": {
         "properties": {
           "askAmount": {
-            "description": "Intended ask amount (USD)",
+            "default": 0,
+            "description": "Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.",
             "type": "number"
           },
           "askBreakdown": {
-            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "description": "Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.",
             "type": "object"
           },
           "category": {
@@ -1103,7 +1165,7 @@
             "type": "string"
           },
           "roadmapSteps": {
-            "description": "At least two dated roadmap steps",
+            "description": "Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.",
             "items": {
               "$ref": "#/components/schemas/RoadmapStepDto"
             },
@@ -1138,10 +1200,7 @@
           "solution",
           "targetUser",
           "currentAlternative",
-          "askBreakdown",
-          "roadmapSteps",
-          "category",
-          "askAmount"
+          "category"
         ],
         "type": "object"
       },
@@ -1163,6 +1222,25 @@
       },
       "CreatorLinkDto": {
         "properties": {},
+        "type": "object"
+      },
+      "DecideAiAccessDto": {
+        "properties": {
+          "expiresAt": {
+            "description": "ISO instant; omit for no expiry",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "DecideAnalyticsAccessRequestDto": {
@@ -1453,6 +1531,147 @@
           "conversion",
           "premium",
           "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "improve",
+              "shorten",
+              "expand",
+              "critique"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "description": "Revision of the text the client sent, echoed back for staleness checks",
+            "type": "string"
+          },
+          "clientRequestId": {
+            "description": "Client-generated idempotency/telemetry id",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Other draft fields for coherence. Unknown keys and non-strings are ignored server-side.",
+            "type": "object"
+          },
+          "target": {
+            "description": "The draft field the proposal is for",
+            "enum": [
+              "title",
+              "summary",
+              "problem",
+              "targetUser",
+              "currentAlternative",
+              "solution",
+              "risks"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "Current text of the target field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "target",
+          "text",
+          "baseRevision",
+          "clientRequestId"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantMetaDto": {
+        "properties": {
+          "inputTokens": {
+            "type": "number"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          },
+          "outputTokens": {
+            "type": "number"
+          },
+          "promptVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "promptVersion",
+          "inputTokens",
+          "outputTokens",
+          "latencyMs"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantResultDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "improve",
+              "shorten",
+              "expand",
+              "critique"
+            ],
+            "type": "string"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "baseRevision": {
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/IdeaAssistantMetaDto"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proposal": {
+            "nullable": true,
+            "type": "object"
+          },
+          "suggestionId": {
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "title",
+              "summary",
+              "problem",
+              "targetUser",
+              "currentAlternative",
+              "solution",
+              "risks"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggestionId",
+          "action",
+          "target",
+          "baseRevision",
+          "proposal",
+          "notes",
+          "assumptions",
+          "meta"
         ],
         "type": "object"
       },
@@ -2478,11 +2697,12 @@
       "UpdateIdeaDto": {
         "properties": {
           "askAmount": {
-            "description": "Intended ask amount (USD)",
+            "default": 0,
+            "description": "Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.",
             "type": "number"
           },
           "askBreakdown": {
-            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "description": "Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.",
             "type": "object"
           },
           "category": {
@@ -2548,7 +2768,7 @@
             "type": "string"
           },
           "roadmapSteps": {
-            "description": "At least two dated roadmap steps",
+            "description": "Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.",
             "items": {
               "$ref": "#/components/schemas/RoadmapStepDto"
             },
@@ -2866,6 +3086,109 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/admin/ai/access-requests": {
+      "get": {
+        "operationId": "AdminAiController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List AI assistant access requests",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/access-requests/{id}": {
+      "patch": {
+        "operationId": "AdminAiController_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAiAccessDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve or reject an AI assistant request",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/analytics/access-requests": {
       "get": {
         "operationId": "AdminAnalyticsController_listAccessRequests",
@@ -3568,6 +3891,80 @@
         "summary": "Grant or revoke a user admin role",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/v1/ai/access": {
+      "get": {
+        "operationId": "AiController_access",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "AI assistant entitlement and today's usage",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/access-requests": {
+      "post": {
+        "operationId": "AiController_requestAccess",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request AI assistant access",
+        "tags": [
+          "ai"
         ]
       }
     },
@@ -5057,6 +5454,62 @@
         ],
         "tags": [
           "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{ideaId}/assistant": {
+      "post": {
+        "operationId": "IdeaAssistantController_suggest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ideaId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdeaAssistantDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAssistantResultDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suggest a revision for one idea draft field",
+        "tags": [
+          "ai"
         ]
       }
     },

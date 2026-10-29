@@ -319,6 +319,8 @@ model User {
   objections             MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
   analyticsAccessGrants  AnalyticsAccessGrant[]
+  aiAccessGrant          AiAccessGrant?
+  aiUsageEvents          AiUsageEvent[]
   notifications          Notification[]
   emailVerificationChallenges EmailVerificationChallenge[]
 
@@ -1296,6 +1298,64 @@ model AnalyticsAccessGrant {
 
   @@unique([userId, feature])
   @@index([status, requestedAt])
+}
+
+enum AiAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AiAccessSource {
+  REQUEST
+  ADMIN
+  PAID
+}
+
+enum AiUsageStatus {
+  OK
+  INVALID_OUTPUT
+  TIMEOUT
+  PROVIDER_ERROR
+}
+
+// Premium AI assistant entitlement. Mirrors AnalyticsAccessGrant: access is
+// granted explicitly, never inferred from CreatorTier or a client claim.
+model AiAccessGrant {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            AiAccessStatus @default(PENDING)
+  source            AiAccessSource @default(REQUEST)
+  requestedAt       DateTime       @default(now())
+  decidedAt         DateTime?
+  decidedBy         String? // admin user id; no relation so the audit row survives an admin deletion
+  expiresAt         DateTime? // null = no expiry
+  externalReference String?        @db.VarChar(128) // future payment reference; never raw card data
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([status, requestedAt])
+}
+
+// Per-request metering for quota and cost visibility. Deliberately stores no
+// prompt, draft or model output - only counts and routing metadata.
+model AiUsageEvent {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surface       String        @db.VarChar(32)
+  action        String        @db.VarChar(32)
+  model         String        @db.VarChar(64)
+  promptVersion String        @db.VarChar(64)
+  inputTokens   Int           @default(0)
+  outputTokens  Int           @default(0)
+  latencyMs     Int           @default(0)
+  status        AiUsageStatus
+  requestId     String        @db.VarChar(64)
+  createdAt     DateTime      @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

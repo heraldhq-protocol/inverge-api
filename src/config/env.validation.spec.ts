@@ -248,7 +248,7 @@ describe('validateEnv — credentials for enabled providers', () => {
   });
 });
 
-describe('validateEnv — escrow/provider coupling', () => {
+describe('validateEnv - escrow/provider coupling', () => {
   it('still requires SOLANA_RPC_URL when the chain adapter is enabled', () => {
     expect(() =>
       validateEnv({
@@ -266,5 +266,33 @@ describe('validateEnv — escrow/provider coupling', () => {
         SOLANA_CLUSTER: 'mainnet-beta',
       }),
     ).toThrow(/mainnet-beta/);
+  });
+});
+
+describe('validateEnv - AI assistant', () => {
+  it('rejects the deterministic stub in production', () => {
+    expect(() =>
+      validateEnv({ ...productionBase, AI_PROVIDER: 'stub' }),
+    ).toThrow(/AI_PROVIDER/);
+  });
+
+  it('requires AI_API_KEY for anthropic without using the moderation key', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        AI_PROVIDER: 'anthropic',
+        ANTHROPIC_API_KEY: 'moderation-key',
+      }),
+    ).toThrow(/AI_API_KEY/);
+  });
+
+  it('accepts anthropic with its own credential', () => {
+    const env = validateEnv({
+      ...productionBase,
+      AI_PROVIDER: 'anthropic',
+      AI_API_KEY: 'assistant-key',
+    });
+    expect(env.AI_PROVIDER).toBe('anthropic');
+    expect(env.AI_API_KEY).toBe('assistant-key');
   });
 });
