@@ -37,4 +37,17 @@ describe('AdminGuard (FR-901)', () => {
   it('denies when no user is attached (guard misordered)', () => {
     expect(() => guard('x@y.com').canActivate(ctxWith(undefined))).toThrow(ForbiddenException);
   });
+
+  it('denies a banned ADMIN, even if they are allowlisted', () => {
+    expect(() =>
+      guard('boss@x.com').canActivate(
+        ctxWith({
+          role: 'ADMIN',
+          providerUserId: 'd',
+          email: 'boss@x.com',
+          bannedAt: new Date(),
+        }),
+      ),
+    ).toThrow(ForbiddenException);
+  });
 });

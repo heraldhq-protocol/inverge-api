@@ -14,6 +14,7 @@ function setup(charge: any = { id: 'c1', userId: 'u1', purpose: 'BOOST', status:
       create: jest.fn().mockResolvedValue(charge),
       findUnique: jest.fn().mockResolvedValue(charge),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   } as any;
   const events = { emit: jest.fn() } as any;
@@ -27,9 +28,28 @@ describe('FlatFeeService.createCharge', () => {
     const res = await svc.createCharge({ userId: 'u1', purpose: 'BOOST', amount: 5000, currency: 'NGN' });
     expect(processor.createCharge).toHaveBeenCalled();
     expect(prisma.flatFeeCharge.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'PENDING', processorRef: 'ref_1' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          processorRef: 'ref_1',
+          redirectUrl: 'https://pay/ref_1',
+          status: 'PENDING',
+        }),
+      }),
     );
-    expect(res.redirectUrl).toBe('https://pay/ref_1');
+    expect(res).toEqual({
+      chargeId: 'c1',
+      processorRef: 'ref_1',
+      redirectUrl: 'https://pay/ref_1',
+    });
+  });
+
+  it('retires only a still-pending charge', async () => {
+    const { svc, prisma } = setup();
+    await svc.voidCharge('c1');
+    expect(prisma.flatFeeCharge.updateMany).toHaveBeenCalledWith({
+      where: { id: 'c1', status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
   });
 });
 

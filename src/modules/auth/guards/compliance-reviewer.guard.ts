@@ -24,6 +24,9 @@ export class ComplianceReviewerGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException('Verification review requires authentication');
     }
+    if (user.bannedAt) {
+      throw new ForbiddenException('Verification review access denied');
+    }
     if (user.role === 'ADMIN' || user.role === 'COMPLIANCE_REVIEWER') return true;
     if (user.role === 'USER' && this.isAllowlisted(user)) return true;
     throw new ForbiddenException('Compliance reviewer access required');

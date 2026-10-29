@@ -21,6 +21,16 @@ browser ──(provider id_token)──▶ Next.js BFF ──(POST /api/v1/auth/
 4. The BFF writes the session into an HttpOnly, `SameSite=Lax` cookie and returns
    only `{ nextPath }` to the browser. Client JavaScript cannot read the token.
 
+### Provider profile image
+
+When the verified Web3Auth ID token carries a `picture` claim, the API accepts it
+only if it is an HTTPS URL on one of Google's avatar hosts
+(`lh3`–`lh6.googleusercontent.com`) with a profile-image path. It stores the URL
+as `CreatorProfile.avatarUrl` when the creator has no avatar, and never overwrites
+one the creator already has. The web re-checks the same allowlist before rendering
+it. This is an external image reference, not an upload: no image bytes are
+downloaded or stored.
+
 ## Using the session
 
 ```http

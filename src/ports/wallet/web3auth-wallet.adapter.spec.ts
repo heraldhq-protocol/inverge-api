@@ -97,6 +97,36 @@ describe('Web3AuthWalletAdapter', () => {
     });
   });
 
+  it('returns the verified Google profile image', async () => {
+    const { adapter, privateKey } = await setup();
+    const token = await mint(privateKey, {
+      picture: 'https://lh3.googleusercontent.com/a/ACg8oc-example=s96-c',
+    });
+
+    await expect(adapter.verifyAccessToken(token)).resolves.toMatchObject({
+      avatarUrl: 'https://lh3.googleusercontent.com/a/ACg8oc-example=s96-c',
+    });
+  });
+
+  it('drops a profile image outside the Google host allowlist', async () => {
+    const { adapter, privateKey } = await setup();
+    const token = await mint(privateKey, {
+      picture: 'https://evil.test/avatar.png',
+    });
+
+    await expect(adapter.verifyAccessToken(token)).resolves.not.toHaveProperty(
+      'avatarUrl',
+    );
+  });
+
+  it('rejects a stub-format token when the real provider is selected', async () => {
+    const { adapter } = await setup();
+
+    await expect(
+      adapter.verifyAccessToken('stub:attacker:attacker@example.test'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('rejects a token minted for a different client', async () => {
     const { adapter, privateKey } = await setup();
     const token = await mint(privateKey, {}, { audience: 'someone-else' });

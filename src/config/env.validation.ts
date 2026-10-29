@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 // Provider selection keeps vendors swappable (docs/phase0-refined-plan.md §3).
-// "stub" runs fully offline for local dev.
+// "stub" runs fully offline for local dev; production rejects the stub wallet,
+// KYC and flat-fee adapters (audit F-01).
 /** The value shipped in the schema so local dev starts without setup. */
 export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
 
@@ -215,6 +216,86 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SESSION_JWT_SECRET'],
         message: 'SESSION_JWT_SECRET must be set to a real secret in production',
+      });
+    } else if (
+      env.NODE_ENV === 'production' &&
+      env.SESSION_JWT_SECRET.trim().length < 32
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_JWT_SECRET'],
+        message: 'SESSION_JWT_SECRET must be at least 32 characters in production',
+      });
+    }
+
+    // F-01: the offline adapters authenticate arbitrary tokens / identities /
+    // payment references. Allowing any of them in production is a full bypass
+    // of authentication, KYC or the paid rails, so refuse the boot rather than
+    // rely on an adapter-level check alone.
+    if (env.NODE_ENV === 'production') {
+      for (const [key, value] of [
+        ['WALLET_PROVIDER', env.WALLET_PROVIDER],
+        ['KYC_PROVIDER', env.KYC_PROVIDER],
+        ['FLATFEE_PROVIDER', env.FLATFEE_PROVIDER],
+      ] as const) {
+        if (value === 'stub') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key}=stub is not allowed in production; select a real provider and configure its credentials`,
+          });
+        }
+      }
+    }
+
+    // An explicitly selected provider must have everything it needs to verify a
+    // caller. A missing value would otherwise fail at the first request (or, for
+    // a webhook secret, leave a payment callback unverifiable), which is a boot
+    // error rather than a runtime surprise.
+    if (env.WALLET_PROVIDER === 'web3auth' && !env.WEB3AUTH_CLIENT_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WEB3AUTH_CLIENT_ID'],
+        message: 'WEB3AUTH_CLIENT_ID is required when WALLET_PROVIDER=web3auth',
+      });
+    }
+    if (env.WALLET_PROVIDER === 'privy') {
+      for (const key of ['PRIVY_APP_ID', 'PRIVY_APP_SECRET'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when WALLET_PROVIDER=privy`,
+          });
+        }
+      }
+    }
+    if (env.FLATFEE_PROVIDER === 'paystack') {
+      if (!env.PAYSTACK_SECRET_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYSTACK_SECRET_KEY'],
+          message: 'PAYSTACK_SECRET_KEY is required when FLATFEE_PROVIDER=paystack',
+        });
+      }
+      // The adapter falls back to the secret key, but an explicitly separate
+      // webhook key is the supported production configuration. Requiring it
+      // here prevents a deployment from silently accepting callbacks under a
+      // key that is also used for outbound API calls.
+      if (env.NODE_ENV === 'production' && !env.PAYSTACK_WEBHOOK_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PAYSTACK_WEBHOOK_SECRET'],
+          message:
+            'PAYSTACK_WEBHOOK_SECRET is required when FLATFEE_PROVIDER=paystack in production',
+        });
+      }
+    }
+    if (env.KYC_PROVIDER === 'didit' && !env.DIDIT_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DIDIT_API_KEY'],
+        message: 'DIDIT_API_KEY is required when KYC_PROVIDER=didit',
       });
     }
 

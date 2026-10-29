@@ -93,8 +93,11 @@ describe('Taxonomy routes (e2e)', () => {
       subcategory: 'farms',
     });
 
+    // The idea is still a DRAFT here; only its owner may read it (FR-272 and the
+    // anonymous-draft 404 asserted in ideas.e2e-spec.ts).
     const detail = await http()
       .get(`/api/v1/ideas/${created.body.id}`)
+      .set(auth(token))
       .expect(200);
     expect(detail.body.taxonomy).toEqual({
       category: 'food',

@@ -11,6 +11,12 @@ import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { Env } from '../../../config/env.validation';
+import { PlatformParamsService } from '../../platform-params/platform-params.service';
+import {
+  APPLICATION_FEE_CURRENCY,
+  APPLICATION_FEE_FALLBACK_AMOUNT,
+  APPLICATION_FEE_PARAM,
+} from '../application-fee.constants';
 import {
   CreateCampaignDraftDto,
   UpdateCampaignDraftDto,
@@ -49,6 +55,7 @@ export class CampaignDraftsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly params: PlatformParamsService,
     @Optional() private readonly cache?: CacheService,
   ) {}
 
@@ -353,9 +360,54 @@ export class CampaignDraftsService {
   }
 
   private async present(campaign: DraftCampaignRow) {
+    const [readiness, applicationFee] = await Promise.all([
+      this.readiness(campaign),
+      this.applicationFee(campaign),
+    ]);
     return {
       ...toDraftResponse(campaign),
-      readiness: await this.readiness(campaign),
+      applicationFee,
+      readiness,
+    };
+  }
+
+  /**
+   * The creator-facing fee state. The redirect URL is included only on this
+   * owner-scoped projection so an abandoned checkout can be resumed without
+   * creating a second, non-refundable charge.
+   */
+  private async applicationFee(campaign: DraftCampaignRow) {
+    const amount = await this.params.getNumber(
+      APPLICATION_FEE_PARAM,
+      APPLICATION_FEE_FALLBACK_AMOUNT,
+    );
+    const fallback = {
+      amount,
+      chargeId: null,
+      currency: APPLICATION_FEE_CURRENCY,
+      redirectUrl: null,
+      status: 'NONE' as const,
+    };
+    if (!campaign.applicationFeeChargeId) return fallback;
+
+    const charge = await this.prisma.flatFeeCharge.findUnique({
+      where: { id: campaign.applicationFeeChargeId },
+      select: {
+        amount: true,
+        currency: true,
+        id: true,
+        redirectUrl: true,
+        status: true,
+      },
+    });
+    if (!charge) return fallback;
+
+    return {
+      amount: Number(charge.amount),
+      chargeId: charge.id,
+      currency: charge.currency,
+      redirectUrl: charge.redirectUrl,
+      status: charge.status,
     };
   }
 }

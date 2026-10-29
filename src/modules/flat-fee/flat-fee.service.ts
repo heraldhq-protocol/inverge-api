@@ -22,18 +22,33 @@ export class FlatFeeService {
 
   async createCharge(input: CreateChargeInput) {
     const res = await this.processor.createCharge(input);
-    await this.prisma.flatFeeCharge.create({
+    const charge = await this.prisma.flatFeeCharge.create({
       data: {
         userId: input.userId,
         purpose: input.purpose,
         amount: input.amount,
         currency: input.currency,
         processorRef: res.processorRef,
+        redirectUrl: res.redirectUrl,
         status: 'PENDING',
         metadata: (input.metadata ?? undefined) as object | undefined,
       },
+      select: { id: true },
     });
-    return res;
+    return { ...res, chargeId: charge.id };
+  }
+
+  /**
+   * Retires a charge the caller could not link to its business object (for
+   * example a losing application-fee race). The provider checkout was never
+   * returned to a client, so marking it FAILED locally is enough; a later
+   * webhook cannot move a non-PENDING charge.
+   */
+  async voidCharge(chargeId: string): Promise<void> {
+    await this.prisma.flatFeeCharge.updateMany({
+      where: { id: chargeId, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
   }
 
   // Idempotent: a charge already out of PENDING is a no-op. Fulfilment (activating a

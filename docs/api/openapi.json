@@ -4203,6 +4203,45 @@
         ]
       }
     },
+    "/api/v1/campaigns/{id}/application-fee": {
+      "post": {
+        "operationId": "CampaignsController_applicationFeeCharge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start or resume the FR-311 application-fee charge for a draft",
+        "tags": [
+          "campaigns"
+        ]
+      }
+    },
     "/api/v1/campaigns/{id}/deployment": {
       "get": {
         "operationId": "CampaignDeploymentController_get",
