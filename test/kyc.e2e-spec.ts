@@ -23,7 +23,7 @@ describe('KYC/AML routes (e2e)', () => {
   async function newUser(sub: string): Promise<U> {
     const res = await http()
       .post('/api/v1/auth/session')
-      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test` })
+      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test#verified` })
       .expect(201);
     return { token: res.body.sessionToken, id: res.body.user.id };
   }

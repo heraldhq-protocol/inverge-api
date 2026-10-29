@@ -4,6 +4,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { SurveyService } from './survey.service';
 import { SetSurveyDto, SubmitResponseDto } from './dto/survey.dto';
@@ -15,7 +16,7 @@ export class SurveyController {
 
   @Put()
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   setQuestions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: SetSurveyDto) {
     return this.survey.setQuestions(user.id, id, dto);
   }
@@ -27,14 +28,14 @@ export class SurveyController {
 
   @Post('responses')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   submit(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: SubmitResponseDto) {
     return this.survey.submitResponse(user.id, id, dto);
   }
 
   @Delete('responses')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   withdraw(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.survey.withdrawResponse(user.id, id);
   }

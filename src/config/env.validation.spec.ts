@@ -22,6 +22,10 @@ const productionBase = {
   FLATFEE_PROVIDER: 'paystack',
   PAYSTACK_SECRET_KEY: 'sk_test_example',
   PAYSTACK_WEBHOOK_SECRET: 'paystack-webhook-secret',
+  EMAIL_PROVIDER: 'resend',
+  RESEND_API_KEY: 're_test_example',
+  EMAIL_FROM: 'no-reply@mail.inverge.test',
+  EMAIL_CODE_SECRET: 'email-code-secret-for-tests-0000000000',
 };
 
 describe('validateEnv — SESSION_JWT_SECRET', () => {
@@ -107,6 +111,7 @@ describe('validateEnv — production provider safety (F-01)', () => {
     ['WALLET_PROVIDER', { WALLET_PROVIDER: 'stub' }],
     ['KYC_PROVIDER', { KYC_PROVIDER: 'stub' }],
     ['FLATFEE_PROVIDER', { FLATFEE_PROVIDER: 'stub' }],
+    ['EMAIL_PROVIDER', { EMAIL_PROVIDER: 'stub' }],
   ] as const)('rejects %s=stub in production', (key, override) => {
     expect(() => validateEnv({ ...productionBase, ...override })).toThrow(
       new RegExp(`${key}=stub is not allowed in production`),
@@ -221,19 +226,33 @@ describe('validateEnv — credentials for enabled providers', () => {
     ).toThrow(/PAYSTACK_WEBHOOK_SECRET/);
   });
 
+  it.each(['RESEND_API_KEY', 'EMAIL_FROM'] as const)(
+    'requires %s when Resend is selected',
+    (key) => {
+      expect(() =>
+        validateEnv({ ...productionBase, [key]: undefined }),
+      ).toThrow(new RegExp(key));
+    },
+  );
+
+  it('requires a production email code secret', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EMAIL_CODE_SECRET: 'dev-only-email-code-secret-change-me',
+      }),
+    ).toThrow(/EMAIL_CODE_SECRET/);
+  });
+
   it('does not require credentials for integrations that are disabled', () => {
     const env = validateEnv({
       ...productionBase,
-      // Advisory/notification rails may legitimately stay deterministic or
-      // offline in staging; they are not authentication or payment approval.
-      NOTIFICATION_PROVIDER: 'stub',
+      // Advisory rails may legitimately stay deterministic or offline in
+      // staging; they are not authentication or payment approval.
       QUALITY_PROVIDER: 'stub',
       MODERATION_PROVIDER: 'stub',
       ANTHROPIC_API_KEY: undefined,
-      HERALD_GATEWAY_URL: undefined,
-      HERALD_API_KEY: undefined,
     });
-    expect(env.NOTIFICATION_PROVIDER).toBe('stub');
   });
 });
 

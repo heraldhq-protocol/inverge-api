@@ -4,6 +4,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { LinkWalletDto, SetWalletRoleDto } from './dto/wallet.dto';
 import { WalletsService } from './wallets.service';
@@ -21,11 +22,13 @@ export class WalletsController {
   }
 
   @Post('link')
+  @UseGuards(EmailVerifiedGuard)
   link(@CurrentUser() user: AuthenticatedUser, @Body() dto: LinkWalletDto) {
     return this.wallets.link(user.id, dto);
   }
 
   @Patch(':id/role')
+  @UseGuards(EmailVerifiedGuard)
   setRole(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

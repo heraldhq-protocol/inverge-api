@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class CapabilityVerificationDto {
   @ApiProperty()
+  emailVerified!: boolean;
+
+  @ApiProperty()
   identityVerified!: boolean;
 
   @ApiProperty()
@@ -23,6 +26,12 @@ export class CapabilityFlagsDto {
 
   @ApiProperty()
   prePledge!: boolean;
+
+  @ApiProperty()
+  commentOnIdeas!: boolean;
+
+  @ApiProperty()
+  submitSurveyResponses!: boolean;
 
   @ApiProperty()
   purchaseBoosts!: boolean;

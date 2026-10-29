@@ -94,7 +94,11 @@ describe('Campaign review (e2e)', () => {
       where: { id: adminId },
       data: { role: 'ADMIN' },
     });
-    ({ token: creatorToken, id: creatorId } = await session(`c${RUN}`));
+    // Authored campaign actions are email-gated; the stub fixture marks this
+    // address as provider-verified without sending mail.
+    ({ token: creatorToken, id: creatorId } = await session(
+      `stub:c${RUN}:c${RUN}@e2e.test#verified`,
+    ));
   });
 
   afterAll(async () => {

@@ -4,6 +4,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { PurchaseBoostDto } from './dto/purchase-boost.dto';
 import { BoostsService } from './boosts.service';
@@ -15,7 +16,7 @@ export class BoostsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   purchase(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') ideaId: string,

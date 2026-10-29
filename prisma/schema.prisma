@@ -272,8 +272,14 @@ enum OnChainEventType {
 model User {
   id             String    @id @default(cuid())
   providerUserId String    @unique // provider-neutral: Web3Auth sub / Privy DID / stub id
-  email          String?   @unique
-  emailVerified  Boolean   @default(false) // FR-208: EMAIL tier eligibility
+  // Stored lower-case/trimmed (also enforced by a CHECK constraint in the
+  // migration), so the existing unique index is case-insensitive without a
+  // duplicate normalised column. Email verification is not KYC/AML.
+  email                  String?   @unique
+  emailVerified          Boolean   @default(false) // mirror for FR-208; emailVerifiedAt is authoritative
+  emailVerifiedAt        DateTime? // ownership proven, or accepted from a trusted provider claim
+  pendingEmail           String? // proposed replacement; never replaces email until verified
+  pendingEmailRequestedAt DateTime?
   oauthSubject   String?   @unique // FR-212: one social identity ↔ one account (anti-sybil)
   kycStatus      KycStatus @default(NOT_REQUIRED) // FR-103 / FR-104
   kycProviderRef String? // NFR-12: reference only, never raw documents
@@ -314,9 +320,38 @@ model User {
   productAnalyticsEvents ProductAnalyticsEvent[]
   analyticsAccessGrants  AnalyticsAccessGrant[]
   notifications          Notification[]
+  emailVerificationChallenges EmailVerificationChallenge[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// One short-lived email ownership challenge. Only a keyed hash of the six-digit
+// code is stored; the plaintext exists only in the outbound message. Issuing a
+// new challenge supersedes the previous one, and a consumed code is single-use.
+enum EmailVerificationPurpose {
+  SIGNUP
+  CHANGE
+}
+
+model EmailVerificationChallenge {
+  id           String                  @id @default(cuid())
+  userId       String
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose      EmailVerificationPurpose
+  email        String // lower-case/trimmed; the address being proven
+  codeHash     String // HMAC-SHA256(secret, challengeId + code); never plaintext
+  expiresAt    DateTime
+  attempts     Int                     @default(0)
+  maxAttempts  Int
+  consumedAt   DateTime?
+  supersededAt DateTime?
+  deliveryFailedAt DateTime?
+  lastSentAt   DateTime                @default(now())
+  createdAt    DateTime                @default(now())
+
+  @@index([userId, purpose, createdAt(sort: Desc)])
+  @@index([email, createdAt(sort: Desc)])
 }
 
 model WalletAccount {

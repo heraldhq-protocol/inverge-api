@@ -15,7 +15,10 @@ export type RateLimitPolicyName =
   | 'analytics_read'
   | 'analytics_premium'
   | 'analytics_request'
-  | 'analytics_admin';
+  | 'analytics_admin'
+  | 'email_request'
+  | 'email_resend'
+  | 'email_verify';
 
 export type RateLimitScope = 'ip' | 'user';
 
@@ -58,6 +61,14 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // and keeps a retry loop from filling the admin queue.
   analytics_request: { limit: 5, windowSeconds: 3600, burst: 2, scope: 'user', failClosed: false },
   analytics_admin: { limit: 60, windowSeconds: 60, burst: 10, scope: 'user', failClosed: true },
+  // Issuing mail is externally visible and costs money. The database also
+  // enforces a per-hour cap and cooldown; this bucket stops a retry loop before
+  // it reaches the service. Fail closed: an outage must not become a send loop.
+  email_request: { limit: 10, windowSeconds: 3600, burst: 3, scope: 'user', failClosed: true },
+  email_resend: { limit: 5, windowSeconds: 3600, burst: 2, scope: 'user', failClosed: true },
+  // Wrong guesses are cheap to send but expensive to allow: bounded per user,
+  // while the challenge row independently enforces max attempts.
+  email_verify: { limit: 10, windowSeconds: 300, burst: 5, scope: 'user', failClosed: false },
 };
 
 const FILTER_QUERY_KEYS = [
@@ -100,6 +111,9 @@ export function resolveRateLimitPolicy(
   if (path === '/auth/check-username') return 'username';
   if (path === '/auth/session') return 'auth';
   if (path === '/auth/me' || path === '/auth/capabilities') return 'dashboard';
+  if (path === '/auth/email/request') return 'email_request';
+  if (path === '/auth/email/resend') return 'email_resend';
+  if (path === '/auth/email/verify') return 'email_verify';
 
   if (path.startsWith('/internal/analytics')) return 'analytics_ingest';
   if (path.startsWith('/admin/analytics')) return 'analytics_admin';

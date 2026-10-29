@@ -1,5 +1,6 @@
-// Port: notifications (FR-702). Reference adapter: Herald Protocol (wallet→email
-// resolution, gateway dispatch). Objection-window alerts are time-critical (Phase 2).
+// Port: notifications (FR-702). Persisted in-app rows are dispatched through this
+// port; the current adapter is the offline stub. Objection-window alerts are
+// time-critical (Phase 2).
 
 export interface NotificationMessage {
   toUserId: string;

@@ -760,6 +760,9 @@
       },
       "CapabilityFlagsDto": {
         "properties": {
+          "commentOnIdeas": {
+            "type": "boolean"
+          },
           "createIdeas": {
             "type": "boolean"
           },
@@ -781,6 +784,9 @@
           "submitCampaigns": {
             "type": "boolean"
           },
+          "submitSurveyResponses": {
+            "type": "boolean"
+          },
           "supportIdeas": {
             "type": "boolean"
           }
@@ -789,6 +795,8 @@
           "createIdeas",
           "supportIdeas",
           "prePledge",
+          "commentOnIdeas",
+          "submitSurveyResponses",
           "purchaseBoosts",
           "submitCampaigns",
           "reviewCampaigns",
@@ -806,6 +814,9 @@
             },
             "type": "array"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
           "fundsEligible": {
             "type": "boolean"
           },
@@ -814,6 +825,7 @@
           }
         },
         "required": [
+          "emailVerified",
           "identityVerified",
           "fundsEligible",
           "blockers"
@@ -1609,8 +1621,18 @@
             "nullable": true,
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "emailVerifiedAt": {
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "type": "string"
+          },
+          "requiresEmailVerification": {
+            "type": "boolean"
           },
           "requiresOnboarding": {
             "type": "boolean"
@@ -1626,9 +1648,12 @@
         "required": [
           "id",
           "email",
+          "emailVerified",
+          "emailVerifiedAt",
           "role",
           "creator",
-          "requiresOnboarding"
+          "requiresOnboarding",
+          "requiresEmailVerification"
         ],
         "type": "object"
       },
@@ -1943,6 +1968,18 @@
         ],
         "type": "object"
       },
+      "RequestEmailCodeDto": {
+        "properties": {
+          "email": {
+            "description": "Address to verify. Normalised server-side.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
       "ResolveRiskDto": {
         "properties": {
           "decision": {
@@ -2018,11 +2055,19 @@
             "nullable": true,
             "type": "object"
           },
+          "requiresEmailVerification": {
+            "type": "boolean"
+          },
           "requiresOnboarding": {
             "type": "boolean"
           },
           "sessionToken": {
             "description": "One-hour HS256 session token. The web BFF stores it in an HttpOnly cookie and never returns it to the browser.",
+            "type": "string"
+          },
+          "suggestedEmail": {
+            "description": "Provider-supplied address that is not proven. Prefill only; never stored.",
+            "nullable": true,
             "type": "string"
           },
           "user": {
@@ -2032,8 +2077,10 @@
         "required": [
           "sessionToken",
           "user",
+          "suggestedEmail",
           "creator",
-          "requiresOnboarding"
+          "requiresOnboarding",
+          "requiresEmailVerification"
         ],
         "type": "object"
       },
@@ -2043,13 +2090,30 @@
             "nullable": true,
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "emailVerifiedAt": {
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "ADMIN"
+            ],
             "type": "string"
           }
         },
         "required": [
           "id",
-          "email"
+          "email",
+          "emailVerified",
+          "emailVerifiedAt",
+          "role"
         ],
         "type": "object"
       },
@@ -2673,6 +2737,23 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "VerifyEmailCodeDto": {
+        "properties": {
+          "code": {
+            "description": "Six-digit numeric code.",
+            "type": "string"
+          },
+          "email": {
+            "description": "The address the code was sent to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ],
         "type": "object"
       },
       "WireAnalyticsEventDto": {
@@ -3673,6 +3754,176 @@
           }
         },
         "summary": "Get public creator profile and their projects/backed ideas",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email": {
+      "get": {
+        "operationId": "EmailVerificationController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Current email address and verification state",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/pending": {
+      "delete": {
+        "operationId": "EmailVerificationController_cancelPending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancel a pending email change",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/request": {
+      "post": {
+        "operationId": "EmailVerificationController_request",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestEmailCodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request a six-digit code for an address",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/resend": {
+      "post": {
+        "operationId": "EmailVerificationController_resend",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resend the active verification code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/verify": {
+      "post": {
+        "operationId": "EmailVerificationController_verify",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailCodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify a six-digit email code",
         "tags": [
           "auth"
         ]

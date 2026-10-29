@@ -14,7 +14,23 @@ describe('StubWalletAdapter', () => {
 
     expect(identity.providerUserId).toBe('did:privy:stub:user-a');
     expect(identity.email).toBe('user-a@example.test');
+    expect(identity.emailVerified).toBe(false);
     expect(identity.wallet?.provider).toBe('stub');
+  });
+
+  it('marks a fixture email as verified only when the suffix asks for it', async () => {
+    const adapter = new StubWalletAdapter();
+
+    const unproven = await adapter.verifyAccessToken(
+      'stub:user-b:user-b@example.test',
+    );
+    const proven = await adapter.verifyAccessToken(
+      'stub:user-c:user-c@example.test#verified',
+    );
+
+    expect(unproven.emailVerified).toBe(false);
+    expect(proven.email).toBe('user-c@example.test');
+    expect(proven.emailVerified).toBe(true);
   });
 
   it('refuses to authenticate when the validated environment is production', async () => {

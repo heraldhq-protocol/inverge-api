@@ -10,20 +10,39 @@ const base = (overrides: Partial<CapabilityInput> = {}): CapabilityInput => ({
   amlStatus: 'NOT_SCREENED',
   displayName: 'Ada',
   username: 'ada',
+  emailVerified: true,
   ...overrides,
 });
 
 describe('buildAccountCapabilities', () => {
-  it('keeps ordinary authenticated actions available before verification', () => {
-    // #given an unverified account
+  it('keeps verified-email actions available before identity verification', () => {
+    // #given an email-verified account with no KYC
     const caps = buildAccountCapabilities(base(), NOW);
 
-    // #then idea actions are allowed but campaign submission is not
+    // #then authored actions are allowed but campaign submission is not
     expect(caps.capabilities).toMatchObject({
       createIdeas: true,
       supportIdeas: true,
       prePledge: true,
+      commentOnIdeas: true,
       purchaseBoosts: true,
+      submitCampaigns: false,
+    });
+  });
+
+  it('allows support and pre-pledges but gates other writes on email verification', () => {
+    // #given an account that has not verified an email
+    const caps = buildAccountCapabilities(base({ emailVerified: false }), NOW);
+
+    // #then the demand signal stays open; authored and financial actions do not
+    expect(caps.verification.emailVerified).toBe(false);
+    expect(caps.capabilities).toMatchObject({
+      createIdeas: false,
+      supportIdeas: true,
+      prePledge: true,
+      commentOnIdeas: false,
+      submitSurveyResponses: false,
+      purchaseBoosts: false,
       submitCampaigns: false,
     });
   });
@@ -34,6 +53,7 @@ describe('buildAccountCapabilities', () => {
 
     // #then both outstanding checks are surfaced
     expect(caps.verification).toEqual({
+      emailVerified: true,
       identityVerified: false,
       fundsEligible: false,
       blockers: [
@@ -52,6 +72,7 @@ describe('buildAccountCapabilities', () => {
 
     // #then the funds bar is met and no blockers remain
     expect(caps.verification).toEqual({
+      emailVerified: true,
       identityVerified: true,
       fundsEligible: true,
       blockers: [],

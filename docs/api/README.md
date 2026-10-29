@@ -13,6 +13,7 @@ same surface as the committed document.
 | Document | Covers | Status |
 |---|---|---|
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
+| [email-verification.md](./email-verification.md) | Email capture, OTP lifecycle, gates, provider trust | Implemented; delivery setup outstanding |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
 | [campaign-deployment.md](../campaign-deployment.md) | Draft persistence, escrow deployment, on-chain verification, reconciliation, fee policy, blockers | Implemented against programme source; not yet verified against a deployed binary |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |

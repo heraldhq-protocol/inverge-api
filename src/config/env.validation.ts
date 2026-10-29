@@ -5,6 +5,8 @@ import { z } from 'zod';
 // KYC and flat-fee adapters (audit F-01).
 /** The value shipped in the schema so local dev starts without setup. */
 export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
+/** Dev/test only; production rejects this value for the email code pepper. */
+export const DEFAULT_EMAIL_CODE_SECRET = 'dev-only-email-code-secret-change-me';
 
 // `z.coerce.boolean()` treats the string "false" as true, which would make a
 // `REDIS_ENABLED=false` deployment silently connect anyway. Parse the documented
@@ -78,7 +80,6 @@ export const envSchema = z
   WALLET_PROVIDER: z.enum(['stub', 'privy', 'web3auth']).default('stub'),
   FLATFEE_PROVIDER: z.enum(['stub', 'paystack']).default('stub'),
   KYC_PROVIDER: z.enum(['stub', 'didit']).default('stub'),
-  NOTIFICATION_PROVIDER: z.enum(['stub', 'herald']).default('stub'),
   // Idea quality scorer (FR-271). "stub" = deterministic completeness checks only;
   // "claude" adds AI checks (thin-content/plagiarism/coherence) — Phase 1.
   QUALITY_PROVIDER: z.enum(['stub', 'claude']).default('stub'),
@@ -164,8 +165,47 @@ export const envSchema = z
     .max(3600)
     .default(900),
 
-  HERALD_GATEWAY_URL: z.string().optional(),
-  HERALD_API_KEY: z.string().optional(),
+  // Transactional email (email verification). Resend is the production adapter;
+  // `stub` writes to a gitignored local outbox and is rejected in production.
+  EMAIL_PROVIDER: z.enum(['stub', 'resend']).default('stub'),
+  RESEND_API_KEY: z.string().optional(),
+  // Bare sender address, e.g. no-reply@mail.example.com. The display name is
+  // separate so the address can be validated on its own.
+  EMAIL_FROM: z.string().optional(),
+  EMAIL_FROM_NAME: z.string().default('Inverge'),
+  EMAIL_REPLY_TO: z.string().optional(),
+  // HMAC pepper for six-digit codes. Codes are never stored in plaintext.
+  EMAIL_CODE_SECRET: z.string().min(1).default(DEFAULT_EMAIL_CODE_SECRET),
+  EMAIL_VERIFICATION_CODE_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(3600)
+    .default(600),
+  EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(15)
+    .max(600)
+    .default(60),
+  EMAIL_VERIFICATION_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .default(5),
+  EMAIL_VERIFICATION_MAX_PER_HOUR: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(5),
+  EMAIL_DELIVERY_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(30_000)
+    .default(10_000),
 
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
@@ -237,6 +277,7 @@ export const envSchema = z
         ['WALLET_PROVIDER', env.WALLET_PROVIDER],
         ['KYC_PROVIDER', env.KYC_PROVIDER],
         ['FLATFEE_PROVIDER', env.FLATFEE_PROVIDER],
+        ['EMAIL_PROVIDER', env.EMAIL_PROVIDER],
       ] as const) {
         if (value === 'stub') {
           ctx.addIssue({
@@ -296,6 +337,46 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['DIDIT_API_KEY'],
         message: 'DIDIT_API_KEY is required when KYC_PROVIDER=didit',
+      });
+    }
+
+    // Email verification cannot work without a deliverable sender. A missing
+    // key would turn every request into a 502 at runtime; fail at boot instead.
+    if (env.EMAIL_PROVIDER === 'resend') {
+      for (const key of ['RESEND_API_KEY', 'EMAIL_FROM'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when EMAIL_PROVIDER=resend`,
+          });
+        }
+      }
+    }
+    if (env.EMAIL_FROM && !env.EMAIL_FROM.includes('@')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_FROM'],
+        message: 'EMAIL_FROM must be a bare email address',
+      });
+    }
+    if (env.EMAIL_REPLY_TO && !env.EMAIL_REPLY_TO.includes('@')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_REPLY_TO'],
+        message: 'EMAIL_REPLY_TO must be a bare email address',
+      });
+    }
+    if (
+      env.NODE_ENV === 'production' &&
+      (env.EMAIL_CODE_SECRET === DEFAULT_EMAIL_CODE_SECRET ||
+        env.EMAIL_CODE_SECRET.trim().length < 32)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_CODE_SECRET'],
+        message:
+          'EMAIL_CODE_SECRET must be a unique secret of at least 32 characters in production',
       });
     }
 

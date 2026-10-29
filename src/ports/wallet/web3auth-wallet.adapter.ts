@@ -52,6 +52,9 @@ type Web3AuthClaims = JWTPayload & {
   userId?: string;
   authConnection?: string;
   email?: string;
+  // Not emitted by current Web3Auth social tokens, but honoured if a deployment
+  // or future provider version starts signing it.
+  email_verified?: boolean;
   picture?: string;
   wallets?: TokenWalletClaim[];
 };
@@ -215,6 +218,9 @@ export class Web3AuthWalletAdapter implements EmbeddedWalletPort {
     return {
       providerUserId,
       email: typeof payload.email === 'string' ? payload.email : undefined,
+      // Only a signed `email_verified: true` claim is trusted. Current Web3Auth
+      // social tokens omit it, so those addresses still go through Inverge OTP.
+      emailVerified: payload.email_verified === true,
       ...(avatarUrl ? { avatarUrl } : {}),
       wallet,
     };

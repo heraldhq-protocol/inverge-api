@@ -7,8 +7,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '../../generated/prisma/client';
 import { Env } from '../../config/env.validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeEmail } from './email/email-normalization';
 import {
   EMBEDDED_WALLET_PORT,
   EmbeddedWalletInfo,
@@ -22,10 +24,7 @@ import { ModerationService } from '../moderation/moderation.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { SessionService } from './session.service';
-import {
-  AccountCapabilities,
-  buildAccountCapabilities,
-} from './capabilities';
+import { AccountCapabilities, buildAccountCapabilities } from './capabilities';
 
 /** Public-profile lists are summaries; a full list needs a paginated route. */
 const PROFILE_IDEA_LIMIT = 24;
@@ -52,27 +51,114 @@ export class AuthService {
 
     const providerAvatarUrl = identity.avatarUrl;
 
+    // The provider address is the address the user is expected to confirm. It is
+    // stored even when the token has no `email_verified` claim, but it is stored
+    // as unverified until OTP proves mailbox control. Web3Auth social tokens
+    // currently omit that claim; X/wallet sign-ins may omit the address too.
+    const providerEmail = normalizeEmail(identity.email);
+    const trustedEmail =
+      identity.emailVerified === true ? providerEmail : null;
+
     let user = await this.prisma.user.findUnique({
       where: { providerUserId: identity.providerUserId },
       include: { creatorProfile: true },
     });
 
     if (!user) {
-      user = await this.prisma.user.create({
-        data: {
-          providerUserId: identity.providerUserId,
-          email: identity.email ?? null,
-          role: 'USER',
-          // The verified provider image is an external reference, not an
-          // upload. Creating the profile early keeps the image once the account
-          // finishes onboarding; the shared profile step only fills the
-          // display name and username.
-          ...(providerAvatarUrl
-            ? { creatorProfile: { create: { avatarUrl: providerAvatarUrl } } }
-            : {}),
-        },
-        include: { creatorProfile: true },
-      });
+      const ownedByAnother = providerEmail
+        ? await this.prisma.user.findUnique({
+            where: { email: providerEmail },
+            select: { id: true },
+          })
+        : null;
+      const initialEmail = ownedByAnother ? null : providerEmail;
+
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            providerUserId: identity.providerUserId,
+            email: initialEmail,
+            emailVerified: initialEmail !== null && trustedEmail !== null,
+            emailVerifiedAt:
+              initialEmail !== null && trustedEmail !== null
+                ? new Date()
+                : null,
+            role: 'USER',
+            // The verified provider image is an external reference, not an
+            // upload. Creating the profile early keeps the image once the account
+            // finishes onboarding; the shared profile step only fills the
+            // display name and username.
+            ...(providerAvatarUrl
+              ? { creatorProfile: { create: { avatarUrl: providerAvatarUrl } } }
+              : {}),
+          },
+          include: { creatorProfile: true },
+        });
+      } catch (error) {
+        // A concurrent sign-in with the same provider subject wins the unique
+        // constraint. If the address was taken in the same instant, retry without
+        // it rather than failing the login or linking the two accounts.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          user = await this.prisma.user.findUnique({
+            where: { providerUserId: identity.providerUserId },
+            include: { creatorProfile: true },
+          });
+          if (!user) {
+            user = await this.prisma.user.create({
+              data: {
+                providerUserId: identity.providerUserId,
+                email: null,
+                role: 'USER',
+                ...(providerAvatarUrl
+                  ? {
+                      creatorProfile: {
+                        create: { avatarUrl: providerAvatarUrl },
+                      },
+                    }
+                  : {}),
+              },
+              include: { creatorProfile: true },
+            });
+          }
+        } else {
+          throw error;
+        }
+      }
+    } else if (providerEmail) {
+      // Adopt the provider address into an empty slot as unverified, and promote
+      // an existing row only when the token proves the same address. A different
+      // existing address is never overwritten by a provider claim; changing it is
+      // an explicit, rare account action.
+      if (user.email === null) {
+        const owner = await this.prisma.user.findUnique({
+          where: { email: providerEmail },
+          select: { id: true },
+        });
+        if (!owner) {
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              email: providerEmail,
+              emailVerified: trustedEmail !== null,
+              emailVerifiedAt: trustedEmail !== null ? new Date() : null,
+            },
+            include: { creatorProfile: true },
+          });
+        }
+      } else if (
+        user.email === providerEmail &&
+        user.emailVerifiedAt === null &&
+        trustedEmail !== null
+      ) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerified: true, emailVerifiedAt: new Date() },
+          include: { creatorProfile: true },
+        });
+      }
     }
 
     if (!user) throw new UnauthorizedException('Authentication failed');
@@ -96,15 +182,28 @@ export class AuthService {
 
     if (identity.wallet) await this.linkWallet(user.id, identity.wallet);
 
-    const requiresOnboarding = !user.creatorProfile?.displayName || !user.creatorProfile?.username;
+    const requiresOnboarding =
+      !user.creatorProfile?.displayName || !user.creatorProfile?.username;
 
+    const emailVerifiedAt = user.emailVerifiedAt;
     return {
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: emailVerifiedAt !== null,
+        emailVerifiedAt: emailVerifiedAt?.toISOString() ?? null,
+        role: user.role,
+      },
+      // Untrusted provider address, offered only to prefill the capture screen.
+      // It is not stored, so it can never be mistaken for a verified address and
+      // cannot squat another person's unique email.
+      suggestedEmail: user.email === null ? providerEmail : null,
       creator: toPublicCreator(user),
       // Gap item 25: callers authenticate with an Inverge session JWT, never with the
       // provider token. The provider token proves identity only at this exchange.
       sessionToken: await this.sessions.sign(user.id),
       requiresOnboarding,
+      requiresEmailVerification: emailVerifiedAt === null,
     };
   }
 
@@ -132,15 +231,19 @@ export class AuthService {
       include: { creatorProfile: true },
     });
     if (!user) return null;
-    const requiresOnboarding = !user.creatorProfile?.displayName || !user.creatorProfile?.username;
+    const requiresOnboarding =
+      !user.creatorProfile?.displayName || !user.creatorProfile?.username;
     // The session's own projection. Provider subject ids, KYC facts and internal
     // timestamps stay server-side; a caller that needs them has a dedicated route.
     return {
       id: user.id,
       email: user.email,
+      emailVerified: user.emailVerifiedAt !== null,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       role: user.role,
       creator: toPublicCreator(user),
       requiresOnboarding,
+      requiresEmailVerification: user.emailVerifiedAt === null,
     };
   }
 
@@ -158,6 +261,7 @@ export class AuthService {
           bannedAt: true,
           kycStatus: true,
           amlStatus: true,
+          emailVerifiedAt: true,
           creatorProfile: {
             select: { displayName: true, username: true, tier: true },
           },
@@ -184,6 +288,7 @@ export class AuthService {
         amlStatus: user.amlStatus,
         displayName: user.creatorProfile?.displayName ?? null,
         username: user.creatorProfile?.username ?? null,
+        emailVerified: user.emailVerifiedAt !== null,
         analytics: analyticsEntitlement({
           role: user.role === 'ADMIN' ? 'ADMIN' : 'USER',
           creatorTier: user.creatorProfile?.tier ?? null,
@@ -198,11 +303,18 @@ export class AuthService {
 
   async checkUsernameAvailability(username: string, currentUserId?: string) {
     if (!username || username.trim().length < 3) {
-      return { available: false, reason: 'Username must be at least 3 characters long' };
+      return {
+        available: false,
+        reason: 'Username must be at least 3 characters long',
+      };
     }
     const clean = username.trim().toLowerCase().replace(/^@/, '');
     if (!/^[a-zA-Z0-9_-]+$/.test(clean)) {
-      return { available: false, reason: 'Username can only contain letters, numbers, underscores, and dashes' };
+      return {
+        available: false,
+        reason:
+          'Username can only contain letters, numbers, underscores, and dashes',
+      };
     }
 
     const existing = await this.prisma.creatorProfile.findFirst({
@@ -245,15 +357,21 @@ export class AuthService {
     await this.prisma.creatorProfile.upsert({
       where: { userId },
       update: {
-        ...(dto.username !== undefined ? { username: dto.username.trim().toLowerCase().replace(/^@/, '') } : {}),
-        ...(dto.displayName !== undefined ? { displayName: dto.displayName } : {}),
+        ...(dto.username !== undefined
+          ? { username: dto.username.trim().toLowerCase().replace(/^@/, '') }
+          : {}),
+        ...(dto.displayName !== undefined
+          ? { displayName: dto.displayName }
+          : {}),
         ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
         ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
         ...(dto.links !== undefined ? { links: dto.links as object } : {}),
       },
       create: {
         userId,
-        username: dto.username ? dto.username.trim().toLowerCase().replace(/^@/, '') : null,
+        username: dto.username
+          ? dto.username.trim().toLowerCase().replace(/^@/, '')
+          : null,
         displayName: dto.displayName ?? null,
         avatarUrl: dto.avatarUrl ?? null,
         bio: dto.bio ?? null,
@@ -325,7 +443,10 @@ export class AuthService {
         },
         include: {
           creator: {
-            include: { creatorProfile: true, _count: { select: { ideas: true } } },
+            include: {
+              creatorProfile: true,
+              _count: { select: { ideas: true } },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },
