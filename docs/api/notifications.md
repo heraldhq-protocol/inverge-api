@@ -51,8 +51,11 @@ responses in it. The row has no IP address, user agent or session identifier.
 | Variable | Effect |
 |---|---|
 | `QUEUE_ENABLED` | `false` does not register `notification-dispatch` at all; the service dispatches inline. |
-| `NOTIFICATION_PROVIDER` | `stub` (offline log) or `herald` (reference adapter). |
 | `REDIS_URL` | Queue transport. The queue is optional infrastructure. |
+
+The only notification adapter is the offline stub. It records the dispatch and
+logs the template/user id; it does not send email or wallet push. There is no
+external notification gateway in this repository.
 
 ## Verification
 
@@ -71,8 +74,8 @@ after its service is started.
 
 ## Deferred
 
-- No delivery receipt from Herald; `dispatchedAt` means the adapter call
-  resolved, not that an email or wallet push was read.
+- No real delivery adapter; `dispatchedAt` means the stub adapter call resolved,
+  not that a person read an in-app row.
 - No user preference or unsubscribe model yet. Muting belongs with the read model
   once the web exposes settings.
 - No admin trigger to replay a failed notification; a failed job is retained in

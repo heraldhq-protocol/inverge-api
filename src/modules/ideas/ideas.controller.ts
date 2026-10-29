@@ -14,6 +14,7 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import {
@@ -31,14 +32,14 @@ export class IdeasController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateIdeaDto) {
     return this.ideas.create(user.id, dto);
   }
 
   @Patch(':id')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -49,7 +50,7 @@ export class IdeasController {
 
   @Post(':id/publish')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   publish(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.ideas.publish(user.id, id);
   }

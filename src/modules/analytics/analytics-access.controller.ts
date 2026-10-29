@@ -10,6 +10,7 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { AnalyticsAccessService } from './analytics-access.service';
 import { AnalyticsReadGuard } from './analytics-read.guard';
@@ -32,6 +33,7 @@ export class AnalyticsAccessController {
 
   @Post('access-requests')
   @HttpCode(200)
+  @UseGuards(EmailVerifiedGuard)
   @RateLimit('analytics_request')
   @ApiOperation({
     summary: 'Request premium analytics access',

@@ -4,7 +4,7 @@ Status: **guide only.** No Render service exists in this repository and no deplo
 performed during this audit. `render.yaml` is **absent**; every service must be created in
 the dashboard (or you can commit a blueprint once the values below are agreed).
 
-Repository: `github.com/heraldhq-protocol/inverge-api`
+Repository: `github.com/<your-org>/inverge-api`
 Deployment target: the NestJS API. The web app is not deployed to Render; the escrow
 programme is not a Render service.
 
@@ -32,7 +32,7 @@ them over Render's private network.
 
 | Setting | Value | Evidence / reason |
 |---|---|---|
-| Repository | `heraldhq-protocol/inverge-api` | Separate repository |
+| Repository | `<your-org>/inverge-api` | Separate repository |
 | Branch | `main` | Local checkout is 7 commits behind `origin/main` |
 | Root directory | repository root | `package.json`, `prisma/schema.prisma`, `src/main.ts` |
 | Runtime | Node | No Dockerfile exists |
@@ -149,6 +149,12 @@ import, use it; otherwise add variables one by one. Never upload the file to a p
 | `DIDIT_WEBHOOK_SECRET` | staging webhook secret | Secret |
 | `DIDIT_CALLBACK_URL` | `https://<staging-web>/d/settings/verification` | A page that exists; the old `/kyc/callback` example never existed |
 | `ADMIN_ALLOWLIST` | operator email or provider id | Bootstraps the first admin |
+| `EMAIL_PROVIDER` | `resend` | `stub` is rejected when `NODE_ENV=production` |
+| `RESEND_API_KEY` | sending-only key | Secret; domain-restricted |
+| `EMAIL_FROM` | sender on a verified domain | Not `onboarding@resend.dev` outside local testing |
+| `EMAIL_FROM_NAME` | `Inverge` | |
+| `EMAIL_REPLY_TO` | monitored mailbox | Optional but recommended |
+| `EMAIL_CODE_SECRET` | 32+ random characters | Secret; unique per environment |
 | `ANALYTICS_INGEST_ENABLED` | `true` | |
 | `ANALYTICS_INGEST_SECRET` | generated | Secret; identical to the web |
 | `METRICS_TOKEN` | generated | Secret; otherwise `/metrics` is public |
@@ -159,6 +165,12 @@ import, use it; otherwise add variables one by one. Never upload the file to a p
 > With `KYC_PROVIDER=didit` and `NODE_ENV=production`, the API **will not boot** until all
 > five Didit values are present. Create the three workflows first. This is deliberate
 > fail-closed behaviour (`src/config/env.validation.ts:235-251`).
+>
+> Email follows the same rule: with `NODE_ENV=production` and
+> `EMAIL_PROVIDER=resend`, boot fails until `RESEND_API_KEY` and `EMAIL_FROM` are set,
+> and `EMAIL_CODE_SECRET` must be at least 32 characters. The current Resend account has
+> no verified domain, so arbitrary recipients cannot receive mail yet. See
+> [email.md](email.md).
 
 ### 3.3 Payment rail
 
@@ -192,7 +204,7 @@ keypair/programme-id mismatch that blocks that step.
 | `PORT` | Render injects it |
 | `FEE_PAYER_SECRET_KEY` | Declared but unread; `FeePayerService` throws `NotImplemented` |
 | `PRIVY_*` | Legacy adapter; the current web client uses Web3Auth |
-| `HERALD_*` | Notification gateway not selected; stub is deliberate |
+| Notification gateway | No external notification gateway exists; in-app rows use the offline stub. Transactional email is separate (`EMAIL_PROVIDER`). |
 | `ANTHROPIC_API_KEY` | Only needed if `MODERATION_PROVIDER=ai` |
 | `DIRECT_URL` | Only needed behind a pooler |
 

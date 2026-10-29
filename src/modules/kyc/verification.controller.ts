@@ -23,6 +23,7 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { ComplianceReviewerGuard } from '../auth/guards/compliance-reviewer.guard';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import {
   AccountTypeDto,
@@ -98,7 +99,7 @@ export class VerificationController {
 
   @Post('session')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({ summary: 'Start or restart a hosted verification session' })
   session(
     @CurrentUser() user: AuthenticatedUser,
@@ -112,7 +113,7 @@ export class VerificationController {
 
   @Post('business/session')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({ summary: 'Register the business and start KYB' })
   businessSession(
     @CurrentUser() user: AuthenticatedUser,
@@ -130,7 +131,7 @@ export class VerificationController {
 
   @Post('account-type')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({ summary: 'Choose individual or business account shape' })
   accountType(@CurrentUser() user: AuthenticatedUser, @Body() dto: AccountTypeDto) {
     return this.verification.setAccountType(user.id, dto.accountType);
@@ -138,7 +139,7 @@ export class VerificationController {
 
   @Post('contributions/authorize')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({
     summary: 'Authorise a contribution against the FR-104 cumulative threshold',
   })

@@ -20,6 +20,7 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { ApplicationFeeService } from './application-fee.service';
@@ -62,7 +63,7 @@ export class CampaignsController {
   @Post(':id/application-fee')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @RateLimit('financial')
   @ApiOperation({
     summary: 'Start or resume the FR-311 application-fee charge for a draft',
@@ -76,7 +77,7 @@ export class CampaignsController {
 
   @Post(':id/submit')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({ summary: 'Submit draft campaign for curation review' })
   submit(
     @CurrentUser() user: AuthenticatedUser,

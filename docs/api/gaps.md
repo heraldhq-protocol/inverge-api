@@ -13,7 +13,12 @@ exists; **deferred** = planned, not next.
 | Feature | Route | Status | Gap |
 |---|---|---|---|
 | Provider token → session | `POST /auth/session` | implemented | Returns id/email/role only; no issuer/audience claim; 1 h with no refresh |
-| Current user | `GET /auth/me` | implemented | Returns id/email/role + public creator only; provider ids and KYC facts stay server-side |
+| Current user | `GET /auth/me` | implemented | Returns id/email/ownership/role + public creator only; provider ids and KYC facts stay server-side |
+| Email status | `GET /auth/email` | implemented | Live challenge projection; no plaintext code |
+| Request email code | `POST /auth/email/request` | implemented | Resend delivery to arbitrary recipients is blocked until a domain is verified |
+| Verify email code | `POST /auth/email/verify` | implemented | Single-use, hashed, attempt-capped |
+| Resend email code | `POST /auth/email/resend` | implemented | Cooldown + hourly cap |
+| Cancel pending email | `DELETE /auth/email/pending` | implemented | Supersedes active challenges |
 | Username availability | `GET /auth/check-username` | implemented | Public and unthrottled; enumeration is cheap |
 | Update profile | `PATCH /auth/me/profile` | implemented | Moderation runs on display name only |
 | Public creator | `GET /auth/creators/{idOrUsername}` | implemented | Resolves by id or stored handle; display-name-derived slugs are no longer routable. Published/supported lists capped at 24 |

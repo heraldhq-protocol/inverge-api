@@ -23,7 +23,7 @@ The **port is the contract**; the adapter is the vendor. Select per env (`stub` 
 | `WALLET_PROVIDER` | `stub` \| `privy` \| `web3auth` | embedded wallet + token verify |
 | `FLATFEE_PROVIDER` | `stub` \| `paystack` | boosts + application fee |
 | `KYC_PROVIDER` | `stub` \| `didit` | identity verification (KYC / AML / KYB) |
-| `NOTIFICATION_PROVIDER` | `stub` \| `herald` | notifications |
+| `EMAIL_PROVIDER` | `stub` \| `resend` | transactional email / verification codes |
 | `QUALITY_PROVIDER` | `stub` \| `claude` | idea quality scoring (FR-271) |
 | `MODERATION_PROVIDER` | `stub` \| `ai` | policy classifier (FR-1003) |
 
@@ -68,6 +68,21 @@ contract is `docs/api/openapi.json` and the conventions (errors, auth, paginatio
 caching, rate limits) are documented in [`docs/api/README.md`](docs/api/README.md).
 Provider webhook URLs must include the prefix.
 
+## Email verification
+
+Account emails are nullable and carry a separate ownership timestamp. The API
+issues a single-use six-digit code (10-minute TTL, hashed at rest, resend
+cooldown, attempt and hourly caps) and gates authored actions on it. Idea support
+and pre-pledges stay open. See [`docs/api/email-verification.md`](docs/api/email-verification.md)
+for routes, error codes and the guard matrix, and
+[`docs/deployment/email.md`](docs/deployment/email.md) for Resend/DNS setup and
+the current delivery caveat.
+
+Production requires `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, a sender on a
+verified domain, and a 32+ character `EMAIL_CODE_SECRET`. Local development uses
+`EMAIL_PROVIDER=stub`, which writes rendered messages to `.local/email-outbox/`
+and never logs the code.
+
 ## Auth in stub mode
 
 No provider needed for local dev (`WALLET_PROVIDER=stub`). Exchange a stub token for a session:
@@ -76,7 +91,11 @@ No provider needed for local dev (`WALLET_PROVIDER=stub`). Exchange a stub token
 curl -X POST localhost:3000/api/v1/auth/session \
   -H 'Content-Type: application/json' \
   -d '{"accessToken":"stub:did-alice:alice@example.com"}'
-# -> { user, sessionToken }   then send: Authorization: Bearer <sessionToken>
+# -> { user, sessionToken, suggestedEmail }   then send: Authorization: Bearer <sessionToken>
+#
+# The stub email fixture is unverified. Append #verified to simulate a provider
+# that signed an email_verified claim:
+#   "stub:did-alice:alice@example.com#verified"
 ```
 
 With `KYC_PROVIDER=stub`, `GET /api/v1/kyc/dev-complete?ref=<ref>&user=<id>` simulates a finished verification so the whole flow runs offline.
