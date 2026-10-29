@@ -26,6 +26,7 @@ The **port is the contract**; the adapter is the vendor. Select per env (`stub` 
 | `EMAIL_PROVIDER` | `stub` \| `resend` | transactional email / verification codes |
 | `QUALITY_PROVIDER` | `stub` \| `claude` | idea quality scoring (FR-271) |
 | `MODERATION_PROVIDER` | `stub` \| `ai` | policy classifier (FR-1003) |
+| `AI_PROVIDER` | `disabled` \| `stub` \| `anthropic` | Creator Studio assistant (see `docs/ai-assistant.md`) |
 
 ## Identity verification — KYC / AML / KYB (Didit)
 

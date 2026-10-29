@@ -29,6 +29,10 @@ import { MODERATION_CLASSIFIER_PORT } from './moderation/moderation.port';
 import { StubModerationAdapter } from './moderation/stub-moderation.adapter';
 import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
 
+import { AI_COMPLETION_PORT } from './ai/ai-completion.port';
+import { AnthropicAiAdapter } from './ai/anthropic-ai.adapter';
+import { StubAiAdapter } from './ai/stub-ai.adapter';
+
 import { DUPLICATE_DETECTOR_PORT } from './dedup/dedup.port';
 import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
 
@@ -54,6 +58,8 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
     StubQualityScorerAdapter,
     StubModerationAdapter,
     AiModerationAdapter,
+    AnthropicAiAdapter,
+    StubAiAdapter,
     StubShingleDetector,
     SolanaRpcAdapter,
     {
@@ -129,6 +135,20 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
       ) => (config.get('MODERATION_PROVIDER', { infer: true }) === 'ai' ? ai : stub),
     },
     {
+      // The assistant keeps its own credentials/model so moderation and the
+      // creator-facing feature can be configured independently.
+      provide: AI_COMPLETION_PORT,
+      inject: [ConfigService, StubAiAdapter, AnthropicAiAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        stub: StubAiAdapter,
+        anthropic: AnthropicAiAdapter,
+      ) =>
+        config.get('AI_PROVIDER', { infer: true }) === 'anthropic'
+          ? anthropic
+          : stub,
+    },
+    {
       provide: DUPLICATE_DETECTOR_PORT,
       inject: [StubShingleDetector],
       // Deterministic shingle detector now; a semantic adapter can drop in later.
@@ -149,6 +169,7 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
     EMAIL_PORT,
     QUALITY_SCORER_PORT,
     MODERATION_CLASSIFIER_PORT,
+    AI_COMPLETION_PORT,
     DUPLICATE_DETECTOR_PORT,
     ESCROW_CHAIN_PORT,
   ],

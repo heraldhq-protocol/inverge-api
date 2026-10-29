@@ -18,7 +18,8 @@ export type RateLimitPolicyName =
   | 'analytics_admin'
   | 'email_request'
   | 'email_resend'
-  | 'email_verify';
+  | 'email_verify'
+  | 'ai_assistant';
 
 export type RateLimitScope = 'ip' | 'user';
 
@@ -69,6 +70,9 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // Wrong guesses are cheap to send but expensive to allow: bounded per user,
   // while the challenge row independently enforces max attempts.
   email_verify: { limit: 10, windowSeconds: 300, burst: 5, scope: 'user', failClosed: false },
+  // Every call costs provider tokens. The daily token cap is the real budget
+  // guard; this bucket stops a retry loop from spending it in one minute.
+  ai_assistant: { limit: 12, windowSeconds: 60, burst: 4, scope: 'user', failClosed: false },
 };
 
 const FILTER_QUERY_KEYS = [
@@ -127,6 +131,10 @@ export function resolveRateLimitPolicy(
     return 'analytics_premium';
   }
   if (path.includes('/analytics/')) return 'analytics_read';
+
+  if (path.startsWith('/ai/') || path.endsWith('/assistant')) {
+    return 'ai_assistant';
+  }
 
   if (path.startsWith('/admin')) return 'admin';
 

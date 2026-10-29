@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -90,12 +89,24 @@ export class CreateIdeaDto {
   @ApiProperty({ description: 'What the user does today and why it falls short' })
   @IsString() @IsNotEmpty() currentAlternative!: string;
 
-  @ApiProperty({ description: 'Indicative breakdown of what the ask will buy (object or array)' })
-  @IsObject() askBreakdown!: Record<string, unknown>;
+  @ApiPropertyOptional({
+    description:
+      'Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.',
+  })
+  @IsOptional()
+  @IsObject()
+  askBreakdown?: Record<string, unknown>;
 
-  @ApiProperty({ type: [RoadmapStepDto], description: 'At least two dated roadmap steps' })
-  @IsArray() @ArrayMinSize(2) @ValidateNested({ each: true }) @Type(() => RoadmapStepDto)
-  roadmapSteps!: RoadmapStepDto[];
+  @ApiPropertyOptional({
+    type: [RoadmapStepDto],
+    description:
+      'Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapStepDto)
+  roadmapSteps?: RoadmapStepDto[];
 
   @ApiProperty({ enum: IDEA_CATEGORIES })
   @IsIn(IDEA_CATEGORIES) category!: (typeof IDEA_CATEGORIES)[number];
@@ -120,10 +131,15 @@ export class CreateIdeaDto {
   @ApiPropertyOptional({ description: 'Optional free-text roadmap summary' })
   @IsOptional() @IsString() roadmap?: string;
 
-  @ApiProperty({ description: 'Intended ask amount (USD)' })
+  @ApiPropertyOptional({
+    description:
+      'Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.',
+    default: 0,
+  })
+  @IsOptional()
   @IsNumber()
-  @IsPositive()
-  askAmount!: number;
+  @Min(0)
+  askAmount?: number;
 
   @ApiPropertyOptional({
     description: 'Creator-declared expected pre-pledge minimum in USD (FR-204). '
