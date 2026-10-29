@@ -175,8 +175,9 @@ import, use it; otherwise add variables one by one. Never upload the file to a p
 ### 3.3 Payment rail
 
 `FLATFEE_PROVIDER=paystack` with a **test** key (`sk_test_...`) is the staging default.
-`PAYSTACK_WEBHOOK_SECRET` is required because staging runs `NODE_ENV=production`; the API
-refuses to boot without it. If you do not have a test key yet, do not switch staging to
+The API boots even when `PAYSTACK_SECRET_KEY` / `PAYSTACK_WEBHOOK_SECRET` are not set, but the
+rail then fails closed: charges error and every webhook is rejected. Set the secret key before
+testing boost purchases or the campaign application fee. Do not switch staging to
 `FLATFEE_PROVIDER=stub` — production configuration rejects it (F-01). Use a non-production
 environment for offline work.
 

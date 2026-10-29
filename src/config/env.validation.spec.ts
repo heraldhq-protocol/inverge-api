@@ -208,22 +208,14 @@ describe('validateEnv — credentials for enabled providers', () => {
     ).toThrow(new RegExp(key));
   });
 
-  it('requires PAYSTACK_SECRET_KEY when paystack is selected', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PAYSTACK_SECRET_KEY: undefined,
-      }),
-    ).toThrow(/PAYSTACK_SECRET_KEY/);
-  });
-
-  it('requires PAYSTACK_WEBHOOK_SECRET for paystack in production', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PAYSTACK_WEBHOOK_SECRET: undefined,
-      }),
-    ).toThrow(/PAYSTACK_WEBHOOK_SECRET/);
+  it('boots with paystack selected but no credentials provisioned', () => {
+    const env = validateEnv({
+      ...productionBase,
+      PAYSTACK_SECRET_KEY: undefined,
+      PAYSTACK_WEBHOOK_SECRET: undefined,
+    });
+    expect(env.FLATFEE_PROVIDER).toBe('paystack');
+    expect(env.PAYSTACK_SECRET_KEY).toBeUndefined();
   });
 
   it.each(['RESEND_API_KEY', 'EMAIL_FROM'] as const)(

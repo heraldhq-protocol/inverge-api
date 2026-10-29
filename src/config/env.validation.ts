@@ -311,27 +311,12 @@ export const envSchema = z
         }
       }
     }
-    if (env.FLATFEE_PROVIDER === 'paystack') {
-      if (!env.PAYSTACK_SECRET_KEY) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['PAYSTACK_SECRET_KEY'],
-          message: 'PAYSTACK_SECRET_KEY is required when FLATFEE_PROVIDER=paystack',
-        });
-      }
-      // The adapter falls back to the secret key, but an explicitly separate
-      // webhook key is the supported production configuration. Requiring it
-      // here prevents a deployment from silently accepting callbacks under a
-      // key that is also used for outbound API calls.
-      if (env.NODE_ENV === 'production' && !env.PAYSTACK_WEBHOOK_SECRET) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['PAYSTACK_WEBHOOK_SECRET'],
-          message:
-            'PAYSTACK_WEBHOOK_SECRET is required when FLATFEE_PROVIDER=paystack in production',
-        });
-      }
-    }
+    // Paystack credentials are deliberately not a boot requirement. A deployment
+    // may select the rail before the keys are provisioned and still serve the rest
+    // of the API; the adapter fails closed until they arrive — createCharge throws
+    // and parseWebhook rejects every callback when neither key is set. Setting
+    // PAYSTACK_WEBHOOK_SECRET explicitly is still the supported production
+    // configuration (the adapter otherwise falls back to the API key).
     if (env.KYC_PROVIDER === 'didit' && !env.DIDIT_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
