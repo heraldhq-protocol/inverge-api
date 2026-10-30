@@ -514,6 +514,62 @@ export class IdeasService {
   }
 
   /**
+   * The caller's non-binding pre-pledges.
+   *
+   * Returns only the caller's own signals, joined to the public idea projection
+   * the web already knows. No payment state is implied: `amountUsd` is stated
+   * intent, never a contribution or a balance.
+   */
+  async listMyPrePledges(userId: string, limit = 50) {
+    const take = Math.min(Math.max(Math.trunc(limit) || 50, 1), 100);
+    const [signals, thresholds] = await Promise.all([
+      this.prisma.ideaSignal.findMany({
+        where: { userId, type: 'PRE_PLEDGE' },
+        include: {
+          idea: {
+            include: { creator: { include: { creatorProfile: true } } },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      }),
+      this.loadGateThresholds(),
+    ]);
+
+    return {
+      data: signals.map((signal) => {
+        const {
+          creator,
+          taxonomyCategorySlug,
+          taxonomySubcategorySlug,
+          ...idea
+        } = signal.idea;
+
+        return {
+          amountUsd: (signal.amountUsd ?? 0).toString(),
+          createdAt: signal.createdAt.toISOString(),
+          currency: signal.currency,
+          idea: {
+            ...idea,
+            askAmount: idea.askAmount.toString(),
+            creator: toPublicCreator(creator),
+            feedbackScore: idea.feedbackScore?.toString() ?? null,
+            gateProgress: this.gateProgressFor(idea, thresholds),
+            promoted: false,
+            taxonomy: toTaxonomyProjection(
+              taxonomyCategorySlug,
+              taxonomySubcategorySlug,
+            ),
+            weightedPrePledgeTotal:
+              idea.weightedPrePledgeTotal?.toString() ?? null,
+          },
+        };
+      }),
+      truncated: signals.length === take,
+    };
+  }
+
+  /**
    * Map the nested taxonomy DTO onto the two stored slug columns. The pair is
    * validated here rather than in the DTO because the child is only valid under
    * its own parent, which a field-level validator cannot see.

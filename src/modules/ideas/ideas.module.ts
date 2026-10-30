@@ -6,10 +6,11 @@ import { ModerationModule } from '../moderation/moderation.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdeasController } from './ideas.controller';
 import { IdeasService } from './ideas.service';
+import { MePrePledgesController } from './me-pre-pledges.controller';
 
 @Module({
   imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule],
-  controllers: [IdeasController],
+  controllers: [IdeasController, MePrePledgesController],
   providers: [IdeasService],
   exports: [IdeasService],
 })

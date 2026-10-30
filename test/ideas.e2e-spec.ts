@@ -265,6 +265,46 @@ describe('Ideas routes (e2e)', () => {
     });
   });
 
+  describe('creator reads', () => {
+    it('401 without a token on the pre-pledge and feedback reads', async () => {
+      await http().get('/api/v1/me/pre-pledges').expect(401);
+      await http().get('/api/v1/me/feedback').expect(401);
+      await http().get(`/api/v1/ideas/${ideaId}/survey/responses`).expect(401);
+    });
+
+    it('returns only the caller’s pre-pledges', async () => {
+      const res = await http().get('/api/v1/me/pre-pledges').set(auth(backerB)).expect(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].idea.id).toBe(ideaId);
+      expect(Number(res.body.data[0].amountUsd)).toBe(100);
+      expect(res.body.data[0].idea.creator).toBeDefined();
+    });
+
+    it('does not leak another creator’s feedback responses', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}/survey/responses`).set(auth(backerA)).expect(403);
+      const none = await http().get('/api/v1/me/feedback').set(auth(backerA)).expect(200);
+      expect(none.body.data).toEqual([]);
+      expect(none.body.totalResponses).toBe(0);
+    });
+
+    it('returns anonymous responses to the owning creator', async () => {
+      const one = await http()
+        .get(`/api/v1/ideas/${ideaId}/survey/responses`)
+        .set(auth(creator))
+        .expect(200);
+      expect(one.body.data).toHaveLength(2);
+      expect(one.body.questions.length).toBeGreaterThan(0);
+      expect(one.body.data[0].answers).toBeDefined();
+      expect(one.body.data[0].userId).toBeUndefined();
+
+      const all = await http().get('/api/v1/me/feedback').set(auth(creator)).expect(200);
+      expect(all.body.totalResponses).toBe(2);
+      expect(all.body.data[0].ideaId).toBe(ideaId);
+      expect(all.body.data[0].responses).toHaveLength(2);
+      expect(all.body.data[0].responses[0].userId).toBeUndefined();
+    });
+  });
+
   // ─────────────── Comments (thread + replies + likes + count metric) ───────────────
   describe('comments', () => {
     let commentId: string;
