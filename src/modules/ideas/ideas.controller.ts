@@ -73,6 +73,16 @@ export class IdeasController {
     return this.ideas.getQuality(id, user);
   }
 
+  @Get(':id/engagement')
+  @ApiBearerAuth()
+  @UseGuards(PrivyAuthGuard)
+  engagement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.ideas.getEngagement(user.id, id);
+  }
+
   @Post(':id/support')
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard)

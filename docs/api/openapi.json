@@ -776,6 +776,7 @@
             "type": "string"
           },
           "poster": {
+            "description": "Poster image: an uploaded `/api/media/<id>` reference or an https URL.",
             "type": "string"
           },
           "src": {
@@ -1134,7 +1135,7 @@
             "type": "string"
           },
           "coverImageUrl": {
-            "description": "Cover image URL for image-led cards",
+            "description": "Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be the caller's own verified asset) or an https URL to an externally hosted image.",
             "type": "string"
           },
           "creatorPrePledgeTarget": {
@@ -1143,6 +1144,10 @@
           },
           "currentAlternative": {
             "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "demoUrl": {
+            "description": "Demo video as a YouTube or Vimeo page URL (for example `https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the host is recognised. Videos are never uploaded to this service.",
             "type": "string"
           },
           "problem": {
@@ -1201,6 +1206,50 @@
           "targetUser",
           "currentAlternative",
           "category"
+        ],
+        "type": "object"
+      },
+      "CreateMediaUploadDto": {
+        "properties": {
+          "altText": {
+            "description": "Alt text. Required for meaningful images.",
+            "type": "string"
+          },
+          "byteSize": {
+            "description": "Declared byte length.",
+            "example": 482311,
+            "type": "number"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "category": {
+            "default": "OTHER",
+            "enum": [
+              "AVATAR",
+              "IDEA_COVER",
+              "IDEA_GALLERY",
+              "CAMPAIGN_COVER",
+              "CAMPAIGN_HERO",
+              "CAMPAIGN_STORY",
+              "REWARD",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "contentType": {
+            "description": "Declared MIME type. Must be in the configured image allowlist; the bytes are verified at completion.",
+            "example": "image/jpeg",
+            "type": "string"
+          },
+          "displayName": {
+            "description": "Original filename, for display only.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentType",
+          "byteSize"
         ],
         "type": "object"
       },
@@ -2737,7 +2786,7 @@
             "type": "string"
           },
           "coverImageUrl": {
-            "description": "Cover image URL for image-led cards",
+            "description": "Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be the caller's own verified asset) or an https URL to an externally hosted image.",
             "type": "string"
           },
           "creatorPrePledgeTarget": {
@@ -2746,6 +2795,10 @@
           },
           "currentAlternative": {
             "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "demoUrl": {
+            "description": "Demo video as a YouTube or Vimeo page URL (for example `https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the host is recognised. Videos are never uploaded to this service.",
             "type": "string"
           },
           "problem": {
@@ -2841,6 +2894,20 @@
               "type": "string"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateMediaAssetDto": {
+        "properties": {
+          "altText": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -6410,6 +6477,44 @@
         ]
       }
     },
+    "/api/v1/ideas/{id}/engagement": {
+      "get": {
+        "operationId": "IdeasController_engagement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
     "/api/v1/ideas/{id}/insights": {
       "get": {
         "operationId": "InsightsController_get",
@@ -7700,6 +7805,262 @@
         "summary": "List the signed-in user’s non-binding pre-pledges",
         "tags": [
           "ideas"
+        ]
+      }
+    },
+    "/api/v1/media/config": {
+      "get": {
+        "operationId": "MediaController_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Media capabilities and limits for this deployment",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads": {
+      "post": {
+        "operationId": "MediaController_createUpload",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaUploadDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start an image upload and get a signed upload target",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads/{id}/complete": {
+      "post": {
+        "operationId": "MediaController_complete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify the uploaded bytes and make the asset attachable",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/{id}": {
+      "delete": {
+        "operationId": "MediaController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an asset. Idempotent.",
+        "tags": [
+          "media"
+        ]
+      },
+      "get": {
+        "operationId": "MediaController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Media metadata for its owner or published content",
+        "tags": [
+          "media"
+        ]
+      },
+      "patch": {
+        "operationId": "MediaController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMediaAssetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update display metadata (alt text, caption, name)",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/{id}/url": {
+      "get": {
+        "operationId": "MediaController_readUrl",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "A short-lived read URL, when the viewer may see this media",
+        "tags": [
+          "media"
         ]
       }
     },
