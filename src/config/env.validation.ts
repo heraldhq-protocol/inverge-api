@@ -84,23 +84,22 @@ export const envSchema = z
   // "claude" adds AI checks (thin-content/plagiarism/coherence) — Phase 1.
   QUALITY_PROVIDER: z.enum(['stub', 'claude']).default('stub'),
   // AI moderation classifier (FR-1003 Layer 2). "stub" = deterministic keyword rules;
-  // "ai" calls the Anthropic-compatible endpoint below.
+  // "ai" calls the shared Anthropic-compatible endpoint below.
   MODERATION_PROVIDER: z.enum(['stub', 'ai']).default('stub'),
 
-  // Anthropic-compatible LLM (may point at DeepSeek via ANTHROPIC_BASE_URL). Used by the
-  // AI moderation adapter. Keys live in .env only (gitignored) — never commit them.
-  ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_BASE_URL: z.string().optional(),
-  ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
+  // Shared Anthropic-compatible LLM credentials. The AI moderation adapter and the
+  // Creator Studio assistant both read these; MODERATION_PROVIDER and AI_PROVIDER
+  // choose which adapters are active. Keys live in .env only (gitignored) - never
+  // commit them.
+  AI_API_KEY: z.string().optional(),
+  AI_BASE_URL: z.string().optional(),
+  AI_MODEL: z.string().default('deepseek-flash'),
 
   // Creator Studio assistant (premium). `disabled` keeps every AI route at 503
   // AI_NOT_CONFIGURED; `stub` is deterministic offline output for development and
-  // tests only; `anthropic` calls the compatible endpoint above (DeepSeek works).
-  // These credentials are separate from the moderation ANTHROPIC_* values.
+  // tests only; `anthropic` calls the same shared endpoint. Access is still gated
+  // per user by an approved AiAccessGrant.
   AI_PROVIDER: z.enum(['disabled', 'stub', 'anthropic']).default('disabled'),
-  AI_API_KEY: z.string().optional(),
-  AI_BASE_URL: z.string().optional(),
-  AI_MODEL: z.string().optional(),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(20_000),
   AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(4_000).default(1_200),
   // Total characters accepted across the selected field plus its context.
@@ -400,11 +399,15 @@ export const envSchema = z
           'AI_PROVIDER=stub is not allowed in production; use anthropic or disabled',
       });
     }
-    if (env.AI_PROVIDER === 'anthropic' && !env.AI_API_KEY?.trim()) {
+    if (
+      (env.AI_PROVIDER === 'anthropic' || env.MODERATION_PROVIDER === 'ai') &&
+      !env.AI_API_KEY?.trim()
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['AI_API_KEY'],
-        message: 'AI_API_KEY is required when AI_PROVIDER=anthropic',
+        message:
+          'AI_API_KEY is required when AI_PROVIDER=anthropic or MODERATION_PROVIDER=ai',
       });
     }
 

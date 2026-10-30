@@ -14,9 +14,11 @@ import {
   summarize,
 } from './moderation.port';
 
-// FR-1003 Layer 2 AI classifier. Uses the Anthropic SDK; ANTHROPIC_BASE_URL may point it
-// at a compatible endpoint (e.g. DeepSeek). Output is off-chain flags only (NFR-17) and is
-// tuned for recall over precision (NFR-18). Failures degrade to a review flag, never a block.
+// FR-1003 Layer 2 AI classifier. Uses the Anthropic SDK; AI_BASE_URL may point the
+// client at a compatible endpoint (e.g. DeepSeek). AI_API_KEY, AI_BASE_URL and
+// AI_MODEL are shared with the Creator Studio assistant. Output is off-chain flags
+// only (NFR-17) and is tuned for recall over precision (NFR-18). Failures degrade
+// to a review flag, never a block.
 @Injectable()
 export class AiModerationAdapter implements ModerationClassifierPort {
   private readonly logger = new Logger(AiModerationAdapter.name);
@@ -24,15 +26,18 @@ export class AiModerationAdapter implements ModerationClassifierPort {
   private readonly model: string;
 
   constructor(private readonly config: ConfigService<Env, true>) {
-    this.model = config.get('ANTHROPIC_MODEL', { infer: true });
+    this.model = config.get('AI_MODEL', { infer: true });
   }
 
   private get anthropic(): Anthropic {
     if (!this.client) {
-      const apiKey = this.config.get('ANTHROPIC_API_KEY', { infer: true });
-      const baseURL = this.config.get('ANTHROPIC_BASE_URL', { infer: true });
-      if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
-      this.client = new Anthropic({ apiKey, baseURL });
+      const apiKey = this.config.get('AI_API_KEY', { infer: true });
+      const baseURL = this.config.get('AI_BASE_URL', { infer: true });
+      if (!apiKey) throw new Error('AI_API_KEY is not configured');
+      this.client = new Anthropic({
+        apiKey,
+        ...(baseURL ? { baseURL } : {}),
+      });
     }
     return this.client;
   }
@@ -41,8 +46,8 @@ export class AiModerationAdapter implements ModerationClassifierPort {
     const system = buildSystemPrompt();
     const user = `Classify this ${content.kind} submission.\n\nTITLE: ${content.title ?? ''}\n\nTEXT:\n${content.text}`;
 
-    // Plain Messages call — no Claude-only params (thinking/effort/output_config), so it
-    // stays compatible with non-Anthropic backends behind ANTHROPIC_BASE_URL.
+    // Plain Messages call - no Claude-only params (thinking/effort/output_config), so it
+    // stays compatible with non-Anthropic backends behind AI_BASE_URL.
     const res = await this.anthropic.messages.create({
       model: this.model,
       max_tokens: 1024,

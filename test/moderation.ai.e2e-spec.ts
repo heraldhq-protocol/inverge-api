@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import { AiModerationAdapter } from '../src/ports/moderation/ai-moderation.adapter';
 
-// LIVE test against the Anthropic-compatible endpoint (ANTHROPIC_BASE_URL → DeepSeek).
+// LIVE test against the Anthropic-compatible endpoint (AI_BASE_URL → DeepSeek).
 // Opt-in only: a developer .env with a key must not make the default e2e run depend
 // on a vendor outage, latency or model output. Set RUN_LIVE_AI_E2E=true to enable.
-const RUN = process.env.RUN_LIVE_AI_E2E === 'true' && !!process.env.ANTHROPIC_API_KEY;
+const RUN = process.env.RUN_LIVE_AI_E2E === 'true' && !!process.env.AI_API_KEY;
 const d = RUN ? describe : describe.skip;
 
 // Minimal ConfigService shim reading from the loaded .env.

@@ -243,7 +243,6 @@ describe('validateEnv — credentials for enabled providers', () => {
       // staging; they are not authentication or payment approval.
       QUALITY_PROVIDER: 'stub',
       MODERATION_PROVIDER: 'stub',
-      ANTHROPIC_API_KEY: undefined,
     });
   });
 });
@@ -276,17 +275,16 @@ describe('validateEnv - AI assistant', () => {
     ).toThrow(/AI_PROVIDER/);
   });
 
-  it('requires AI_API_KEY for anthropic without using the moderation key', () => {
+  it('requires AI_API_KEY when the assistant provider is anthropic', () => {
     expect(() =>
       validateEnv({
         ...productionBase,
         AI_PROVIDER: 'anthropic',
-        ANTHROPIC_API_KEY: 'moderation-key',
       }),
     ).toThrow(/AI_API_KEY/);
   });
 
-  it('accepts anthropic with its own credential', () => {
+  it('accepts anthropic with the shared AI credential', () => {
     const env = validateEnv({
       ...productionBase,
       AI_PROVIDER: 'anthropic',
@@ -294,5 +292,27 @@ describe('validateEnv - AI assistant', () => {
     });
     expect(env.AI_PROVIDER).toBe('anthropic');
     expect(env.AI_API_KEY).toBe('assistant-key');
+  });
+
+  it('requires AI_API_KEY when the moderation classifier is enabled', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        MODERATION_PROVIDER: 'ai',
+      }),
+    ).toThrow(/AI_API_KEY/);
+  });
+
+  it('accepts the moderation classifier with the same AI credential', () => {
+    const env = validateEnv({
+      ...productionBase,
+      MODERATION_PROVIDER: 'ai',
+      AI_API_KEY: 'shared-key',
+      AI_BASE_URL: 'https://api.deepseek.com/anthropic',
+      AI_MODEL: 'deepseek-flash',
+    });
+    expect(env.MODERATION_PROVIDER).toBe('ai');
+    expect(env.AI_API_KEY).toBe('shared-key');
+    expect(env.AI_MODEL).toBe('deepseek-flash');
   });
 });

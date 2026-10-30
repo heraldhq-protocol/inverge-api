@@ -206,7 +206,7 @@ keypair/programme-id mismatch that blocks that step.
 | `FEE_PAYER_SECRET_KEY` | Declared but unread; `FeePayerService` throws `NotImplemented` |
 | `PRIVY_*` | Legacy adapter; the current web client uses Web3Auth |
 | Notification gateway | No external notification gateway exists; in-app rows use the offline stub. Transactional email is separate (`EMAIL_PROVIDER`). |
-| `ANTHROPIC_API_KEY` | Only needed if `MODERATION_PROVIDER=ai` |
+| `AI_API_KEY` | Only needed if `MODERATION_PROVIDER=ai` or `AI_PROVIDER=anthropic`; shared by both |
 | `DIRECT_URL` | Only needed behind a pooler |
 
 ---

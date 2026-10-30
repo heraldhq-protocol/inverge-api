@@ -43,9 +43,9 @@ latency). It does not contain an idea write.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `AI_PROVIDER` | `disabled` | `disabled`, `stub` or `anthropic` |
-| `AI_API_KEY` | – | Required when `AI_PROVIDER=anthropic`; never falls back to `ANTHROPIC_API_KEY` |
+| `AI_API_KEY` | – | Required when `AI_PROVIDER=anthropic` or `MODERATION_PROVIDER=ai` |
 | `AI_BASE_URL` | – | DeepSeek: `https://api.deepseek.com/anthropic` |
-| `AI_MODEL` | `deepseek-flash` | Assistant model; independent of `ANTHROPIC_MODEL` |
+| `AI_MODEL` | `deepseek-flash` | Shared by the assistant and moderation |
 | `AI_TIMEOUT_MS` | `20000` | 1s–60s |
 | `AI_MAX_OUTPUT_TOKENS` | `1200` | 64–4000 |
 | `AI_MAX_INPUT_CHARS` | `6000` | Target text plus context |
@@ -96,7 +96,7 @@ call spends real tokens, so run it only with explicit approval and a disposable
 test account.
 
 1. Put a key in `AI_API_KEY` and confirm `AI_PROVIDER`, `AI_BASE_URL` and
-   `AI_MODEL`. `ANTHROPIC_*` configures the moderation adapter only. Start the API
+   `AI_MODEL`. The same values configure the moderation classifier; start the API
    and web app against the same database.
 2. Sign in as an admin (entitled without a grant) or approve an `AiAccessGrant`
    for the test user through `PATCH /api/v1/admin/ai/access-requests/:id`.

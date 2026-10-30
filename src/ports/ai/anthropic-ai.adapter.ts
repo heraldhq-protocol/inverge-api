@@ -12,8 +12,8 @@ import {
 /**
  * Anthropic-compatible transport used by the creator assistant. AI_BASE_URL may
  * point at DeepSeek (the repository's configured endpoint), so the request stays
- * on the plain Messages API: no Claude-only parameters. The assistant reads only
- * AI_* credentials; ANTHROPIC_* belongs to the moderation adapter.
+ * on the plain Messages API: no Claude-only parameters. The assistant shares the
+ * AI_* credentials and model with the moderation classifier.
  *
  * The adapter never logs or returns the prompt; callers get text plus token counts.
  */

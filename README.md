@@ -28,6 +28,8 @@ The **port is the contract**; the adapter is the vendor. Select per env (`stub` 
 | `MODERATION_PROVIDER` | `stub` \| `ai` | policy classifier (FR-1003) |
 | `AI_PROVIDER` | `disabled` \| `stub` \| `anthropic` | Creator Studio assistant (see `docs/ai-assistant.md`) |
 
+The moderation classifier and the Creator Studio assistant share `AI_API_KEY`, `AI_BASE_URL` and `AI_MODEL`. Set `AI_API_KEY` when either `MODERATION_PROVIDER=ai` or `AI_PROVIDER=anthropic`.
+
 ## Identity verification — KYC / AML / KYB (Didit)
 
 One provider serves both products; the **purpose** selects the Didit workflow (set the workflow ids + webhook secret in `.env` — see `.env.example`):
