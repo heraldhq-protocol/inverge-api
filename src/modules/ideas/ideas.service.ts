@@ -58,6 +58,32 @@ type GateSource = {
 
 type IdeaViewer = { id: string; role?: UserRole };
 
+/**
+ * Legacy categories that are the closest honest match for a canonical taxonomy
+ * parent.
+ *
+ * Ideas created before the builder wrote a taxonomy pair still carry the legacy
+ * `category`. Filtering only on `taxonomyCategorySlug` hid every one of them
+ * from its category, even though the value was stored and displayed. This map
+ * is a read-time fallback for unassigned rows only; an explicit taxonomy always
+ * wins, and a subcategory filter never falls back because the legacy value
+ * cannot prove which child it belongs to.
+ */
+const LEGACY_CATEGORIES_BY_TAXONOMY: Readonly<Record<string, readonly string[]>> = {
+  technology: [
+    'technology',
+    'software',
+    'fintech',
+    'agritech',
+    'healthtech',
+    'cleantech',
+    'edtech',
+    'logistics',
+    'e-commerce',
+    'web3',
+  ],
+};
+
 @Injectable()
 export class IdeasService {
   constructor(
@@ -275,10 +301,21 @@ export class IdeasService {
     );
     if (!taxonomy.ok) throw new BadRequestException(taxonomy.reason);
     if (taxonomy.pair) {
-      whereClause.taxonomyCategorySlug = taxonomy.pair.category;
-      if (taxonomy.pair.subcategory) {
-        whereClause.taxonomySubcategorySlug = taxonomy.pair.subcategory;
-      }
+      const legacy = LEGACY_CATEGORIES_BY_TAXONOMY[taxonomy.pair.category] ?? [
+        taxonomy.pair.category,
+      ];
+      const taxonomyWhere = taxonomy.pair.subcategory
+        ? {
+            taxonomyCategorySlug: taxonomy.pair.category,
+            taxonomySubcategorySlug: taxonomy.pair.subcategory,
+          }
+        : {
+            OR: [
+              { taxonomyCategorySlug: taxonomy.pair.category },
+              { category: { in: legacy }, taxonomyCategorySlug: null },
+            ],
+          };
+      whereClause = { AND: [whereClause, taxonomyWhere] };
     }
 
     const limit = clampPageSize(query.limit);
@@ -432,6 +469,40 @@ export class IdeasService {
     return this.cache
       ? this.cache.getOrSet('idea', `public:v2:${idOrSlug}`, 30, loadIdea)
       : loadIdea();
+  }
+
+  /**
+   * The caller's own signals on one readable idea.
+   *
+   * Kept separate from the public projection so an anonymous read never carries
+   * a viewer-shaped field. The idea is still resolved through the same
+   * visibility guard, so a draft remains a 404 to anyone but its owner.
+   */
+  async getEngagement(userId: string, idOrSlug: string) {
+    const idea = await this.findIdea(idOrSlug);
+    this.assertReadable(idea, { id: userId });
+
+    const [support, prePledge] = await Promise.all([
+      this.prisma.ideaSignal.findUnique({
+        where: {
+          ideaId_userId_type: { ideaId: idea.id, userId, type: 'SUPPORT' },
+        },
+        select: { id: true },
+      }),
+      this.prisma.ideaSignal.findUnique({
+        where: {
+          ideaId_userId_type: { ideaId: idea.id, userId, type: 'PRE_PLEDGE' },
+        },
+        select: { amountUsd: true },
+      }),
+    ]);
+
+    return {
+      supported: support !== null,
+      prePledge: prePledge?.amountUsd
+        ? { amountUsd: prePledge.amountUsd.toString() }
+        : null,
+    };
   }
 
   // FR-202: support signal, idempotent per (idea, user).

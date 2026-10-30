@@ -182,6 +182,15 @@ describe('Ideas routes (e2e)', () => {
       const res = await http().get('/api/v1/ideas').expect(200);
       expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
     });
+    it('category filter reaches an idea with only a legacy category', async () => {
+      // `validCreate` has no taxonomy pair. The read-time fallback maps its
+      // legacy `agritech` value to the technology parent so the record is not
+      // stranded outside every category filter.
+      const res = await http()
+        .get('/api/v1/ideas?taxonomyCategory=technology')
+        .expect(200);
+      expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
+    });
     it('404 for an unknown idea', async () => {
       await http().get('/api/v1/ideas/does-not-exist').expect(404);
     });
@@ -228,6 +237,29 @@ describe('Ideas routes (e2e)', () => {
     it('withdraw drops the pledge live (FR-211)', async () => {
       const res = await http().delete(`/api/v1/ideas/${ideaId}/pre-pledge`).set(auth(backerA)).expect(200);
       expect(Number(res.body.weightedPrePledgeTotal)).toBe(25); // only backerB remains
+    });
+  });
+
+  // ─────────────── Viewer engagement (private, per account) ───────────────
+  describe('engagement', () => {
+    it('requires a signed-in viewer', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}/engagement`).expect(401);
+    });
+
+    it('returns only the caller’s own support and pre-pledge state', async () => {
+      const backer = await http()
+        .get(`/api/v1/ideas/${ideaId}/engagement`)
+        .set(auth(backerB))
+        .expect(200);
+      expect(backer.body.supported).toBe(true);
+      expect(Number(backer.body.prePledge.amountUsd)).toBe(100);
+
+      const withdrawn = await http()
+        .get(`/api/v1/ideas/${ideaId}/engagement`)
+        .set(auth(backerA))
+        .expect(200);
+      expect(withdrawn.body.supported).toBe(true);
+      expect(withdrawn.body.prePledge).toBeNull();
     });
   });
 
