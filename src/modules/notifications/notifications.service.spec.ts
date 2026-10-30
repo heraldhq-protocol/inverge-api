@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { JOB_NAMES } from '../../common/queue/job-names';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationPort } from '../../ports/notification/notification.port';
@@ -82,7 +83,7 @@ describe('NotificationsService.notify', () => {
       select: { id: true },
     });
     expect(queue.add).toHaveBeenCalledWith(
-      'dispatch',
+      JOB_NAMES.notificationDispatch,
       { notificationId: 'n1' },
       expect.objectContaining({
         jobId: 'notification:n1',

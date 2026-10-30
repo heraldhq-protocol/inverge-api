@@ -19,7 +19,8 @@ export type RateLimitPolicyName =
   | 'email_request'
   | 'email_resend'
   | 'email_verify'
-  | 'ai_assistant';
+  | 'ai_assistant'
+  | 'media_upload';
 
 export type RateLimitScope = 'ip' | 'user';
 
@@ -73,6 +74,11 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // Every call costs provider tokens. The daily token cap is the real budget
   // guard; this bucket stops a retry loop from spending it in one minute.
   ai_assistant: { limit: 12, windowSeconds: 60, burst: 4, scope: 'user', failClosed: false },
+  // An upload costs storage and a verification round trip. The daily asset
+  // quota is the real budget guard; this bucket stops a retry loop from spending
+  // it in a minute. Fail-closed: an anonymous unlimited retry here is worse than
+  // a short outage, and every caller is authenticated.
+  media_upload: { limit: 20, windowSeconds: 60, burst: 6, scope: 'user', failClosed: true },
 };
 
 const FILTER_QUERY_KEYS = [
@@ -137,6 +143,10 @@ export function resolveRateLimitPolicy(
   }
 
   if (path.startsWith('/admin')) return 'admin';
+
+  if (path.startsWith('/ai/') || path.endsWith('/assistant')) {
+    return 'ai_assistant';
+  }
 
   if (path === '/flat-fee/webhook' || path === '/kyc/webhook') return 'webhook';
 

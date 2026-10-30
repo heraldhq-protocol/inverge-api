@@ -1,24 +1,17 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { VerificationService } from './verification.service';
-import {
-  VERIFICATION_RECONCILE_QUEUE,
-  VERIFICATION_WEBHOOK_QUEUE,
-  type VerificationWebhookJob,
-} from './verification.queue';
+import type { VerificationWebhookJob } from './verification.queue';
 
-// Both workers contain no business logic: they unpack a bounded payload and call the
-// domain service. A provider call therefore never happens inside the HTTP request that
-// acknowledges a webhook.
-
-@Processor(VERIFICATION_WEBHOOK_QUEUE)
-export class VerificationWebhookProcessor extends WorkerHost {
+// Contains no business logic: it unpacks a bounded payload and calls the domain
+// service. A provider call therefore never happens inside the HTTP request that
+// acknowledges a webhook. `JobsProcessor` owns the only Worker; this class is the
+// handler behind one job name.
+@Injectable()
+export class VerificationWebhookProcessor {
   private readonly logger = new Logger(VerificationWebhookProcessor.name);
 
-  constructor(private readonly verification: VerificationService) {
-    super();
-  }
+  constructor(private readonly verification: VerificationService) {}
 
   async process(job: Job<VerificationWebhookJob>) {
     try {
@@ -31,18 +24,5 @@ export class VerificationWebhookProcessor extends WorkerHost {
       );
       throw error;
     }
-  }
-}
-
-@Processor(VERIFICATION_RECONCILE_QUEUE)
-export class VerificationReconcileProcessor extends WorkerHost {
-  private readonly logger = new Logger(VerificationReconcileProcessor.name);
-
-  constructor(private readonly verification: VerificationService) {
-    super();
-  }
-
-  async process() {
-    return this.verification.reconcileDue();
   }
 }

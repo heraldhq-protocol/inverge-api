@@ -25,8 +25,9 @@ accounts or filters.
 
 1. Insert `Notification` with `userId`, `template`, `data`, and an optional
    `dedupeKey`. A duplicate `dedupeKey` (`P2002`) is a no-op.
-2. If queues are enabled, enqueue `notification-dispatch` with a stable
-   `jobId` (`notification:<id>`) and five exponential-backoff attempts.
+2. If queues are enabled, enqueue the `notification-dispatch` job on the shared
+   `inverge-jobs` queue with a stable `jobId` (`notification:<id>`) and five
+   exponential-backoff attempts.
 3. If the enqueue fails, dispatch inline once. If queues are disabled entirely
    (tests, a web-only replica), dispatch inline.
 4. The worker calls the notification port and records `dispatchedAt`,
@@ -50,7 +51,8 @@ responses in it. The row has no IP address, user agent or session identifier.
 
 | Variable | Effect |
 |---|---|
-| `QUEUE_ENABLED` | `false` does not register `notification-dispatch` at all; the service dispatches inline. |
+| `QUEUE_ENABLED` | `false` registers no Worker; the service dispatches inline. |
+| `NOTIFICATION_PROVIDER` | `stub` (offline log) or `herald` (reference adapter). |
 | `REDIS_URL` | Queue transport. The queue is optional infrastructure. |
 
 The only notification adapter is the offline stub. It records the dispatch and

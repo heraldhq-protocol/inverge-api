@@ -28,12 +28,18 @@ function prismaMock(idea: any = null) {
 const metricsMock = () => ({ recompute: jest.fn().mockResolvedValue({}), normalizeToUsd: jest.fn().mockResolvedValue(100) }) as any;
 const qualityMock = () => ({ evaluate: jest.fn().mockResolvedValue({ tier: 'DISCOVERABLE' }), latestReport: jest.fn().mockResolvedValue({ id: 'r1' }) }) as any;
 const moderationMock = () => ({ screenSafe: jest.fn().mockResolvedValue(null), screen: jest.fn() }) as any;
+const mediaMock = () =>
+  ({
+    assertAttachable: jest.fn().mockResolvedValue(undefined),
+    bindToCampaign: jest.fn().mockResolvedValue(undefined),
+    bindToIdea: jest.fn().mockResolvedValue(undefined),
+  }) as any;
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
 
 function make(idea: any = null, params = paramsMock(), cache?: any) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return { svc: new IdeasService(p, m, q, mod, params, cache), p, m, q, mod };
+  return { svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache), p, m, q, mod };
 }
 
 const validDto = {
@@ -328,6 +334,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
       qualityMock(),
       moderationMock(),
       paramsMock(),
+      mediaMock(),
       undefined,
       analytics,
     );

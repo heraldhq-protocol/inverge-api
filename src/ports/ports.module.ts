@@ -39,6 +39,10 @@ import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
 import { ESCROW_CHAIN_PORT } from './escrow/escrow-chain.port';
 import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
 
+import { MEDIA_STORAGE_PORT } from './media/media-storage.port';
+import { SupabaseMediaAdapter } from './media/supabase-media.adapter';
+import { DisabledMediaAdapter } from './media/disabled-media.adapter';
+
 // Binds each port token to an adapter selected by env. Adapters are all constructed
 // (cheap), the factory picks one — so swapping a vendor is an env flip, and adding a
 // new vendor is a new adapter file. No business logic references a concrete vendor.
@@ -62,6 +66,10 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
     StubAiAdapter,
     StubShingleDetector,
     SolanaRpcAdapter,
+    StubAiAdapter,
+    AnthropicAiAdapter,
+    SupabaseMediaAdapter,
+    DisabledMediaAdapter,
     {
       provide: EMBEDDED_WALLET_PORT,
       inject: [
@@ -160,6 +168,37 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
       provide: ESCROW_CHAIN_PORT,
       useExisting: SolanaRpcAdapter,
     },
+    {
+      // `disabled` still resolves the stub, but AiService refuses before any
+      // call. Production rejects `stub` at boot, so it can never serve a fake
+      // suggestion to a real user.
+      provide: AI_COMPLETION_PORT,
+      inject: [ConfigService, StubAiAdapter, AnthropicAiAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        stub: StubAiAdapter,
+        anthropic: AnthropicAiAdapter,
+      ) =>
+        config.get('AI_PROVIDER', { infer: true }) === 'anthropic'
+          ? anthropic
+          : stub,
+    },
+    {
+      // `disabled` is a real adapter, not a null: every call fails closed with a
+      // stable code so no caller can mistake a missing provider for a successful
+      // upload. `s3` is refused at boot until its adapter exists.
+      provide: MEDIA_STORAGE_PORT,
+      inject: [ConfigService, SupabaseMediaAdapter, DisabledMediaAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        supabase: SupabaseMediaAdapter,
+        disabled: DisabledMediaAdapter,
+      ) =>
+        config.get('MEDIA_STORAGE_PROVIDER', { infer: true }) === 'supabase' &&
+        supabase.isConfigured()
+          ? supabase
+          : disabled,
+    },
   ],
   exports: [
     EMBEDDED_WALLET_PORT,
@@ -172,6 +211,8 @@ import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
     AI_COMPLETION_PORT,
     DUPLICATE_DETECTOR_PORT,
     ESCROW_CHAIN_PORT,
+    AI_COMPLETION_PORT,
+    MEDIA_STORAGE_PORT,
   ],
 })
 export class PortsModule {}

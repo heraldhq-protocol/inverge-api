@@ -27,6 +27,8 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { AiModule } from './modules/ai/ai.module';
+import { MediaModule } from './modules/media/media.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -59,6 +61,10 @@ import { AiModule } from './modules/ai/ai.module';
     AnalyticsModule,
     TaxonomyModule,
     AiModule,
+    MediaModule,
+    // Background work: the single queue Worker plus the in-process timers that
+    // replaced repeatable jobs. Last, because it composes the feature modules.
+    JobsModule,
   ],
   providers: [
     // Registered as a provider (not only in main.ts) so e2e applications get the

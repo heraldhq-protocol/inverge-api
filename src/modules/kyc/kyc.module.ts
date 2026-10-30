@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { envFlag } from '../../config/feature-flags';
+import { JOBS_QUEUE } from '../../common/queue/job-names';
 import { WebhookInboxModule } from '../../common/webhooks/webhook-inbox.module';
 import { AuthModule } from '../auth/auth.module';
 import { ComplianceReviewerGuard } from '../auth/guards/compliance-reviewer.guard';
@@ -10,33 +11,18 @@ import { KycService } from './kyc.service';
 import { VerificationController } from './verification.controller';
 import { VerificationRepository } from './verification.repository';
 import { VerificationService } from './verification.service';
-import {
-  VerificationReconcileProcessor,
-  VerificationWebhookProcessor,
-} from './verification.processor';
-import {
-  VerificationIntervalReconciler,
-  VerificationReconcileScheduler,
-} from './verification.scheduler';
-import {
-  VERIFICATION_RECONCILE_QUEUE,
-  VERIFICATION_WEBHOOK_QUEUE,
-} from './verification.queue';
+import { VerificationWebhookProcessor } from './verification.processor';
 
-// A BullMQ Worker dials Redis during bootstrap, so queues must not be registered when
-// QUEUE_ENABLED=false. The interval reconciler covers that deployment without Redis.
+// A BullMQ Worker dials Redis during bootstrap, so the queue must not be registered when
+// QUEUE_ENABLED=false. The webhook then applies inline; reconciliation is time-driven and
+// runs in-process either way (`modules/jobs/periodic-jobs.service.ts`).
 const queueEnabled = envFlag('QUEUE_ENABLED');
 
 @Module({
   imports: [
     AuthModule,
     WebhookInboxModule,
-    ...(queueEnabled
-      ? [
-          BullModule.registerQueue({ name: VERIFICATION_WEBHOOK_QUEUE }),
-          BullModule.registerQueue({ name: VERIFICATION_RECONCILE_QUEUE }),
-        ]
-      : []),
+    ...(queueEnabled ? [BullModule.registerQueue({ name: JOBS_QUEUE })] : []),
   ],
   controllers: [KycController, KybController, VerificationController],
   providers: [
@@ -44,15 +30,13 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
     VerificationService,
     KycService,
     ComplianceReviewerGuard,
-    VerificationIntervalReconciler,
-    ...(queueEnabled
-      ? [
-          VerificationWebhookProcessor,
-          VerificationReconcileProcessor,
-          VerificationReconcileScheduler,
-        ]
-      : []),
+    ...(queueEnabled ? [VerificationWebhookProcessor] : []),
   ],
-  exports: [VerificationService, VerificationRepository, KycService],
+  exports: [
+    VerificationService,
+    VerificationRepository,
+    KycService,
+    ...(queueEnabled ? [VerificationWebhookProcessor] : []),
+  ],
 })
 export class KycModule {}

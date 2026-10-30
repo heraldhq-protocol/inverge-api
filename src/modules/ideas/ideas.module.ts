@@ -7,9 +7,10 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdeasController } from './ideas.controller';
 import { IdeasService } from './ideas.service';
 import { MePrePledgesController } from './me-pre-pledges.controller';
+import { MediaModule } from '../media/media.module';
 
 @Module({
-  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule],
+  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule, MediaModule],
   controllers: [IdeasController, MePrePledgesController],
   providers: [IdeasService],
   exports: [IdeasService],
