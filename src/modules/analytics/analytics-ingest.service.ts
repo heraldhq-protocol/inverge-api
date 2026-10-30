@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
 import {
   assertProductAnalyticsEvent,
   normalizeProductAnalyticsEvent,
@@ -18,7 +19,6 @@ import {
   toInternalEventName,
 } from './analytics-wire';
 import {
-  ANALYTICS_INGEST_QUEUE,
   AnalyticsIngestJobData,
   toAnalyticsIngestJobEvent,
 } from './analytics-ingest.job';
@@ -70,7 +70,7 @@ export class AnalyticsIngestService {
   constructor(
     private readonly analytics: ProductAnalyticsService,
     @Optional()
-    @InjectQueue(ANALYTICS_INGEST_QUEUE)
+    @InjectQueue(JOBS_QUEUE)
     private readonly queue?: Queue<AnalyticsIngestJobData>,
   ) {}
 
@@ -110,7 +110,7 @@ export class AnalyticsIngestService {
     if (this.queue) {
       try {
         await this.queue.add(
-          'ingest',
+          JOB_NAMES.analyticsIngest,
           { events: valid.map(toAnalyticsIngestJobEvent) },
           {
             attempts: 3,

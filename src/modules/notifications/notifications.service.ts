@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
 import { logQueueErrors } from '../../common/queue/queue-errors';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,10 +25,6 @@ import {
   NotificationReadDto,
   UnreadNotificationCountDto,
 } from './dto/notification.dto';
-import {
-  NOTIFICATION_QUEUE,
-  NotificationDispatchJob,
-} from './notification-dispatch.contract';
 
 const NOTIFICATION_PAGE_SIZE = 24;
 const NOTIFICATION_MAX_PAGE_SIZE = 50;
@@ -55,8 +52,8 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     @Inject(NOTIFICATION_PORT) private readonly port: NotificationPort,
     @Optional()
-    @InjectQueue(NOTIFICATION_QUEUE)
-    private readonly queue?: Queue<NotificationDispatchJob>,
+    @InjectQueue(JOBS_QUEUE)
+    private readonly queue?: Queue,
   ) {
     if (queue) logQueueErrors(queue, this.logger);
   }
@@ -103,7 +100,7 @@ export class NotificationsService {
     }
 
     try {
-      await this.queue.add('dispatch', { notificationId: row.id }, {
+      await this.queue.add(JOB_NAMES.notificationDispatch, { notificationId: row.id }, {
         jobId: `notification:${row.id}`,
         attempts: 5,
         backoff: { type: 'exponential', delay: 2_000 },

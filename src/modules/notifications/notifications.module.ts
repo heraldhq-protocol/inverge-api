@@ -1,9 +1,9 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { envFlag } from '../../config/feature-flags';
+import { JOBS_QUEUE } from '../../common/queue/job-names';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationDispatchProcessor } from './notification-dispatch.processor';
-import { NOTIFICATION_QUEUE } from './notification-dispatch.contract';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
@@ -15,15 +15,16 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
 @Module({
   imports: [
     AuthModule,
-    ...(queueEnabled
-      ? [BullModule.registerQueue({ name: NOTIFICATION_QUEUE })]
-      : []),
+    ...(queueEnabled ? [BullModule.registerQueue({ name: JOBS_QUEUE })] : []),
   ],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,
     ...(queueEnabled ? [NotificationDispatchProcessor] : []),
   ],
-  exports: [NotificationsService],
+  exports: [
+    NotificationsService,
+    ...(queueEnabled ? [NotificationDispatchProcessor] : []),
+  ],
 })
 export class NotificationsModule {}

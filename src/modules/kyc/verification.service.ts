@@ -57,10 +57,8 @@ import {
   RECONCILE_BASE_DELAY_MS,
   RECONCILE_MAX_DELAY_MS,
 } from './verification-backoff';
-import {
-  VERIFICATION_WEBHOOK_QUEUE,
-  type VerificationWebhookJob,
-} from './verification.queue';
+import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
+import type { VerificationWebhookJob } from './verification.queue';
 import {
   VerificationRepository,
   type SubjectSnapshot,
@@ -204,7 +202,7 @@ export class VerificationService {
     private readonly config: ConfigService<Env, true>,
     @Optional() private readonly inbox?: WebhookInboxService,
     @Optional()
-    @InjectQueue(VERIFICATION_WEBHOOK_QUEUE)
+    @InjectQueue(JOBS_QUEUE)
     private readonly webhookQueue?: Queue<VerificationWebhookJob>,
   ) {}
 
@@ -470,7 +468,7 @@ export class VerificationService {
     const apply = async () => {
       if (this.webhookQueue) {
         await this.webhookQueue.add(
-          'apply',
+          JOB_NAMES.verificationWebhook,
           {
             caseId: resolved.id,
             eventId: event.eventId,
