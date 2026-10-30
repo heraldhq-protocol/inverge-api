@@ -21,9 +21,9 @@ or a page render.
 
 The ingest route validates every event, writes valid events in one
 `createMany({ skipDuplicates: true })`, and reports rejected events by index. With
-`QUEUE_ENABLED=true` the batch is handed to the `analytics-ingest` BullMQ queue
-(three attempts, exponential backoff); a queue failure falls back to an inline
-write so a Redis outage does not drop views.
+`QUEUE_ENABLED=true` the batch is handed to the `analytics-ingest` job on the
+shared `inverge-jobs` queue (three attempts, exponential backoff); a queue failure
+falls back to an inline write so a Redis outage does not drop views.
 
 ## Closed taxonomy
 

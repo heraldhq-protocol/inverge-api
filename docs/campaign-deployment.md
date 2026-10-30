@@ -287,9 +287,9 @@ lifetime has been agreed.
 
 ## 6. Reconciliation
 
-- BullMQ repeatable job (`campaign-deployment-reconcile`) every 30 s when
-  `QUEUE_ENABLED=true`. If Redis is down the worker is not scheduled; correctness
-  does not depend on it because `POST …/reconcile` and `submit` run the same code.
+- Deployment reconciliation runs on an in-process 30 s sweep
+  (`PeriodicJobsService`), independent of Redis. Correctness does not depend on it
+  because `POST …/reconcile` and `submit` run the same code.
 - Each sweep examines at most 20 due attempts (`nextReconcileAt <= now`) in
   `SUBMITTED`, `CONFIRMING`, `NEEDS_RECONCILIATION`, and only those with
   `reconcileAttempts < 20`.
@@ -421,7 +421,7 @@ sequenceDiagram
     end
   end
 
-  loop every 30 s (bounded backoff, Redis optional)
+  loop every 30 s (bounded backoff, in-process)
     API->>DB: select due attempts
     API->>RPC: re-verify stored signature
     API->>DB: CONFIRMED / FAILED / reschedule

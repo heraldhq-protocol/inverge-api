@@ -64,7 +64,14 @@ README does not: the open backlog and the gotchas that have cost time in this re
 - **`nest build` output shifts to `dist/src/`** if any `.ts` file sits unexcluded at the project root
   (rootDir creep). `tsconfig.build.json` excludes `_*.ts`, `prisma.config.ts` and `prisma/` for that
   reason; keep dev helpers named `_*.ts` and keep them excluded.
-- **Registering a BullMQ queue makes the app connect to Redis at boot.** The snapshot scheduler's
-  `onModuleInit` is deliberately resilient (try/catch plus a short timeout) so a Redis-down box cannot
-  crash boot. Preserve that if you add queues.
+- **One BullMQ queue, one Worker, no repeatable jobs.** `JOBS_QUEUE` (`inverge-jobs`) carries
+  every queued job and `JobsProcessor` is the only Worker; `PeriodicJobsService` runs the
+  time-driven work on in-process timers. Both are deliberate: BullMQ polls Redis whether idle or
+  not, and a repeatable job (a delayed job) pins the poll to every 10 s regardless of
+  `drainDelay`. On a per-command Redis (Upstash free tier) the old one-Worker-per-job-family
+  design spent ~290k commands/day on an empty queue. Before adding a Worker or a repeatable job,
+  read `src/common/queue/job-names.ts` and the Worker options in `jobs.processor.ts`.
+- **Registering a BullMQ queue makes the app connect to Redis at boot.** Schedulers that enqueue
+  during `onModuleInit` are deliberately resilient (try/catch plus a short timeout) so a
+  Redis-down box cannot crash boot. Preserve that if you add queues.
 - Commit in small segments, one logical change each, and do not add a Claude co-author trailer.

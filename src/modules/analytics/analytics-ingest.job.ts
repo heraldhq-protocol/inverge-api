@@ -6,8 +6,6 @@ import {
   ProductAnalyticsEventName,
 } from './product-analytics-event';
 
-export const ANALYTICS_INGEST_QUEUE = 'analytics-ingest';
-
 /**
  * JSON-safe queue payload. BullMQ cannot serialise a Date or a BigInt, so the
  * worker receives ISO strings and decimal strings and converts them back.
