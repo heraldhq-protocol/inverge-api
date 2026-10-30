@@ -27,6 +27,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { AiModule } from './modules/ai/ai.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { AiModule } from './modules/ai/ai.module';
     AnalyticsModule,
     TaxonomyModule,
     AiModule,
+    MediaModule,
   ],
   providers: [
     // Registered as a provider (not only in main.ts) so e2e applications get the

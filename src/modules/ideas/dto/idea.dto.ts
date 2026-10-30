@@ -12,6 +12,7 @@ import {
   IsString,
   Max,
   MaxLength,
+  Matches,
   Min,
   IsNotEmpty,
   ValidateNested,
@@ -150,10 +151,29 @@ export class CreateIdeaDto {
   @IsPositive()
   creatorPrePledgeTarget?: number;
 
-  @ApiPropertyOptional({ description: 'Cover image URL for image-led cards' })
+  @ApiPropertyOptional({
+    description:
+      'Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be ' +
+      'the caller\'s own verified asset) or an https URL to an externally hosted image.',
+  })
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   coverImageUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Demo video as a YouTube or Vimeo page URL (for example ' +
+      '`https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the ' +
+      'host is recognised. Videos are never uploaded to this service.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  @Matches(/^https:\/\//i, {
+    message: 'demoUrl must be an https YouTube or Vimeo link',
+  })
+  demoUrl?: string;
 
   @ApiPropertyOptional({ description: 'Risks and challenges section (P2 coaching context)' })
   @IsOptional()

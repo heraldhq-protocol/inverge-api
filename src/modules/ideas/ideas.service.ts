@@ -28,6 +28,7 @@ import {
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import type { UserRole } from '../../generated/prisma/client';
 import { buildGateProgress } from '../metrics/insights-compute';
+import { MediaAssetsService } from '../media/media-assets.service';
 import {
   asCursorDate,
   buildPage,
@@ -65,6 +66,7 @@ export class IdeasService {
     private readonly quality: QualityService,
     private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
+    private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly analytics?: ProductAnalyticsService,
   ) {}
@@ -139,6 +141,9 @@ export class IdeasService {
   // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
   async create(userId: string, dto: CreateIdeaDto) {
     await this.assertUnderConcurrencyCap(userId);
+    // An uploaded cover is an authorisation boundary: it must be this creator's
+    // verified asset, not a guessed id or another account's private upload.
+    await this.media.assertAttachable(userId, [dto.coverImageUrl]);
     const roadmapSteps = dto.roadmapSteps ?? [];
     const idea = await this.prisma.idea.create({
       data: {
@@ -157,6 +162,7 @@ export class IdeasService {
         ...this.taxonomyFields(dto.taxonomy),
         region: dto.region ?? null,
         coverImageUrl: dto.coverImageUrl ?? null,
+        demoUrl: dto.demoUrl?.trim() || null,
         risks: dto.risks ?? null,
         problemDoc: (dto.problemDoc as object) ?? null,
         solutionDoc: (dto.solutionDoc as object) ?? null,
@@ -180,6 +186,9 @@ export class IdeasService {
     });
     await this.quality.evaluate(idea.id, false);
     this.invalidateIdea();
+    // Bind after the idea exists, so a failed create never leaves an asset
+    // pointing at a record that was never written.
+    await this.media.bindToIdea(userId, idea.id, [dto.coverImageUrl]);
     return this.get(idea.id, { id: userId });
   }
 
@@ -193,9 +202,14 @@ export class IdeasService {
     // assignment untouched when the field is absent (undefined). An explicit
     // `null` clears the assignment.
     const { taxonomy, ...fields } = dto;
+    await this.media.assertAttachable(userId, [dto.coverImageUrl]);
     const data: Record<string, unknown> = { ...fields };
+    if (dto.demoUrl !== undefined) data.demoUrl = dto.demoUrl.trim() || null;
     if (taxonomy !== undefined) Object.assign(data, this.taxonomyFields(taxonomy));
     await this.prisma.idea.update({ where: { id }, data: data as object });
+    if (dto.coverImageUrl !== undefined) {
+      await this.media.bindToIdea(userId, id, [dto.coverImageUrl]);
+    }
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
     this.invalidateIdea();
     return this.get(id, { id: userId });
@@ -616,12 +630,6 @@ export class IdeasService {
     return idea;
   }
 
-  private async owned(userId: string, idOrSlug: string) {
-    const idea = await this.findIdea(idOrSlug);
-    if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
-    return idea;
-  }
-
   /**
    * FR-201: a funding idea publishes with a real plan. Feedback-only ideas
    * (askAmount 0) may publish without a roadmap; the builder no longer forces
@@ -653,6 +661,12 @@ export class IdeasService {
         });
       }
     }
+  }
+
+  private async owned(userId: string, idOrSlug: string) {
+    const idea = await this.findIdea(idOrSlug);
+    if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
+    return idea;
   }
 
   /**
