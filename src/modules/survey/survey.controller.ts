@@ -26,6 +26,16 @@ export class SurveyController {
     return this.survey.getQuestions(id);
   }
 
+  @Get('responses')
+  @ApiBearerAuth()
+  @UseGuards(PrivyAuthGuard)
+  listResponses(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.survey.listResponses(user.id, id);
+  }
+
   @Post('responses')
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
