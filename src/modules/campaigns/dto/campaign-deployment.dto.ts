@@ -63,7 +63,10 @@ export class CampaignMediaDto {
   @MaxLength(280)
   caption?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Poster image: an uploaded `/api/media/<id>` reference or an https URL.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2048)

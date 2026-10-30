@@ -35,6 +35,8 @@ import { evaluateDeploymentReadiness, percentToBps } from './campaign-readiness'
 import { publicationBlockers } from './deployment-state';
 import { resolveTokenMint } from './solana-config';
 import { campaignIdHex, campaignTermsHash, toAtomicUnits } from './campaign-terms';
+import { MediaAssetsService } from '../../media/media-assets.service';
+import { collectMediaReferences } from '../../../common/media/media-ref';
 
 const DRAFT_INCLUDE = {
   deployment: true,
@@ -56,12 +58,19 @@ export class CampaignDraftsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
     private readonly params: PlatformParamsService,
+    private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
   ) {}
 
   async create(userId: string, dto: CreateCampaignDraftDto) {
     const taxonomy = resolveTaxonomyPair(dto.category, dto.subcategory);
     if (!taxonomy.ok) throw new BadRequestException(taxonomy.reason);
+
+    // Any uploaded image in the authored document must be this creator's
+    // verified asset. A 400 here is better than a public campaign page that
+    // points at somebody else's private upload.
+    const mediaReferences = collectDraftMedia(dto);
+    await this.media.assertAttachable(userId, mediaReferences);
 
     const campaign = await this.prisma.$transaction(async (tx) => {
       const created = await tx.campaign.create({
@@ -103,6 +112,10 @@ export class CampaignDraftsService {
       return created;
     });
 
+    // Bind after commit: an asset must never point at a campaign that failed to
+    // be written.
+    await this.media.bindToCampaign(userId, campaign.id, mediaReferences);
+
     this.cache?.bumpEventually('campaigns');
     return this.present(campaign);
   }
@@ -131,6 +144,9 @@ export class CampaignDraftsService {
     }
 
     const story = mergeStory(existing, dto);
+
+    const mediaReferences = collectDraftMedia(dto);
+    await this.media.assertAttachable(userId, mediaReferences);
 
     // Optimistic concurrency: the update only applies when the stored version is
     // the one the client read. A stale tab gets a 409 instead of overwriting a
@@ -200,6 +216,7 @@ export class CampaignDraftsService {
 
     this.cache?.bumpEventually('campaigns');
     this.cache?.bumpEventually('campaign');
+    await this.media.bindToCampaign(userId, campaignId, mediaReferences);
     return this.present(updated);
   }
 
@@ -430,6 +447,27 @@ function toJson(value: unknown): Prisma.InputJsonValue | undefined {
   // Round-trips through JSON so a class instance can never reach Prisma's Json
   // writer with prototype properties.
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+/**
+ * Every media reference in a create/update body that has to be authorised: the
+ * hero and story lists, their video posters, and any `/api/media/<id>` reference
+ * inside the otherwise opaque reward tiers.
+ */
+function collectDraftMedia(
+  dto: Pick<CreateCampaignDraftDto, 'heroMedia' | 'storyMedia'> & {
+    rewardTiers?: unknown;
+  },
+): string[] {
+  const references: string[] = [];
+
+  for (const item of [...(dto.heroMedia ?? []), ...(dto.storyMedia ?? [])]) {
+    if (item.src) references.push(item.src);
+    if (item.poster) references.push(item.poster);
+  }
+
+  references.push(...collectMediaReferences(dto.rewardTiers ?? null));
+  return references;
 }
 
 /**

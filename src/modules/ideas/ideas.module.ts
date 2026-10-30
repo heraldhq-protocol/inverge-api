@@ -6,9 +6,10 @@ import { ModerationModule } from '../moderation/moderation.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdeasController } from './ideas.controller';
 import { IdeasService } from './ideas.service';
+import { MediaModule } from '../media/media.module';
 
 @Module({
-  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule],
+  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule, MediaModule],
   controllers: [IdeasController],
   providers: [IdeasService],
   exports: [IdeasService],

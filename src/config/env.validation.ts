@@ -92,6 +92,81 @@ export const envSchema = z
   ANTHROPIC_BASE_URL: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
 
+  // Creator Studio assistant (premium). `disabled` keeps every AI route at 503
+  // AI_NOT_CONFIGURED; `stub` is deterministic offline output for development and
+  // tests only; `anthropic` calls the compatible endpoint above (DeepSeek works).
+  // Credentials/model fall back to the ANTHROPIC_* values when not set here.
+  AI_PROVIDER: z.enum(['disabled', 'stub', 'anthropic']).default('disabled'),
+  AI_API_KEY: z.string().optional(),
+  AI_BASE_URL: z.string().optional(),
+  AI_MODEL: z.string().optional(),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(20_000),
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(4_000).default(1_200),
+  // Total characters accepted across the selected field plus its context.
+  AI_MAX_INPUT_CHARS: z.coerce.number().int().min(200).max(20_000).default(6_000),
+  AI_DAILY_REQUESTS_PER_USER: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1_000)
+    .default(30),
+  AI_DAILY_TOKENS_PER_USER: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(1_000_000)
+    .default(60_000),
+
+  // Media storage (docs/media/phase-1-audit.md). One provider is selected by env,
+  // exactly like the other vendor ports. `disabled` is the safe default: every
+  // media operation fails closed with 503 MEDIA_STORAGE_NOT_CONFIGURED rather
+  // than pretending an upload succeeded.
+  //
+  // `s3` is documented but not implemented in this milestone. Selecting it is a
+  // boot error instead of a runtime surprise.
+  MEDIA_STORAGE_PROVIDER: z.enum(['disabled', 'supabase', 's3']).default('disabled'),
+  // Supabase project URL, e.g. https://abcdefgh.supabase.co (no trailing path).
+  SUPABASE_URL: z.string().url().optional(),
+  // Server-only. Never expose this to the browser and never send it to the web
+  // app: the browser only ever receives a short-lived signed upload target.
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+  MEDIA_BUCKET: z
+    .string()
+    .min(3)
+    .max(63)
+    .regex(/^[a-z0-9][a-z0-9-]*$/, 'MEDIA_BUCKET must be a lowercase hyphenated name')
+    .default('inverge-media'),
+  MEDIA_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(7200).default(900),
+  MEDIA_READ_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  // Images only in this milestone. Video upload is deferred (see the audit 6):
+  // demo and presentation videos are YouTube/Vimeo links rendered in the hero,
+  // which keeps long recordings off our storage and out of the request path.
+  MEDIA_IMAGE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(16 * 1024)
+    .max(25 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
+  // Comma-separated allowlist. SVG is intentionally absent: it is a script
+  // carrier and this service has no sanitiser.
+  MEDIA_ALLOWED_IMAGE_TYPES: z
+    .string()
+    .default('image/jpeg,image/png,image/webp'),
+  MEDIA_DAILY_UPLOAD_LIMIT: z.coerce.number().int().min(1).max(500).default(40),
+  // How long a PENDING upload may exist before cleanup may remove it.
+  MEDIA_PENDING_RETENTION_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+
+  // YouTube metadata resolution (official Data API only; user URLs are never
+  // fetched). Without a key a valid reference is still stored and rendered from
+  // its parsed id, with no invented title, channel name or duration.
+  YOUTUBE_METADATA_ENABLED: booleanFlag.default(false),
+  YOUTUBE_API_KEY: z.string().optional(),
+  YOUTUBE_API_BASE_URL: z
+    .string()
+    .url()
+    .default('https://www.googleapis.com/youtube/v3'),
+  YOUTUBE_TIMEOUT_MS: z.coerce.number().int().min(500).max(15_000).default(4_000),
+
   PRIVY_APP_ID: z.string().optional(),
   PRIVY_APP_SECRET: z.string().optional(),
   PRIVY_JWKS_URL: z.string().optional(),
@@ -233,6 +308,14 @@ export const envSchema = z
     // of authentication, KYC or the paid rails, so refuse the boot rather than
     // rely on an adapter-level check alone.
     if (env.NODE_ENV === 'production') {
+      if (env.AI_PROVIDER === 'stub') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AI_PROVIDER'],
+          message:
+            'AI_PROVIDER=stub is not allowed in production; use anthropic or disabled',
+        });
+      }
       for (const [key, value] of [
         ['WALLET_PROVIDER', env.WALLET_PROVIDER],
         ['KYC_PROVIDER', env.KYC_PROVIDER],
@@ -270,27 +353,23 @@ export const envSchema = z
         }
       }
     }
-    if (env.FLATFEE_PROVIDER === 'paystack') {
-      if (!env.PAYSTACK_SECRET_KEY) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['PAYSTACK_SECRET_KEY'],
-          message: 'PAYSTACK_SECRET_KEY is required when FLATFEE_PROVIDER=paystack',
-        });
-      }
-      // The adapter falls back to the secret key, but an explicitly separate
-      // webhook key is the supported production configuration. Requiring it
-      // here prevents a deployment from silently accepting callbacks under a
-      // key that is also used for outbound API calls.
-      if (env.NODE_ENV === 'production' && !env.PAYSTACK_WEBHOOK_SECRET) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['PAYSTACK_WEBHOOK_SECRET'],
-          message:
-            'PAYSTACK_WEBHOOK_SECRET is required when FLATFEE_PROVIDER=paystack in production',
-        });
-      }
+    if (
+      env.AI_PROVIDER === 'anthropic' &&
+      !(env.AI_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim())
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_API_KEY'],
+        message:
+          'AI_API_KEY (or ANTHROPIC_API_KEY) is required when AI_PROVIDER=anthropic',
+      });
     }
+    // Paystack credentials are deliberately not a boot requirement. A deployment
+    // may select the rail before the keys are provisioned and still serve the rest
+    // of the API; the adapter fails closed until they arrive — createCharge throws
+    // and parseWebhook rejects every callback when neither key is set. Setting
+    // PAYSTACK_WEBHOOK_SECRET explicitly is still the supported production
+    // configuration (the adapter otherwise falls back to the API key).
     if (env.KYC_PROVIDER === 'didit' && !env.DIDIT_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -348,6 +427,35 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['ANALYTICS_INGEST_SECRET'],
         message: 'ANALYTICS_INGEST_SECRET is required when ingest is enabled',
+      });
+    }
+
+    // Media storage: a selected provider must be fully configured, and a
+    // provider that does not exist in this milestone must not be selectable.
+    if (env.MEDIA_STORAGE_PROVIDER === 's3') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MEDIA_STORAGE_PROVIDER'],
+        message:
+          'MEDIA_STORAGE_PROVIDER=s3 is not implemented yet; use supabase or disabled (docs/media/s3-migration.md)',
+      });
+    }
+    if (env.MEDIA_STORAGE_PROVIDER === 'supabase') {
+      for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const) {
+        if (!env[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when MEDIA_STORAGE_PROVIDER=supabase`,
+          });
+        }
+      }
+    }
+    if (env.YOUTUBE_METADATA_ENABLED && !env.YOUTUBE_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['YOUTUBE_API_KEY'],
+        message: 'YOUTUBE_API_KEY is required when YOUTUBE_METADATA_ENABLED=true',
       });
     }
   });

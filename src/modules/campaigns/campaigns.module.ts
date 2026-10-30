@@ -1,9 +1,8 @@
-import { BullModule } from '@nestjs/bullmq';
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { FlatFeeModule } from '../flat-fee/flat-fee.module';
 import { KycModule } from '../kyc/kyc.module';
-import { envFlag } from '../../config/feature-flags';
+import { MediaModule } from '../media/media.module';
 import { AdminCampaignsController } from './admin-campaigns.controller';
 import { ApplicationFeeService } from './application-fee.service';
 import { CampaignReviewService } from './campaign-review.service';
@@ -15,22 +14,15 @@ import {
   CampaignDeploymentController,
   CampaignDraftsController,
 } from './deployment/campaign-deployment.controller';
-import {
-  CampaignDeploymentReconcileProcessor,
-  CampaignDeploymentReconcileScheduler,
-  DEPLOYMENT_RECONCILE_QUEUE,
-} from './deployment/campaign-deployment-reconciler';
 
-const queueEnabled = envFlag('QUEUE_ENABLED');
-
+// Deployment reconciliation is time-driven and runs in-process from
+// `modules/jobs/periodic-jobs.service.ts`; this module registers no queue.
 @Module({
   imports: [
     forwardRef(() => AuthModule),
     FlatFeeModule,
     KycModule,
-    ...(queueEnabled
-      ? [BullModule.registerQueue({ name: DEPLOYMENT_RECONCILE_QUEUE })]
-      : []),
+    MediaModule,
   ],
   controllers: [
     CampaignsController,
@@ -45,9 +37,6 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
     CampaignReviewService,
     CampaignDraftsService,
     CampaignDeploymentService,
-    ...(queueEnabled
-      ? [CampaignDeploymentReconcileProcessor, CampaignDeploymentReconcileScheduler]
-      : []),
   ],
   exports: [CampaignsService, CampaignDraftsService, CampaignDeploymentService],
 })

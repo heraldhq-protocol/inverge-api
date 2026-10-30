@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -13,6 +12,7 @@ import {
   IsString,
   Max,
   MaxLength,
+  Matches,
   Min,
   IsNotEmpty,
   ValidateNested,
@@ -90,12 +90,24 @@ export class CreateIdeaDto {
   @ApiProperty({ description: 'What the user does today and why it falls short' })
   @IsString() @IsNotEmpty() currentAlternative!: string;
 
-  @ApiProperty({ description: 'Indicative breakdown of what the ask will buy (object or array)' })
-  @IsObject() askBreakdown!: Record<string, unknown>;
+  @ApiPropertyOptional({
+    description:
+      'Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.',
+  })
+  @IsOptional()
+  @IsObject()
+  askBreakdown?: Record<string, unknown>;
 
-  @ApiProperty({ type: [RoadmapStepDto], description: 'At least two dated roadmap steps' })
-  @IsArray() @ArrayMinSize(2) @ValidateNested({ each: true }) @Type(() => RoadmapStepDto)
-  roadmapSteps!: RoadmapStepDto[];
+  @ApiPropertyOptional({
+    type: [RoadmapStepDto],
+    description:
+      'Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapStepDto)
+  roadmapSteps?: RoadmapStepDto[];
 
   @ApiProperty({ enum: IDEA_CATEGORIES })
   @IsIn(IDEA_CATEGORIES) category!: (typeof IDEA_CATEGORIES)[number];
@@ -120,10 +132,15 @@ export class CreateIdeaDto {
   @ApiPropertyOptional({ description: 'Optional free-text roadmap summary' })
   @IsOptional() @IsString() roadmap?: string;
 
-  @ApiProperty({ description: 'Intended ask amount (USD)' })
+  @ApiPropertyOptional({
+    description:
+      'Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.',
+    default: 0,
+  })
+  @IsOptional()
   @IsNumber()
-  @IsPositive()
-  askAmount!: number;
+  @Min(0)
+  askAmount?: number;
 
   @ApiPropertyOptional({
     description: 'Creator-declared expected pre-pledge minimum in USD (FR-204). '
@@ -134,10 +151,29 @@ export class CreateIdeaDto {
   @IsPositive()
   creatorPrePledgeTarget?: number;
 
-  @ApiPropertyOptional({ description: 'Cover image URL for image-led cards' })
+  @ApiPropertyOptional({
+    description:
+      'Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be ' +
+      'the caller\'s own verified asset) or an https URL to an externally hosted image.',
+  })
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   coverImageUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Demo video as a YouTube or Vimeo page URL (for example ' +
+      '`https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the ' +
+      'host is recognised. Videos are never uploaded to this service.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  @Matches(/^https:\/\//i, {
+    message: 'demoUrl must be an https YouTube or Vimeo link',
+  })
+  demoUrl?: string;
 
   @ApiPropertyOptional({ description: 'Risks and challenges section (P2 coaching context)' })
   @IsOptional()

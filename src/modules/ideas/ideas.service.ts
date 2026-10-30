@@ -28,6 +28,7 @@ import {
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import type { UserRole } from '../../generated/prisma/client';
 import { buildGateProgress } from '../metrics/insights-compute';
+import { MediaAssetsService } from '../media/media-assets.service';
 import {
   asCursorDate,
   buildPage,
@@ -65,6 +66,7 @@ export class IdeasService {
     private readonly quality: QualityService,
     private readonly moderation: ModerationService,
     private readonly params: PlatformParamsService,
+    private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly analytics?: ProductAnalyticsService,
   ) {}
@@ -139,6 +141,10 @@ export class IdeasService {
   // concurrency cap. Scored immediately for coaching (stays LINK_ONLY until published).
   async create(userId: string, dto: CreateIdeaDto) {
     await this.assertUnderConcurrencyCap(userId);
+    // An uploaded cover is an authorisation boundary: it must be this creator's
+    // verified asset, not a guessed id or another account's private upload.
+    await this.media.assertAttachable(userId, [dto.coverImageUrl]);
+    const roadmapSteps = dto.roadmapSteps ?? [];
     const idea = await this.prisma.idea.create({
       data: {
         creatorId: userId,
@@ -148,17 +154,22 @@ export class IdeasService {
         solution: dto.solution,
         targetUser: dto.targetUser,
         currentAlternative: dto.currentAlternative,
-        askBreakdown: dto.askBreakdown as object,
-        roadmapSteps: dto.roadmapSteps as object,
+        // Feedback-only ideas carry askAmount 0 and no breakdown; both columns
+        // are non-null, so the empty object is the stored representation.
+        askBreakdown: (dto.askBreakdown as object) ?? {},
+        roadmapSteps: roadmapSteps as object,
         category: dto.category,
         ...this.taxonomyFields(dto.taxonomy),
         region: dto.region ?? null,
         coverImageUrl: dto.coverImageUrl ?? null,
+        demoUrl: dto.demoUrl?.trim() || null,
         risks: dto.risks ?? null,
         problemDoc: (dto.problemDoc as object) ?? null,
         solutionDoc: (dto.solutionDoc as object) ?? null,
-        roadmap: dto.roadmap ?? dto.roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
-        askAmount: dto.askAmount,
+        roadmap:
+          dto.roadmap ??
+          roadmapSteps.map((s) => `${s.date}: ${s.description}`).join('; '),
+        askAmount: dto.askAmount ?? 0,
         creatorPrePledgeTarget: dto.creatorPrePledgeTarget ?? null,
         status: 'DRAFT',
       },
@@ -175,6 +186,9 @@ export class IdeasService {
     });
     await this.quality.evaluate(idea.id, false);
     this.invalidateIdea();
+    // Bind after the idea exists, so a failed create never leaves an asset
+    // pointing at a record that was never written.
+    await this.media.bindToIdea(userId, idea.id, [dto.coverImageUrl]);
     return this.get(idea.id, { id: userId });
   }
 
@@ -188,9 +202,14 @@ export class IdeasService {
     // assignment untouched when the field is absent (undefined). An explicit
     // `null` clears the assignment.
     const { taxonomy, ...fields } = dto;
+    await this.media.assertAttachable(userId, [dto.coverImageUrl]);
     const data: Record<string, unknown> = { ...fields };
+    if (dto.demoUrl !== undefined) data.demoUrl = dto.demoUrl.trim() || null;
     if (taxonomy !== undefined) Object.assign(data, this.taxonomyFields(taxonomy));
     await this.prisma.idea.update({ where: { id }, data: data as object });
+    if (dto.coverImageUrl !== undefined) {
+      await this.media.bindToIdea(userId, id, [dto.coverImageUrl]);
+    }
     await this.quality.evaluate(id, false); // FR-271: re-score on edit
     this.invalidateIdea();
     return this.get(id, { id: userId });
@@ -201,6 +220,7 @@ export class IdeasService {
     if (idea.status !== 'DRAFT') {
       throw new BadRequestException('Idea is not in draft');
     }
+    this.assertFundingPlanComplete(idea);
     const id = idea.id;
     // FR-204a: stamp the start of the validation window at publish.
     await this.prisma.idea.update({
@@ -554,10 +574,52 @@ export class IdeasService {
     return idea;
   }
 
+  /**
+   * FR-201: a funding idea publishes with a real plan. Feedback-only ideas
+   * (askAmount 0) may publish without a roadmap; the builder no longer forces
+   * a funding ask onto creators who only want validation.
+   */
+  private assertFundingPlanComplete(idea: {
+    askAmount: { toString(): string };
+    roadmapSteps: unknown;
+  }): void {
+    if (Number(idea.askAmount) > 0) {
+      const steps = Array.isArray(idea.roadmapSteps) ? idea.roadmapSteps : [];
+      const complete = steps.filter((step) => {
+        if (!step || typeof step !== 'object') return false;
+        const record = step as Record<string, unknown>;
+        return (
+          typeof record.date === 'string' &&
+          record.date.trim().length > 0 &&
+          typeof record.description === 'string' &&
+          record.description.trim().length > 0
+        );
+      }).length;
+
+      if (complete < 2) {
+        throw new BadRequestException({
+          code: 'FUNDING_REQUIRES_ROADMAP',
+          message:
+            'Add at least two dated roadmap steps before publishing an idea with a funding ask.',
+          details: { completeSteps: complete, requiredSteps: 2 },
+        });
+      }
+    }
+  }
+
   private async owned(userId: string, idOrSlug: string) {
     const idea = await this.findIdea(idOrSlug);
     if (idea.creatorId !== userId) throw new ForbiddenException('Not your idea');
     return idea;
+  }
+
+  /**
+   * Owner-scoped lookup for features that need the stored record rather than
+   * the public projection (for example the AI assistant's ownership check).
+   * Keeps 404/403 semantics identical to the editing routes.
+   */
+  getOwned(userId: string, idOrSlug: string) {
+    return this.owned(userId, idOrSlug);
   }
 
   // FR-275: cap concurrent non-archived/non-converted ideas per creator (default 3) to

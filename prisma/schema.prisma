@@ -313,6 +313,9 @@ model User {
   objections             MilestoneObjection[]
   productAnalyticsEvents ProductAnalyticsEvent[]
   analyticsAccessGrants  AnalyticsAccessGrant[]
+  aiAccessGrant          AiAccessGrant?
+  aiUsageEvents          AiUsageEvent[]
+  mediaAssets            MediaAsset[]            @relation("MediaAssetOwner")
   notifications          Notification[]
 
   createdAt DateTime @default(now())
@@ -507,6 +510,7 @@ model CreatorProfile {
   lifetimeRaised     Decimal     @default(0) @db.Decimal(14, 2)
   tenureStartedAt    DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
+  mediaAssets        MediaAsset[]
 }
 
 // ─────────────────────────── Discovery taxonomy ───────────────────────────
@@ -562,6 +566,7 @@ model Idea {
   taxonomySubcategorySlug String? // only meaningful with taxonomyCategorySlug
   region                  String? // creator-declared region/origin — personalization + "From Lagos" chip
   coverImageUrl           String? // P1 web UI gap: media on idea
+  demoUrl                 String? // YouTube/Vimeo demo, embedded in the idea hero
   risks                   String? // P2 web UI gap: risks and challenges section
   problemDoc              Json? // Rich text problem document
   solutionDoc             Json? // Rich text solution document
@@ -601,6 +606,7 @@ model Idea {
   metricSnapshots IdeaMetricSnapshot[]
   qualityReports  IdeaQualityReport[]
   moderationCases ModerationCase[]
+  mediaAssets     MediaAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -839,6 +845,7 @@ model Campaign {
   contributions Contribution[]
   ContributionAuthorizations ContributionAuthorization[]
   onChainEvents OnChainEvent[]
+  mediaAssets   MediaAsset[]
 
   createdAt  DateTime  @default(now())
   launchedAt DateTime?
@@ -1263,6 +1270,64 @@ model AnalyticsAccessGrant {
   @@index([status, requestedAt])
 }
 
+enum AiAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AiAccessSource {
+  REQUEST
+  ADMIN
+  PAID
+}
+
+enum AiUsageStatus {
+  OK
+  INVALID_OUTPUT
+  TIMEOUT
+  PROVIDER_ERROR
+}
+
+// Premium AI assistant entitlement. Mirrors AnalyticsAccessGrant: access is
+// granted explicitly, never inferred from CreatorTier or a client claim.
+model AiAccessGrant {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            AiAccessStatus @default(PENDING)
+  source            AiAccessSource @default(REQUEST)
+  requestedAt       DateTime       @default(now())
+  decidedAt         DateTime?
+  decidedBy         String? // admin user id; no relation so the audit row survives an admin deletion
+  expiresAt         DateTime? // null = no expiry
+  externalReference String?        @db.VarChar(128) // future payment reference; never raw card data
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([status, requestedAt])
+}
+
+// Per-request metering for quota and cost visibility. Deliberately stores no
+// prompt, draft or model output - only counts and routing metadata.
+model AiUsageEvent {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surface       String        @db.VarChar(32)
+  action        String        @db.VarChar(32)
+  model         String        @db.VarChar(64)
+  promptVersion String        @db.VarChar(64)
+  inputTokens   Int           @default(0)
+  outputTokens  Int           @default(0)
+  latencyMs     Int           @default(0)
+  status        AiUsageStatus
+  requestId     String        @db.VarChar(64)
+  createdAt     DateTime      @default(now())
+
+  @@index([userId, createdAt])
+}
+
 // ---------------------------------------------------------------------------
 // Advertising (PROPOSED - schema only, no Nest module, migration not applied)
 //
@@ -1389,6 +1454,86 @@ model AdvertisementEvent {
 // Persisted in-app notification. The row is the durable record; delivery to an
 // external channel is a separate, retryable step. `dedupeKey` makes a repeated
 // domain event (for example a replayed campaign conversion) idempotent.
+// ---------------------------------------------------------------------------
+// Media (docs/media/phase-1-audit.md 4). One row owns one stored object.
+//
+// The row is the identity. Content keeps storing an opaque `src` string, which
+// for an upload is `/api/media/<id>` - never a provider URL. Swapping Supabase
+// for S3 rewrites no row, no JSON document and no component; only the storage
+// adapter changes.
+//
+// The asset carries its single binding (idea / campaign / creator profile)
+// instead of a polymorphic `(targetType, targetId)` pair, so referential
+// integrity comes from ordinary foreign keys. Reusing one asset in two pieces
+// of content would need a join model; the product has no such requirement yet.
+// `onDelete: SetNull` is deliberate: deleting content orphans the asset rather
+// than deleting bytes another surface might still reference.
+// ---------------------------------------------------------------------------
+
+enum MediaAssetStatus {
+  PENDING // upload target issued, bytes not yet verified
+  READY // bytes verified (size, content type, magic bytes) and attachable
+  REJECTED // verification failed; the object was removed
+  DELETED // owner removed it; the object was removed
+}
+
+enum MediaAssetCategory {
+  AVATAR
+  IDEA_COVER
+  IDEA_GALLERY
+  CAMPAIGN_COVER
+  CAMPAIGN_HERO
+  CAMPAIGN_STORY
+  REWARD
+  OTHER
+}
+
+model MediaAsset {
+  id        String             @id @default(cuid())
+  ownerId   String
+  owner     User               @relation("MediaAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  category  MediaAssetCategory @default(OTHER)
+  status    MediaAssetStatus   @default(PENDING)
+
+  // Storage coordinates. The provider name is stored per row so a future
+  // migration can run both providers side by side instead of an all-or-nothing
+  // cutover. No credential and no signed URL is ever stored here.
+  provider  String @db.VarChar(24)
+  bucket    String @db.VarChar(63)
+  objectKey String @unique @db.VarChar(512)
+
+  // Verified facts, written at completion. `mimeType` is the detected type, not
+  // the browser-supplied one.
+  mimeType String  @db.VarChar(64)
+  byteSize Int     @default(0)
+  width    Int?
+  height   Int?
+  // Reserved for a later video milestone; nothing writes it in this build.
+  durationSeconds Decimal? @db.Decimal(8, 3)
+
+  // Display metadata. `displayName` is normalised for display only and is never
+  // part of the object key.
+  displayName String  @db.VarChar(255)
+  altText     String? @db.VarChar(280)
+  caption     String? @db.VarChar(280)
+
+  ideaId    String?
+  idea      Idea?    @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  campaignId String?
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  creatorProfileUserId String?
+  creatorProfile CreatorProfile? @relation(fields: [creatorProfileUserId], references: [userId], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([ownerId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([ideaId])
+  @@index([campaignId])
+}
+
 model Notification {
   id                String    @id @default(cuid())
   userId            String

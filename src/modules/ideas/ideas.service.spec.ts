@@ -28,12 +28,18 @@ function prismaMock(idea: any = null) {
 const metricsMock = () => ({ recompute: jest.fn().mockResolvedValue({}), normalizeToUsd: jest.fn().mockResolvedValue(100) }) as any;
 const qualityMock = () => ({ evaluate: jest.fn().mockResolvedValue({ tier: 'DISCOVERABLE' }), latestReport: jest.fn().mockResolvedValue({ id: 'r1' }) }) as any;
 const moderationMock = () => ({ screenSafe: jest.fn().mockResolvedValue(null), screen: jest.fn() }) as any;
+const mediaMock = () =>
+  ({
+    assertAttachable: jest.fn().mockResolvedValue(undefined),
+    bindToCampaign: jest.fn().mockResolvedValue(undefined),
+    bindToIdea: jest.fn().mockResolvedValue(undefined),
+  }) as any;
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
 
 function make(idea: any = null, params = paramsMock(), cache?: any) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return { svc: new IdeasService(p, m, q, mod, params, cache), p, m, q, mod };
+  return { svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache), p, m, q, mod };
 }
 
 const validDto = {
@@ -54,6 +60,22 @@ describe('IdeasService.create (FR-270/275)', () => {
     expect(data.roadmap).toContain('2026-Q1'); // derived from roadmapSteps
     expect(q.evaluate).toHaveBeenCalledWith('new-id', false); // coaching, no tier change
     expect(res).toMatchObject(fresh); // re-fetched
+  });
+
+  it('stores a feedback-only idea with no ask and no roadmap', async () => {
+    const { svc, p } = make({ id: 'new-id', creatorId: 'u1', status: 'DRAFT' });
+    const feedbackOnly = { ...validDto };
+    delete feedbackOnly.askBreakdown;
+    delete feedbackOnly.roadmapSteps;
+    delete feedbackOnly.askAmount;
+
+    await svc.create('u1', feedbackOnly);
+
+    const data = p.idea.create.mock.calls[0][0].data;
+    expect(data.askAmount).toBe(0);
+    expect(data.askBreakdown).toEqual({});
+    expect(data.roadmapSteps).toEqual([]);
+    expect(data.roadmap).toBe('');
   });
 
   it('rejects creation over the per-creator concurrency cap (FR-275)', async () => {
@@ -99,6 +121,25 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
   it('rejects publishing a non-draft idea', async () => {
     const { svc } = make({ id: 'idea1', creatorId: 'u1', status: 'VALIDATING' });
     await expect(svc.publish('u1', 'idea1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+  it('publishes a feedback-only idea with no roadmap (askAmount 0)', async () => {
+    const { svc, p } = make({
+      id: 'idea1', creatorId: 'u1', status: 'DRAFT',
+      askAmount: { toString: () => '0' }, roadmapSteps: [],
+    });
+    await svc.publish('u1', 'idea1');
+    expect(p.idea.update).toHaveBeenCalled();
+  });
+  it('refuses a funding idea without two complete roadmap steps', async () => {
+    const { svc, p } = make({
+      id: 'idea1', creatorId: 'u1', status: 'DRAFT',
+      askAmount: { toString: () => '25000' },
+      roadmapSteps: [{ date: '2026-Q1', description: 'pilot' }],
+    });
+    await expect(svc.publish('u1', 'idea1')).rejects.toMatchObject({
+      response: { code: 'FUNDING_REQUIRES_ROADMAP' },
+    });
+    expect(p.idea.update).not.toHaveBeenCalled();
   });
 });
 
@@ -293,6 +334,7 @@ describe('IdeasService — signals recompute through MetricsService (FR-206a bou
       qualityMock(),
       moderationMock(),
       paramsMock(),
+      mediaMock(),
       undefined,
       analytics,
     );
