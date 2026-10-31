@@ -716,6 +716,40 @@ export class MediaAssetsService {
     });
   }
 
+  /**
+   * Point the creator's profile at one verified upload.
+   *
+   * Unlike a cover, an avatar is a single slot: binding a new image releases the
+   * previous one, because only the picture a profile currently shows may be read
+   * without a session. Clearing the avatar (a null or empty reference) releases
+   * the slot without binding anything - the bytes stay with their owner, the
+   * public reference goes away.
+   */
+  async bindToCreatorProfile(
+    userId: string,
+    value: string | null | undefined,
+  ): Promise<void> {
+    const [id] = this.verifiedIdsFrom([value]);
+
+    await this.prisma.$transaction([
+      this.prisma.mediaAsset.updateMany({
+        data: { creatorProfileUserId: null },
+        where: {
+          creatorProfileUserId: userId,
+          ...(id ? { id: { not: id } } : {}),
+        },
+      }),
+      ...(id
+        ? [
+            this.prisma.mediaAsset.updateMany({
+              data: { creatorProfileUserId: userId },
+              where: { id, ownerId: userId },
+            }),
+          ]
+        : []),
+    ]);
+  }
+
   private verifiedIdsFrom(
     values: readonly (string | null | undefined)[],
   ): string[] {

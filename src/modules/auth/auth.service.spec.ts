@@ -59,9 +59,14 @@ function setup(options: {
     }),
   } as any;
 
-  const svc = new AuthService(prisma, moderation, sessions, config, wallets);
+  const media = {
+    assertAttachable: jest.fn().mockResolvedValue(undefined),
+    bindToCreatorProfile: jest.fn().mockResolvedValue(undefined),
+  } as any;
 
-  return { prisma, sessions, svc, wallets };
+  const svc = new AuthService(prisma, moderation, sessions, config, wallets, media);
+
+  return { media, prisma, sessions, svc, wallets };
 }
 
 describe('AuthService.authenticate provider email', () => {
@@ -213,5 +218,56 @@ describe('AuthService.authenticate provider avatar', () => {
         data: expect.not.objectContaining({ creatorProfile: expect.anything() }),
       }),
     );
+  });
+});
+
+describe('AuthService.updateProfile avatar', () => {
+  const UPLOADED_AVATAR = '/api/media/clx0mediaasset0001abcdef';
+
+  it('#given an uploaded avatar #then it is authorised for the caller and bound to the profile', async () => {
+    // #given a signed-in creator who just uploaded a picture
+    const { media, prisma, svc } = setup({ existingUser: user() });
+
+    // #when they save it as their avatar
+    await svc.updateProfile('user-1', { avatarUrl: UPLOADED_AVATAR });
+
+    // #then the asset is checked for ownership and bound only after the write
+    expect(media.assertAttachable).toHaveBeenCalledWith('user-1', [UPLOADED_AVATAR]);
+    expect(prisma.creatorProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { avatarUrl: UPLOADED_AVATAR } }),
+    );
+    expect(media.bindToCreatorProfile).toHaveBeenCalledWith('user-1', UPLOADED_AVATAR);
+  });
+
+  it('#given an unrelated profile edit #then the current avatar binding is left alone', async () => {
+    const { media, svc } = setup({ existingUser: user() });
+
+    await svc.updateProfile('user-1', { links: [] });
+
+    expect(media.bindToCreatorProfile).not.toHaveBeenCalled();
+  });
+
+  it('#given an empty avatar #then the picture is cleared and the slot released', async () => {
+    const { media, prisma, svc } = setup({ existingUser: user() });
+
+    await svc.updateProfile('user-1', { avatarUrl: '   ' });
+
+    expect(media.assertAttachable).not.toHaveBeenCalled();
+    expect(prisma.creatorProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { avatarUrl: null } }),
+    );
+    expect(media.bindToCreatorProfile).toHaveBeenCalledWith('user-1', null);
+  });
+
+  it('#given an avatar the caller does not own #then the profile is not written', async () => {
+    const { media, prisma, svc } = setup({ existingUser: user() });
+    media.assertAttachable.mockRejectedValueOnce(new Error('not owned'));
+
+    await expect(
+      svc.updateProfile('user-1', { avatarUrl: UPLOADED_AVATAR }),
+    ).rejects.toThrow('not owned');
+
+    expect(prisma.creatorProfile.upsert).not.toHaveBeenCalled();
+    expect(media.bindToCreatorProfile).not.toHaveBeenCalled();
   });
 });

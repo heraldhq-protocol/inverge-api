@@ -2723,6 +2723,7 @@
       "UpdateCreatorProfileDto": {
         "properties": {
           "avatarUrl": {
+            "description": "Uploaded asset reference (`/api/media/<id>`) or an https image URL; send an empty string to clear.",
             "type": "string"
           },
           "bio": {
