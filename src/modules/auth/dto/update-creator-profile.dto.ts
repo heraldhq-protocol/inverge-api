@@ -34,9 +34,26 @@ export class UpdateCreatorProfileDto {
   @Length(1, 50)
   displayName?: string;
 
-  @ApiPropertyOptional()
+  /**
+   * Either an uploaded asset reference (`/api/media/<id>`) or an external
+   * `https` image. An empty string clears the picture. Anything else - a
+   * `javascript:` URL, a plain host, a guessed id shape - is rejected here, so
+   * the stored column only ever holds something a renderer can vet.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Uploaded asset reference (`/api/media/<id>`) or an https image URL; send an empty string to clear.',
+  })
   @IsOptional()
   @IsString()
+  @Length(0, 2048)
+  @Matches(
+    /^(?:https:\/\/\S+|\/api\/media\/[a-z0-9]{20,40})?$/i,
+    {
+      message:
+        'Avatar must be an uploaded image reference or an https link to one.',
+    },
+  )
   avatarUrl?: string;
 
   @ApiPropertyOptional()

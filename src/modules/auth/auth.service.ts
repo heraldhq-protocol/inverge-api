@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  forwardRef,
   Inject,
   Injectable,
   NotFoundException,
@@ -21,6 +22,7 @@ import {
   analyticsEntitlement,
 } from '../analytics/analytics-entitlements';
 import { ModerationService } from '../moderation/moderation.service';
+import { MediaAssetsService } from '../media/media-assets.service';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { SessionService } from './session.service';
@@ -38,6 +40,10 @@ export class AuthService {
     private readonly config: ConfigService<Env, true>,
     @Inject(EMBEDDED_WALLET_PORT)
     private readonly wallets: EmbeddedWalletPort,
+    // MediaModule imports AuthModule for its guards, so the dependency is
+    // resolved lazily in both directions.
+    @Inject(forwardRef(() => MediaAssetsService))
+    private readonly media: MediaAssetsService,
   ) {}
 
   async authenticate(providerToken: string, walletAddress?: string) {
@@ -354,6 +360,14 @@ export class AuthService {
       );
     }
 
+    // A stored avatar must be this creator's own verified upload; an external
+    // https reference is shape-checked by the same rule a cover uses. An empty
+    // value is a deliberate clear, not a media reference.
+    const avatarUrl = dto.avatarUrl?.trim() || null;
+    if (avatarUrl) {
+      await this.media.assertAttachable(userId, [avatarUrl]);
+    }
+
     await this.prisma.creatorProfile.upsert({
       where: { userId },
       update: {
@@ -363,7 +377,7 @@ export class AuthService {
         ...(dto.displayName !== undefined
           ? { displayName: dto.displayName }
           : {}),
-        ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
+        ...(dto.avatarUrl !== undefined ? { avatarUrl } : {}),
         ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
         ...(dto.links !== undefined ? { links: dto.links as object } : {}),
       },
@@ -373,11 +387,17 @@ export class AuthService {
           ? dto.username.trim().toLowerCase().replace(/^@/, '')
           : null,
         displayName: dto.displayName ?? null,
-        avatarUrl: dto.avatarUrl ?? null,
+        avatarUrl,
         bio: dto.bio ?? null,
         links: (dto.links ?? []) as object,
       },
     });
+
+    // Bind after the profile write commits, and only when the caller sent an
+    // avatar: an unrelated profile edit must not release the current picture.
+    if (dto.avatarUrl !== undefined) {
+      await this.media.bindToCreatorProfile(userId, avatarUrl);
+    }
 
     const updatedUser = await this.prisma.user.findUnique({
       where: { id: userId },
