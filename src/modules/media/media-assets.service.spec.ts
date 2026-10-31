@@ -102,6 +102,11 @@ function prismaMock() {
       ),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    $transaction: jest
+      .fn()
+      .mockImplementation((operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
   };
 }
 
@@ -737,6 +742,46 @@ describe('MediaAssetsService.bindToIdea / bindToCampaign', () => {
   });
 });
 
+describe('MediaAssetsService.bindToCreatorProfile', () => {
+  it('#given an uploaded avatar #then the previous picture is released and the new one bound', async () => {
+    const { service, prisma } = make();
+
+    await service.bindToCreatorProfile(OWNER, `/api/media/${ASSET_ID}`);
+
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledWith({
+      data: { creatorProfileUserId: null },
+      where: { creatorProfileUserId: OWNER, id: { not: ASSET_ID } },
+    });
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledWith({
+      data: { creatorProfileUserId: OWNER },
+      where: { id: ASSET_ID, ownerId: OWNER },
+    });
+  });
+
+  it('#given a cleared avatar #then every picture the profile held is released', async () => {
+    const { service, prisma } = make();
+
+    await service.bindToCreatorProfile(OWNER, null);
+
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledWith({
+      data: { creatorProfileUserId: null },
+      where: { creatorProfileUserId: OWNER },
+    });
+  });
+
+  it('#given an external avatar #then the old picture is released without binding a row', async () => {
+    const { service, prisma } = make();
+
+    await service.bindToCreatorProfile(OWNER, 'https://lh3.googleusercontent.com/a/example=s96-c');
+
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.mediaAsset.updateMany).toHaveBeenCalledWith({
+      data: { creatorProfileUserId: null },
+      where: { creatorProfileUserId: OWNER },
+    });
+  });
+});
 describe('MediaAssetsService.purgeAbandoned', () => {
   it('#given a stale pending upload #then the object and the row are retired', async () => {
     const { service, prisma, storage } = make();
