@@ -32,7 +32,9 @@ accounts or filters.
    (tests, a web-only replica), dispatch inline.
 4. The worker calls the notification port and records `dispatchedAt`,
    `dispatchAttempts` and `lastDispatchError`. A vendor failure throws so BullMQ
-   retries; an already-dispatched row is a no-op.
+   retries; an already-dispatched row is a no-op. Before dispatch the service
+   checks the account's email notification preferences and verification state; a
+   row it must not send is stamped `suppressedAt` instead of retried.
 
 The domain action never fails because a notification could not be written or
 delivered: the failure is logged, and the durable row (when it exists) can be
@@ -52,12 +54,20 @@ responses in it. The row has no IP address, user agent or session identifier.
 | Variable | Effect |
 |---|---|
 | `QUEUE_ENABLED` | `false` registers no Worker; the service dispatches inline. |
-| `NOTIFICATION_PROVIDER` | `stub` (offline log) or `herald` (reference adapter). |
+| `EMAIL_PROVIDER` | `resend` sends notification email through Resend; `stub` records the dispatch offline. |
+| `RESEND_API_KEY` | Resend credential. Required when `EMAIL_PROVIDER=resend`. |
+| `EMAIL_FROM` / `EMAIL_FROM_NAME` | Sender identity for notification and verification mail. |
 | `REDIS_URL` | Queue transport. The queue is optional infrastructure. |
 
-The only notification adapter is the offline stub. It records the dispatch and
-logs the template/user id; it does not send email or wallet push. There is no
-external notification gateway in this repository.
+Notification email shares the transactional-email transport with verification
+codes. The stub records the dispatch and logs the template/user id; it does not
+send email. Production binds the Resend adapter. Notification templates are
+rendered in `notification-email.ts`, which escapes every interpolated value and
+never exposes the internal template name.
+
+Email delivery is additionally gated by the recipient's verified address and
+their settings preferences. A suppressed row keeps its in-app history but is
+not retried.
 
 ## Verification
 
@@ -76,9 +86,5 @@ after its service is started.
 
 ## Deferred
 
-- No real delivery adapter; `dispatchedAt` means the stub adapter call resolved,
-  not that a person read an in-app row.
-- No user preference or unsubscribe model yet. Muting belongs with the read model
-  once the web exposes settings.
 - No admin trigger to replay a failed notification; a failed job is retained in
   BullMQ (`removeOnFail: 1000`).

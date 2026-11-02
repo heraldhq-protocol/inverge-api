@@ -35,6 +35,26 @@ function asData(value: Prisma.JsonValue | null): Record<string, unknown> | null 
     : null;
 }
 
+interface NotificationPreferences {
+  notifyEmailUpdates: boolean;
+  notifyMilestoneReviews: boolean;
+  notifyCreatorUpdates: boolean;
+  notifyDiscoveryDigest: boolean;
+}
+
+/**
+ * Which setting governs a template. Unknown templates stay opt-in through the
+ * broad product-update flag rather than being silently dropped.
+ */
+export function notificationPreferenceFor(
+  template: string,
+): keyof NotificationPreferences {
+  if (template.startsWith('MILESTONE_')) return 'notifyMilestoneReviews';
+  if (template === 'CAMPAIGN_FUNDED') return 'notifyCreatorUpdates';
+  if (template === 'DISCOVERY_DIGEST') return 'notifyDiscoveryDigest';
+  return 'notifyEmailUpdates';
+}
+
 /**
  * Persist-then-dispatch notifications (FR-702).
  *
@@ -138,13 +158,41 @@ export class NotificationsService {
         template: true,
         data: true,
         dispatchedAt: true,
+        suppressedAt: true,
+        user: {
+          select: {
+            email: true,
+            emailVerifiedAt: true,
+            notifyEmailUpdates: true,
+            notifyMilestoneReviews: true,
+            notifyCreatorUpdates: true,
+            notifyDiscoveryDigest: true,
+          },
+        },
       },
     });
-    if (!notification || notification.dispatchedAt) return;
+    if (!notification || notification.dispatchedAt || notification.suppressedAt) {
+      return;
+    }
+
+    const preference = notificationPreferenceFor(notification.template);
+    if (
+      !notification.user.email ||
+      notification.user.emailVerifiedAt === null ||
+      !notification.user[preference]
+    ) {
+      await this.prisma.notification.update({
+        where: { id: notification.id },
+        data: { suppressedAt: new Date() },
+      });
+      return;
+    }
 
     try {
       await this.port.send({
         toUserId: notification.userId,
+        toEmail: notification.user.email,
+        notificationId: notification.id,
         template: notification.template,
         data: asData(notification.data) ?? {},
       });
