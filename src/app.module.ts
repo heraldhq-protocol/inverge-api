@@ -28,6 +28,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { AiModule } from './modules/ai/ai.module';
 import { MediaModule } from './modules/media/media.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
@@ -62,6 +63,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
     TaxonomyModule,
     AiModule,
     MediaModule,
+    SettingsModule,
     // Background work: the single queue Worker plus the in-process timers that
     // replaced repeatable jobs. Last, because it composes the feature modules.
     JobsModule,

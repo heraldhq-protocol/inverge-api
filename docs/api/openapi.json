@@ -954,6 +954,25 @@
         ],
         "type": "object"
       },
+      "CreateAccountRequestDto": {
+        "properties": {
+          "note": {
+            "description": "Optional context for the support team. Never used for authentication.",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "DATA_EXPORT",
+              "ACCOUNT_DELETION"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
       "CreateCampaignDraftDto": {
         "properties": {
           "beneficiaries": {
@@ -2160,6 +2179,10 @@
             },
             "type": "array"
           },
+          "location": {
+            "nullable": true,
+            "type": "string"
+          },
           "memberSince": {
             "description": "ISO 8601 timestamp",
             "type": "string"
@@ -2182,6 +2205,7 @@
           "displayName",
           "avatarUrl",
           "bio",
+          "location",
           "links",
           "tier",
           "completedCampaigns",
@@ -2738,10 +2762,72 @@
             },
             "type": "array"
           },
+          "location": {
+            "description": "Public location shown on the creator profile.",
+            "type": "string"
+          },
           "username": {
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UpdateFeedSettingsDto": {
+        "properties": {
+          "region": {
+            "description": "Broad region preference. Global means no region tilt; it never filters ideas out.",
+            "enum": [
+              "global",
+              "africa",
+              "west-africa"
+            ],
+            "type": "string"
+          },
+          "showPromoted": {
+            "description": "When false, paid placements are not injected into this account’s feed.",
+            "type": "boolean"
+          },
+          "topics": {
+            "description": "Idea categories to prioritise in the discovery feed.",
+            "items": {
+              "enum": [
+                "technology",
+                "software",
+                "fintech",
+                "agritech",
+                "healthtech",
+                "cleantech",
+                "edtech",
+                "logistics",
+                "e-commerce",
+                "web3",
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "theater",
+                "community",
+                "other"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics",
+          "region",
+          "showPromoted"
+        ],
         "type": "object"
       },
       "UpdateIdeaDto": {
@@ -2911,6 +2997,29 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UpdateNotificationSettingsDto": {
+        "properties": {
+          "creatorUpdates": {
+            "type": "boolean"
+          },
+          "discoveryDigest": {
+            "type": "boolean"
+          },
+          "emailUpdates": {
+            "type": "boolean"
+          },
+          "milestoneReviews": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "emailUpdates",
+          "milestoneReviews",
+          "creatorUpdates",
+          "discoveryDigest"
+        ],
         "type": "object"
       },
       "UpdateParamsDto": {
@@ -7806,6 +7915,158 @@
         "summary": "List the signed-in user’s non-binding pre-pledges",
         "tags": [
           "ideas"
+        ]
+      }
+    },
+    "/api/v1/me/settings": {
+      "get": {
+        "description": "Profile, email state, feed scope, notification preferences, verification summary, wallet link and recent support requests. Private provider references are never included.",
+        "operationId": "SettingsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Account settings aggregate",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/feed": {
+      "put": {
+        "operationId": "SettingsController_updateFeed",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update discovery-feed topics, region and promoted placement",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/notifications": {
+      "put": {
+        "operationId": "SettingsController_updateNotifications",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update email notification delivery preferences",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/requests": {
+      "post": {
+        "description": "Creates an auditable support request. Deletion is reviewed before any data is removed because of retention and campaign obligations.",
+        "operationId": "SettingsController_createRequest",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request a data export or account deletion review",
+        "tags": [
+          "settings"
         ]
       }
     },

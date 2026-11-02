@@ -23,7 +23,8 @@ same surface as the committed document.
 | [analytics.md](./analytics.md) | Ingest contract, owner/admin reports, premium access, frontend rules | Implemented (Phase 1) |
 | [product-analytics.md](./product-analytics.md) | Pipeline, taxonomy, aggregation, retention | Implemented (Phase 1) |
 | [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention, consent boundary | Implemented for server-side views and signals; Phase 2 target |
-| [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe | Implemented |
+| [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe, email preferences | Implemented |
+| [settings.md](./settings.md) | Account settings aggregate, feed scope, notification preferences, support requests | Implemented |
 | [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
 | [webhooks.md](./webhooks.md) | Providers, signatures, idempotency | Partly implemented |

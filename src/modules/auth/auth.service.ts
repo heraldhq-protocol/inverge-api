@@ -379,6 +379,7 @@ export class AuthService {
           : {}),
         ...(dto.avatarUrl !== undefined ? { avatarUrl } : {}),
         ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
+        ...(dto.location !== undefined ? { location: dto.location } : {}),
         ...(dto.links !== undefined ? { links: dto.links as object } : {}),
       },
       create: {
@@ -389,6 +390,7 @@ export class AuthService {
         displayName: dto.displayName ?? null,
         avatarUrl,
         bio: dto.bio ?? null,
+        location: dto.location ?? null,
         links: (dto.links ?? []) as object,
       },
     });
