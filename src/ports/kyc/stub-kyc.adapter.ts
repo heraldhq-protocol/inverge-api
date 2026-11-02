@@ -101,31 +101,90 @@ export class StubKycAdapter implements KycProviderPort {
     } catch {
       return null;
     }
-    const providerRef = evt?.providerRef ?? evt?.session_id;
-    if (!providerRef) return null;
-    const status = normalizeStubStatus(evt?.status);
+
+    const webhookType =
+      typeof evt?.webhook_type === 'string' ? evt.webhook_type : 'status.updated';
+    const providerRef = evt?.providerRef ?? evt?.session_id ?? null;
+    const transactionId = evt?.transaction_id ?? null;
+    const vendorUserId = evt?.vendor_user_id ?? null;
+    const vendorBusinessId = evt?.vendor_business_id ?? null;
+
+    const resourceType =
+      webhookType === 'status.updated' || webhookType === 'data.updated'
+        ? 'SESSION'
+        : webhookType.startsWith('user.')
+          ? 'USER'
+          : webhookType.startsWith('business.')
+            ? 'BUSINESS'
+            : webhookType.startsWith('transaction.')
+              ? 'TRANSACTION'
+              : 'ACTIVITY';
+    const resourceId =
+      resourceType === 'SESSION'
+        ? providerRef
+        : resourceType === 'TRANSACTION'
+          ? transactionId
+          : resourceType === 'USER'
+            ? vendorUserId
+            : resourceType === 'BUSINESS'
+              ? vendorBusinessId
+              : (evt?.activity_id ?? evt?.event_id ?? null);
+    if (!resourceId) return null;
+
+    const isSession = resourceType === 'SESSION';
+    const status = isSession ? normalizeStubStatus(evt?.status) : null;
     const aml = normalizeStubAml(evt?.aml);
-    this.completed.set(providerRef, { status, aml });
+    if (isSession && providerRef) this.completed.set(providerRef, { status: status!, aml });
+
     const timestamp = Number.isFinite(Number(evt?.timestamp))
       ? Number(evt.timestamp)
       : Math.floor(Date.now() / 1000);
+    const createdAt = Number.isFinite(Number(evt?.created_at))
+      ? Number(evt.created_at)
+      : timestamp;
+
     return {
       aml,
-      businessEntityRef: null,
+      businessEntityRef: vendorBusinessId,
+      businessSessionId: evt?.business_session_id ?? null,
+      changedFields: Array.isArray(evt?.changed_fields)
+        ? evt.changed_fields.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : [],
       eventId:
         typeof evt?.event_id === 'string'
           ? evt.event_id
-          : `stub:${providerRef}:${status}:${evt?.aml ?? 'NONE'}:${timestamp}`,
-      occurredAt: new Date(timestamp * 1000),
+          : `stub:${resourceType}:${resourceId}:${status ?? evt?.status ?? 'NONE'}:${timestamp}`,
+      occurredAt: new Date(createdAt * 1000),
       payloadAuthenticated: true,
-      providerRef,
-      providerStatus: diditLabelFor(status),
+      previousStatus:
+        typeof evt?.previous_status === 'string' ? evt.previous_status : null,
+      providerRef: isSession ? providerRef : null,
+      providerStatus: isSession ? diditLabelFor(status!) : null,
+      rawStatus: typeof evt?.status === 'string' ? evt.status : null,
+      resourceId,
+      resourceType,
+      sessionKind: evt?.session_kind === 'business' ? 'business' : null,
       status,
+      transaction:
+        resourceType === 'TRANSACTION'
+          ? {
+              actionRequired:
+                evt?.action_required && typeof evt.action_required === 'object'
+                  ? evt.action_required
+                  : null,
+              amount: typeof evt?.amount === 'string' ? evt.amount : null,
+              currency: typeof evt?.currency === 'string' ? evt.currency : null,
+              direction: typeof evt?.direction === 'string' ? evt.direction : null,
+              id: transactionId,
+              score: typeof evt?.score === 'number' ? evt.score : null,
+              severity: typeof evt?.severity === 'string' ? evt.severity : null,
+              status: typeof evt?.status === 'string' ? evt.status : null,
+              txnId: typeof evt?.txn_id === 'string' ? evt.txn_id : null,
+            }
+          : null,
+      trigger: typeof evt?.trigger === 'string' ? evt.trigger : null,
       vendorData: evt?.vendor_data ?? evt?.vendorData ?? null,
-      webhookType:
-        typeof evt?.webhook_type === 'string'
-          ? evt.webhook_type
-          : 'status.updated',
+      webhookType: webhookType as KycWebhookEvent['webhookType'],
     };
   }
 

@@ -136,6 +136,8 @@ describe('resolveRateLimitPolicy (§7.2)', () => {
     ['GET', '/auth/me', {}, 'dashboard'],
     ['POST', '/flat-fee/webhook', {}, 'webhook'],
     ['POST', '/kyc/webhook', {}, 'webhook'],
+    ['POST', '/verification/webhook', {}, 'webhook'],
+    ['POST', '/webhooks/didit', {}, 'webhook'],
     ['POST', '/ideas/:id/boosts', {}, 'financial'],
     ['POST', '/ideas/:id/support', {}, 'signals'],
     ['POST', '/ideas/:id/comments', {}, 'comments'],

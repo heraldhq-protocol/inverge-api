@@ -8,26 +8,39 @@ and replay policy. There is no outbound webhook product or delivery log.
 | Provider | Route (v1) | Verification | Idempotency |
 |---|---|---|---|
 | Paystack (application fees) | `POST /api/v1/flat-fee/webhook` | `x-paystack-signature` HMAC over the raw body | `WebhookReceipt` on `PAYSTACK:<reference>:<status>` |
-| Didit (KYC/AML/KYB) | `POST /api/v1/kyc/webhook` | HMAC over the raw body, headers passed to the adapter | `WebhookReceipt` on `DIDIT:<session>:<status>:<aml>` |
+| Didit (verification, entity, transaction) | `POST /api/v1/webhooks/didit` | `X-Signature-V2` / `X-Signature` / `X-Signature-Simple` HMAC over the raw body, then freshness on the signed body `timestamp` | `WebhookReceipt` on `DIDIT:<event_id>`; `DiditWebhookEvent` ledger |
 
-Both handlers read `req.rawBody`, which is why the application is created with
-`rawBody: true`. A signature computed over re-serialised JSON is not a signature;
-the raw bytes are the only valid input.
+The legacy Didit routes (`/api/v1/verification/webhook` and `/api/v1/kyc/webhook`)
+remain mounted as aliases. All three handlers read `req.rawBody`, which is why the
+application is created with `rawBody: true`. A signature computed over re-serialised
+JSON is not a signature; the raw bytes are the only valid input.
+
+Supported Didit families: `status.updated`, `data.updated`, `user.status.updated`,
+`user.data.updated`, `business.status.updated`, `business.data.updated`,
+`activity.created`, `transaction.created`, `transaction.status.updated`. Session
+events update `VerificationCase`; entity, activity and transaction events are written
+to `DiditWebhookEvent` for durable state and audit. The ledger stores no raw body,
+only its SHA-256 and non-identifying routing metadata.
 
 ### Rules that must hold
 
-1. **Verify before parsing.** A body that fails verification returns `401` and is
-   never applied.
-2. **Re-fetch the authoritative decision** (Didit) or the transaction (Paystack)
-   before changing local state. A webhook is a notification, not a proof.
-3. **Be idempotent.** Providers retry. Applying the same event twice must not
-   double-credit a fee or move a KYC status twice. Use the provider event or
-   reference id as the key.
-4. **Respond fast.** Acknowledge with `200` after the durable write. Slow work
+1. **Verify before applying.** A body that fails verification returns `401` and is
+   never applied. `X-Signature-V2` necessarily parses JSON to reproduce Didit's
+   canonical form, but no parsed field is trusted until a signature matches.
+2. **Freshness comes from the signed body.** Didit's `X-Timestamp` header is not
+   covered by any signature; a replay can refresh it. Reject when
+   `abs(now - body.timestamp) > 300`.
+3. **Re-fetch the authoritative decision** (Didit session events) or the transaction
+   (Paystack) before changing local state. A webhook is a notification, not a proof.
+4. **Be idempotent.** Providers retry. Applying the same event twice must not
+   double-credit a fee or move a KYC status twice. Didit keys on `event_id`; the
+   fallback is resource id + status + webhook type.
+5. **Respond fast.** Acknowledge with `200` after the durable write. Slow work
    (notifications, analytics) is queued, not awaited.
-5. **Never trust the payload's user.** Resolve the local record from the provider
+6. **Never trust the payload's user.** Resolve the local record from the provider
    reference, then verify the user it belongs to.
-6. **No secrets in logs.** Log the provider event id and outcome, not the body.
+7. **No secrets or identity data in logs.** A rejected delivery logs its event id,
+   byte length and a truncated SHA-256 for correlation, never the body.
 
 ### Version note
 
@@ -37,12 +50,12 @@ the old path will 404 and the provider will retry until it gives up.
 
 ### Durable inbox (implemented)
 
-Both handlers call `WebhookInboxService.run()` **after** signature verification
+The handlers call `WebhookInboxService.run()` **after** signature verification
 and **before** applying the event. The receipt is the unit of replay:
 
 | Column | Why |
 |---|---|
-| `provider`, `dedupeKey` | Unique per normalized event. Paystack uses the charge reference and status; Didit uses session, status and AML outcome. |
+| `provider`, `dedupeKey` | Unique per normalized event. Paystack uses the charge reference and status; Didit uses `event_id`. |
 | `payloadHash` | SHA-256 of the raw body for support correlation. The body itself is never stored, so KYC documents and account data never enter the table. |
 | `eventType` | Normalized status only. |
 | `status` | `PENDING` → `PROCESSING` → `PROCESSED` or `IGNORED`; a thrown apply sets `FAILED`. |

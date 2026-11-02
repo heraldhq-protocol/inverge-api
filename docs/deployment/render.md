@@ -204,12 +204,15 @@ The service URL is not known until Render creates it. Once it does:
 
 | Provider | URL | Secret to configure there |
 |---|---|---|
-| Didit | `https://<service>.onrender.com/api/v1/verification/webhook` | `DIDIT_WEBHOOK_SECRET` |
-| Didit (legacy facade) | `https://<service>.onrender.com/api/v1/kyc/webhook` | same |
+| Didit | `https://<service>.onrender.com/api/v1/webhooks/didit` | `DIDIT_WEBHOOK_SECRET` |
+| Didit (legacy aliases) | `.../api/v1/verification/webhook` or `.../api/v1/kyc/webhook` | same |
 | Paystack | `https://<service>.onrender.com/api/v1/flat-fee/webhook` | `PAYSTACK_WEBHOOK_SECRET` (or the secret key) |
 
-Both routes verify HMAC over the raw body, re-fetch the authoritative decision/transaction,
-and deduplicate through `WebhookReceipt`. A wrong secret returns 401 and the provider retries.
+The Didit route verifies HMAC over the raw body, checks freshness on the signed body
+`timestamp`, re-fetches the authoritative decision for session events, and deduplicates
+through `WebhookReceipt`. A wrong secret returns 401. If the API sits behind Cloudflare,
+allow Didit's delivery IP `18.203.201.92` for the webhook hostname; the endpoint must be
+public HTTPS.
 Provider dashboards must use `/api/v1`; the old unprefixed paths 404.
 
 Health and docs:

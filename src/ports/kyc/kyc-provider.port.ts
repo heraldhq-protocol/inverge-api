@@ -8,6 +8,11 @@
 // AML aggregates). Identity documents, selfies and full reports never cross this boundary.
 
 import type { DiditStatus } from '../../modules/kyc/verification-status';
+import type {
+  DiditTransactionPayload,
+  DiditWebhookResource,
+  DiditWebhookType,
+} from '../../modules/kyc/didit-webhook-verifier';
 
 // What a verification session is for. Drives which provider workflow runs and whether AML
 // screening is part of it. BUSINESS_VERIFICATION runs Didit KYB (registry + documents +
@@ -86,19 +91,33 @@ export interface KycDecision {
   createdAt: string | null;
 }
 
-// The trustable payload of a *verified* webhook: enough to identify the session and
-// know the reported status. The service re-derives full AML detail from getDecision().
+// The trustable payload of a *verified* webhook. Session events carry enough to
+// identify the case; entity, activity and transaction events carry their own resource
+// id. The service re-derives full AML detail from getDecision() for session events.
 export interface KycWebhookEvent {
-  providerRef: string;
+  /** Session id for SESSION events, otherwise null. */
+  providerRef: string | null;
   vendorData: string | null;
-  status: KycOutcome;
+  /** Normalised identity outcome. Only meaningful for SESSION events. */
+  status: KycOutcome | null;
   providerStatus: DiditStatus | null;
+  /** Exact provider status string, including entity/transaction statuses. */
+  rawStatus: string | null;
   aml: AmlOutcome | null;
   eventId: string | null;
-  webhookType: string | null;
+  webhookType: DiditWebhookType;
+  resourceType: DiditWebhookResource;
+  resourceId: string;
+  previousStatus: string | null;
   occurredAt: Date | null;
   /** KYB payloads identify the business session separately. */
+  businessSessionId: string | null;
+  /** KYB payloads identify the business entity separately. */
   businessEntityRef: string | null;
+  sessionKind: 'user' | 'business' | null;
+  trigger: string | null;
+  changedFields: string[];
+  transaction: DiditTransactionPayload | null;
   /** False when only the deprecated envelope signature verified. */
   payloadAuthenticated: boolean;
 }

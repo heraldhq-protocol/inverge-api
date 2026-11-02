@@ -8,7 +8,9 @@ import {
   NotFoundException,
   Optional,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -22,11 +24,12 @@ import {
   KycPurpose,
   KycWebhookEvent,
 } from '../../ports/kyc/kyc-provider.port';
-import type {
-  AccountType,
-  VerificationCase,
-  VerificationStatus,
-  VerificationType,
+import {
+  Prisma,
+  type AccountType,
+  type VerificationCase,
+  type VerificationStatus,
+  type VerificationType,
 } from '../../generated/prisma/client';
 import {
   evaluateIdentityOnly,
@@ -178,6 +181,10 @@ function stateFromWebhook(event: KycWebhookEvent): {
     if (mapped.providerStatus) {
       return { providerStatus: mapped.providerStatus, state: mapped.state };
     }
+  }
+  // A status we do not recognise is an explicit ERROR, never a permissive state.
+  if (event.rawStatus) {
+    return { providerStatus: event.rawStatus, state: 'ERROR' };
   }
   switch (event.status) {
     case 'VERIFIED':
@@ -450,23 +457,37 @@ export class VerificationService {
   async handleWebhook(rawBody: string, headers: Record<string, string | undefined>) {
     const event = this.provider.parseWebhook(rawBody, headers);
     if (!event) {
-      throw new BadRequestException('Invalid or unverifiable webhook');
+      throw new UnauthorizedException('Invalid or unverifiable webhook');
     }
 
-    const resolved = await this.resolveCaseForEvent(event);
-    if (!resolved) {
-      this.logger.warn(`Webhook for unknown session ${event.providerRef} — acknowledged and ignored`);
-      return { ignored: true };
-    }
+    const dedupeKey = this.webhookDedupeKey(event);
 
-    const dedupeKey = event.eventId
-      ? `DIDIT:${event.eventId}`
-      : `DIDIT:${event.providerRef}:${event.status}:${event.aml ?? 'NONE'}:${
-          event.occurredAt?.toISOString() ?? 'unknown'
-        }`;
-
+    // Record the verified event in the append-only ledger before dispatch. Entity,
+    // activity and transaction events have no case to update in this milestone, so
+    // the ledger is their durable state; session events continue into the normal
+    // case projection. The inbox below is the atomic replay guard for both paths.
     const apply = async () => {
+      await this.recordDiditEvent(event, rawBody);
+      if (event.resourceType !== 'SESSION') {
+        return {
+          eventId: event.eventId,
+          processed: true,
+          resourceId: event.resourceId,
+          resourceType: event.resourceType,
+        };
+      }
+
+      const resolved = await this.resolveCaseForEvent(event);
+      if (!resolved) {
+        this.logger.warn(
+          `Webhook for unknown session ${event.resourceId} — acknowledged and ignored`,
+        );
+        return { ignored: true };
+      }
+
       if (this.webhookQueue) {
+        const providerRef = event.providerRef;
+        if (!providerRef) return { ignored: true };
         await this.webhookQueue.add(
           JOB_NAMES.verificationWebhook,
           {
@@ -476,7 +497,7 @@ export class VerificationService {
             fallbackProviderStatus: event.providerStatus,
             occurredAtIso: (event.occurredAt ?? new Date()).toISOString(),
             payloadAuthenticated: event.payloadAuthenticated,
-            providerRef: event.providerRef,
+            providerRef,
           },
           {
             attempts: 3,
@@ -497,12 +518,73 @@ export class VerificationService {
     return this.inbox.run(
       {
         dedupeKey,
-        eventType: event.webhookType ?? event.status,
+        eventType: event.webhookType,
         provider: 'DIDIT',
         rawBody,
       },
       apply,
     );
+  }
+
+  /**
+   * Dedupe on the provider's stable event_id. The fallback covers a legacy delivery
+   * that predates event_id; it is deterministic across retries for the same resource.
+   */
+  private webhookDedupeKey(event: KycWebhookEvent): string {
+    return event.eventId
+      ? `DIDIT:${event.eventId}`
+      : `DIDIT:${event.resourceType}:${event.resourceId}:${
+          event.rawStatus ?? 'NONE'
+        }:${event.webhookType}`;
+  }
+
+  private async recordDiditEvent(event: KycWebhookEvent, rawBody: string) {
+    if (!event.eventId) return;
+    const metadata: Record<string, unknown> = {};
+    if (event.trigger) metadata.trigger = event.trigger;
+    if (event.changedFields.length > 0) {
+      metadata.changedFields = event.changedFields;
+    }
+    if (event.sessionKind) metadata.sessionKind = event.sessionKind;
+    if (event.businessSessionId) {
+      metadata.businessSessionId = event.businessSessionId;
+    }
+    if (event.transaction) {
+      metadata.transaction = {
+        amount: event.transaction.amount,
+        currency: event.transaction.currency,
+        direction: event.transaction.direction,
+        score: event.transaction.score,
+        severity: event.transaction.severity,
+        txnId: event.transaction.txnId,
+      };
+    }
+    await this.prisma.diditWebhookEvent.upsert({
+      where: { eventId: event.eventId },
+      create: {
+        eventId: event.eventId,
+        metadata: metadata as Prisma.InputJsonValue,
+        occurredAt: event.occurredAt ?? new Date(),
+        payloadHash: createHash('sha256').update(rawBody).digest('hex'),
+        previousStatus: event.previousStatus,
+        resourceId: event.resourceId,
+        resourceType: event.resourceType,
+        status: event.rawStatus,
+        vendorData: event.vendorData,
+        webhookType: event.webhookType,
+      },
+      update: {
+        metadata: metadata as Prisma.InputJsonValue,
+        occurredAt: event.occurredAt ?? new Date(),
+        payloadHash: createHash('sha256').update(rawBody).digest('hex'),
+        previousStatus: event.previousStatus,
+        resourceId: event.resourceId,
+        resourceType: event.resourceType,
+        status: event.rawStatus,
+        vendorData: event.vendorData,
+        webhookType: event.webhookType,
+      },
+    });
   }
 
   async processWebhookJob(job: VerificationWebhookJob) {
@@ -559,11 +641,15 @@ export class VerificationService {
   }
 
   private async applyEvent(caseId: string, event: KycWebhookEvent) {
+    const providerRef = event.providerRef;
+    if (!providerRef) {
+      throw new BadRequestException('Session event is missing a provider reference');
+    }
     const decision = await this.provider
-      .getDecision(event.providerRef)
+      .getDecision(providerRef)
       .catch((error: unknown) => {
         this.logger.warn(
-          `getDecision(${event.providerRef}) failed: ${
+          `getDecision(${providerRef}) failed: ${
             error instanceof Error ? error.message : 'unknown error'
           }`,
         );
@@ -631,19 +717,22 @@ export class VerificationService {
   private async resolveCaseForEvent(
     event: KycWebhookEvent,
   ): Promise<VerificationCase | null> {
-    const existing = await this.repo.findCaseByProviderSession(event.providerRef);
+    const providerRef = event.providerRef;
+    if (!providerRef) return null;
+
+    const existing = await this.repo.findCaseByProviderSession(providerRef);
     if (existing) return existing;
 
     // Sessions created before the case model are attached now, so an in-flight account is
     // still reconciled. The legacy owner is resolved from the persisted reference only.
-    const owner = await this.repo.resolveLegacyOwner(event.providerRef);
+    const owner = await this.repo.resolveLegacyOwner(providerRef);
     if (!owner) return null;
     const mapped = stateFromWebhook(event);
     const created = await this.repo.createCase({
       attempt: 1,
       businessId: owner.businessId,
       provider: this.providerName(),
-      providerSessionId: event.providerRef,
+      providerSessionId: providerRef,
       providerStatus: mapped.providerStatus ?? 'In Progress',
       providerWorkflowId: null,
       purpose: owner.type === 'BUSINESS' ? 'BUSINESS_VERIFICATION' : 'CAMPAIGN_CREATOR',

@@ -130,7 +130,14 @@ export function resolveRateLimitPolicy(
     return 'ai_assistant';
   }
 
-  if (path === '/flat-fee/webhook' || path === '/kyc/webhook') return 'webhook';
+  if (
+    path === '/flat-fee/webhook' ||
+    path === '/kyc/webhook' ||
+    path === '/verification/webhook' ||
+    path === '/webhooks/didit'
+  ) {
+    return 'webhook';
+  }
 
   // Money initiation. A boost purchase is the only live one today.
   if (path === '/ideas/:id/boosts' && method === 'POST') return 'financial';

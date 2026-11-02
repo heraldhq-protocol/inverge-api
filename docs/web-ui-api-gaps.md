@@ -543,7 +543,7 @@ Creator-facing, all behind `PrivyAuthGuard`:
 | `GET` | `/verification/business` | Business registration + KYB/AML projection |
 | `POST` | `/verification/account-type` | Switch `INDIVIDUAL`/`BUSINESS`; cases stay attached to their type |
 | `POST` | `/verification/contributions/authorize` | FR-104 cumulative-threshold authorisation with reserved headroom |
-| `POST` | `/verification/webhook` | Provider callback (public, signature-verified, acknowledges fast) |
+| `POST` | `/webhooks/didit` | Didit destination (public, signature-verified; `/verification/webhook` and `/kyc/webhook` are aliases) |
 
 Compliance-facing, behind `PrivyAuthGuard` + `ComplianceReviewerGuard` (ADMIN and the new
 `COMPLIANCE_REVIEWER` role; least privilege is enforced server-side):
@@ -586,12 +586,18 @@ the adapter. An unmapped string becomes `ERROR`, which is a support signal, not 
 
 ### Webhook and reconciliation
 
-Signature schemes: `X-Signature-V2` (canonical JSON), `X-Signature` (raw bytes), `X-Signature-Simple`
-(envelope only; not treated as authenticating the payload), plus `*-Previous` rotation headers verified
-against `DIDIT_WEBHOOK_SECRET_PREVIOUS`. `X-Timestamp` is bounded to ±300 s. Events are deduplicated on
-`providerEventReference`; a replay is acknowledged without re-applying. The handler never trusts the
-callback's decision body: it re-fetches the decision from the provider before writing, and heavy work is
-queued when `QUEUE_ENABLED` (otherwise processed inline).
+Canonical destination: `POST /api/v1/webhooks/didit` (the legacy `/verification/webhook` and
+`/kyc/webhook` routes remain mounted). Signature schemes: `X-Signature-V2` (canonical JSON),
+`X-Signature` (raw bytes), `X-Signature-Simple` (envelope only; not treated as authenticating the
+payload), plus `*-Previous` rotation headers verified against `DIDIT_WEBHOOK_SECRET_PREVIOUS`.
+Freshness is checked against the **signed body `timestamp`** (not the unsigned `X-Timestamp` header,
+which a replay can freshen). Events are deduplicated on `event_id` through the durable webhook inbox;
+a replay is acknowledged without re-applying. Every verified event is also written to the append-only
+`DiditWebhookEvent` ledger. The handler never trusts the callback's decision body: for session events it
+re-fetches the decision from the provider before writing, and heavy work is queued when `QUEUE_ENABLED`
+(otherwise processed inline). Supported event families: `status.updated`, `data.updated`,
+`user.status.updated`, `user.data.updated`, `business.status.updated`, `business.data.updated`,
+`activity.created`, `transaction.created`, `transaction.status.updated`.
 
 A reconciliation job sweeps cases whose last provider sync is older than
 `VERIFICATION_RECONCILE_AFTER_MINUTES`, with bounded exponential backoff and jitter
@@ -602,9 +608,11 @@ Redis is a queue, not the record: every state transition is persisted, so a queu
 
 1. Publish the identity workflow used for `DIDIT_KYC_WORKFLOW_ID` — the one currently in the console
    ("Free KYC") is a draft, and a draft workflow cannot start a session.
-2. Register the webhook destination: `POST https://<api-host>/api/v1/verification/webhook`, subscribed to
-   `status.updated` and `data.updated`, with the same secret as `DIDIT_WEBHOOK_SECRET`. Browser redirects
-   are never used as the source of truth.
+2. Register the webhook destination: `POST https://<api-host>/api/v1/webhooks/didit`, subscribed to every
+   family the app needs (`status.updated`, `data.updated`, `user.status.updated`, `user.data.updated`,
+   `business.status.updated`, `business.data.updated`, `activity.created`, `transaction.created`,
+   `transaction.status.updated`), with the same secret as `DIDIT_WEBHOOK_SECRET`. Browser redirects are
+   never used as the source of truth.
 3. Confirm the KYB workflow actually runs the key-people step. If it does not, leave
    `DIDIT_KYB_REQUIRE_KEY_PEOPLE=true`: the domain will refuse to treat KYB as complete, which is correct.
 
