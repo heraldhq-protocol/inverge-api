@@ -82,7 +82,7 @@ exists; **deferred** = planned, not next.
 | KYC session | `POST /kyc/session` | implemented | — |
 | KYC status | `GET /kyc/status` | implemented | — |
 | KYC eligibility | `GET /kyc/eligibility` | implemented | Gate call-sites are incomplete |
-| KYC webhook | `POST /kyc/webhook` | implemented | Durable `WebhookReceipt` replay guard; production webhook registration is outstanding |
+| Didit webhook | `POST /webhooks/didit` (aliases `/verification/webhook`, `/kyc/webhook`) | implemented | Durable `WebhookReceipt` replay guard plus `DiditWebhookEvent` ledger; production destination registration is outstanding |
 | KYB | `POST /kyb/session`, `GET /kyb/status` | implemented | — |
 | AML screening | `POST /kyc/admin/aml-screen`, `GET /kyc/admin/aml/{userId}` | implemented | Ongoing monitoring is not automated |
 | Business AML | `POST /kyb/admin/aml-screen`, `GET /kyb/admin/aml/{userId}` | implemented | — |

@@ -8779,6 +8779,31 @@
           "wallets"
         ]
       }
+    },
+    "/api/v1/webhooks/didit": {
+      "post": {
+        "operationId": "DiditWebhookController_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Receive and verify Didit webhook events",
+        "tags": [
+          "webhooks"
+        ]
+      }
     }
   },
   "servers": [],

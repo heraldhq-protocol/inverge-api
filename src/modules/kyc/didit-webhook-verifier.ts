@@ -8,7 +8,12 @@ import { isDiditStatus, type DiditStatus } from './verification-status';
 //                       Unicode preserved, whole-valued floats shortened). Recommended.
 //   X-Signature         HMAC-SHA256 over the exact raw request bytes.
 //   X-Signature-Simple  deprecated; authenticates the envelope only, never `decision`.
-//   X-Timestamp         Unix seconds; reject when abs(now - ts) > 300.
+//   X-Timestamp         Unix seconds when the webhook was dispatched. It is NOT covered
+//                       by any signature, so it is never used for freshness.
+//
+// Freshness is checked against the body's own `timestamp`, which is part of every
+// signature. A replayed request can refresh X-Timestamp, but it cannot change
+// body.timestamp without invalidating the signed payload.
 //
 // A rotated destination secret also sends `*-Previous` headers for 24 hours; a match
 // on either header is accepted. The caller MUST re-fetch the decision when only the
@@ -16,9 +21,41 @@ import { isDiditStatus, type DiditStatus } from './verification-status';
 
 export const DIDIT_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
-const SUPPORTED_EVENT_TYPES = new Set(['status.updated', 'data.updated']);
+export const DIDIT_WEBHOOK_TYPES = [
+  'status.updated',
+  'data.updated',
+  'user.status.updated',
+  'user.data.updated',
+  'business.status.updated',
+  'business.data.updated',
+  'activity.created',
+  'transaction.created',
+  'transaction.status.updated',
+] as const;
 
-export type SignatureScheme = 'v2' | 'raw' | 'simple' | 'v2-previous' | 'raw-previous' | 'simple-previous';
+export type DiditWebhookType = (typeof DIDIT_WEBHOOK_TYPES)[number];
+
+export type DiditWebhookResource =
+  | 'SESSION'
+  | 'USER'
+  | 'BUSINESS'
+  | 'ACTIVITY'
+  | 'TRANSACTION';
+
+const SESSION_EVENT_TYPES = new Set<DiditWebhookType>([
+  'status.updated',
+  'data.updated',
+]);
+
+const SUPPORTED_EVENT_TYPES = new Set<string>(DIDIT_WEBHOOK_TYPES);
+
+export type SignatureScheme =
+  | 'v2'
+  | 'raw'
+  | 'simple'
+  | 'v2-previous'
+  | 'raw-previous'
+  | 'simple-previous';
 
 export type SignatureVerdict =
   | {
@@ -113,6 +150,22 @@ export function canonicalJson(body: unknown): string {
   return JSON.stringify(sortKeysDeep(shortenWholeFloats(body)));
 }
 
+function simpleMessage(body: Record<string, unknown>): string {
+  return [
+    body.timestamp ?? '',
+    body.session_id ?? '',
+    body.status ?? '',
+    body.webhook_type ?? '',
+  ].join(':');
+}
+
+/**
+ * Verifies the HMAC first, then checks freshness on the signed body timestamp.
+ *
+ * JSON is parsed before hashing only because X-Signature-V2 and X-Signature-Simple
+ * hash a representation of the parsed value. Nothing derived from the parse is
+ * returned to the caller until a signature has matched.
+ */
 export function verifyDiditSignature(
   input: VerifySignatureInput,
 ): SignatureVerdict {
@@ -120,25 +173,18 @@ export function verifyDiditSignature(
   if (!secret) return { ok: false, reason: 'secret_missing' };
   const previousSecret = input.previousSecret;
 
-  const timestampHeader = header(headers, 'x-timestamp');
-  if (!timestampHeader) return { ok: false, reason: 'timestamp_missing' };
-  const timestamp = Number(timestampHeader);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return { ok: false, reason: 'timestamp_invalid' };
-  }
-  const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
-  const tolerance =
-    input.toleranceSeconds ?? DIDIT_TIMESTAMP_TOLERANCE_SECONDS;
-  if (Math.abs(now - timestamp) > tolerance) {
-    return { ok: false, reason: 'timestamp_out_of_tolerance' };
-  }
-
-  let parsed: unknown;
+  let parsed: unknown = null;
   try {
     parsed = JSON.parse(rawBody);
   } catch {
-    return { ok: false, reason: 'signature_mismatch' };
+    // A raw-body signature can still verify an unparseable body; every other
+    // scheme needs JSON. Parsing to null simply skips those candidates.
+    parsed = null;
   }
+  const body =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
 
   const candidates: Array<{
     scheme: SignatureScheme;
@@ -148,7 +194,7 @@ export function verifyDiditSignature(
   }> = [
     {
       scheme: 'v2',
-      value: header(headers, 'x-signature-v2'),
+      value: body ? header(headers, 'x-signature-v2') : null,
       authenticatesPayload: true,
       expected: () => hmacHex(secret, canonicalJson(parsed)),
     },
@@ -160,22 +206,14 @@ export function verifyDiditSignature(
     },
     {
       scheme: 'simple',
-      value: header(headers, 'x-signature-simple'),
+      value: body ? header(headers, 'x-signature-simple') : null,
       authenticatesPayload: false,
-      expected: () => {
-        const body = parsed as Record<string, unknown>;
-        const message = [
-          body.timestamp ?? '',
-          body.session_id ?? '',
-          body.status ?? '',
-          body.webhook_type ?? '',
-        ].join(':');
-        return hmacHex(secret, message);
-      },
+      expected: () => hmacHex(secret, simpleMessage(body ?? {})),
     },
     {
       scheme: 'v2-previous',
-      value: previousSecret ? header(headers, 'x-signature-v2-previous') : null,
+      value:
+        body && previousSecret ? header(headers, 'x-signature-v2-previous') : null,
       authenticatesPayload: true,
       expected: () => hmacHex(previousSecret ?? '', canonicalJson(parsed)),
     },
@@ -187,18 +225,13 @@ export function verifyDiditSignature(
     },
     {
       scheme: 'simple-previous',
-      value: previousSecret ? header(headers, 'x-signature-simple-previous') : null,
+      value:
+        body && previousSecret
+          ? header(headers, 'x-signature-simple-previous')
+          : null,
       authenticatesPayload: false,
-      expected: () => {
-        const body = parsed as Record<string, unknown>;
-        const message = [
-          body.timestamp ?? '',
-          body.session_id ?? '',
-          body.status ?? '',
-          body.webhook_type ?? '',
-        ].join(':');
-        return hmacHex(previousSecret ?? '', message);
-      },
+      expected: () =>
+        hmacHex(previousSecret ?? '', simpleMessage(body ?? {})),
     },
   ];
 
@@ -209,35 +242,77 @@ export function verifyDiditSignature(
     ...candidates.filter((candidate) => !candidate.authenticatesPayload),
   ];
 
+  let matched: (typeof candidates)[number] | null = null;
   for (const candidate of ordered) {
     if (!candidate.value) continue;
     if (constantTimeEquals(candidate.expected(), candidate.value.trim())) {
-      return {
-        authenticatesPayload: candidate.authenticatesPayload,
-        ok: true,
-        scheme: candidate.scheme,
-      };
+      matched = candidate;
+      break;
     }
   }
+  if (!matched) return { ok: false, reason: 'signature_mismatch' };
 
-  return { ok: false, reason: 'signature_mismatch' };
+  // Only after the signature is valid do we trust the body timestamp. It is part
+  // of the signed payload (V2/raw cover the whole body; Simple signs it explicitly),
+  // so an attacker cannot refresh it on a replay.
+  const rawTimestamp = body?.timestamp;
+  if (rawTimestamp === undefined || rawTimestamp === null || rawTimestamp === '') {
+    return { ok: false, reason: 'timestamp_missing' };
+  }
+  const timestamp = Number(rawTimestamp);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return { ok: false, reason: 'timestamp_invalid' };
+  }
+  const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+  const tolerance =
+    input.toleranceSeconds ?? DIDIT_TIMESTAMP_TOLERANCE_SECONDS;
+  if (Math.abs(now - timestamp) > tolerance) {
+    return { ok: false, reason: 'timestamp_out_of_tolerance' };
+  }
+
+  return {
+    authenticatesPayload: matched.authenticatesPayload,
+    ok: true,
+    scheme: matched.scheme,
+  };
+}
+
+export interface DiditTransactionPayload {
+  id: string;
+  txnId: string | null;
+  status: string | null;
+  score: number | null;
+  severity: string | null;
+  amount: string | null;
+  currency: string | null;
+  direction: string | null;
+  actionRequired: Record<string, unknown> | null;
 }
 
 export interface DiditWebhookEnvelope {
   eventId: string;
-  webhookType: string;
-  sessionId: string;
+  webhookType: DiditWebhookType;
+  resourceType: DiditWebhookResource;
+  resourceId: string;
+  sessionId: string | null;
   businessSessionId: string | null;
+  transactionId: string | null;
+  entityId: string | null;
+  activityId: string | null;
   sessionKind: 'user' | 'business' | null;
   status: DiditStatus | null;
   rawStatus: string | null;
+  previousStatus: string | null;
   vendorData: string | null;
   vendorBusinessId: string | null;
   workflowId: string | null;
+  trigger: string | null;
+  changedFields: string[];
   sandbox: boolean;
   /** The provider's decision object, only when the payload signature verified. */
   decision: Record<string, unknown> | null;
   resubmitInfo: Record<string, unknown> | null;
+  transaction: DiditTransactionPayload | null;
   occurredAt: Date;
   timestamp: number;
 }
@@ -273,19 +348,51 @@ export function parseDiditEnvelope(
 
   const eventId = asString(body.event_id);
   const webhookType = asString(body.webhook_type);
-  const sessionId = asString(body.session_id);
-  if (!eventId || !webhookType || !sessionId) {
+  if (!eventId || !webhookType) {
     return { ok: false, reason: 'malformed' };
   }
   if (!SUPPORTED_EVENT_TYPES.has(webhookType)) {
     return { ok: false, reason: 'unsupported_event' };
   }
+  const typedWebhookType = webhookType as DiditWebhookType;
 
-  const rawStatus = asString(body.status);
   const timestamp = Number(body.timestamp);
   if (!Number.isFinite(timestamp) || timestamp <= 0) {
     return { ok: false, reason: 'malformed' };
   }
+
+  const sessionId = asString(body.session_id);
+  const businessSessionId = asString(body.business_session_id);
+  const transactionId = asString(body.transaction_id);
+  const vendorUserId = asString(body.vendor_user_id);
+  const vendorBusinessId = asString(body.vendor_business_id);
+  const activityId = asString(body.activity_id);
+  const rawStatus = asString(body.status);
+
+  let resourceType: DiditWebhookResource;
+  let resourceId: string | null;
+  if (SESSION_EVENT_TYPES.has(typedWebhookType)) {
+    resourceType = 'SESSION';
+    resourceId = sessionId;
+    if (!resourceId || !rawStatus) return { ok: false, reason: 'malformed' };
+  } else if (typedWebhookType.startsWith('user.')) {
+    resourceType = 'USER';
+    resourceId = vendorUserId ?? asString(body.entity_id);
+    if (!resourceId) return { ok: false, reason: 'malformed' };
+  } else if (typedWebhookType.startsWith('business.')) {
+    resourceType = 'BUSINESS';
+    resourceId = vendorBusinessId ?? asString(body.entity_id);
+    if (!resourceId) return { ok: false, reason: 'malformed' };
+  } else if (typedWebhookType.startsWith('transaction.')) {
+    resourceType = 'TRANSACTION';
+    resourceId = transactionId;
+    if (!resourceId) return { ok: false, reason: 'malformed' };
+  } else {
+    resourceType = 'ACTIVITY';
+    resourceId = activityId ?? eventId;
+  }
+  if (!resourceId) return { ok: false, reason: 'malformed' };
+  const resolvedResourceId = resourceId;
 
   const sessionKind =
     body.session_kind === 'business'
@@ -302,27 +409,46 @@ export function parseDiditEnvelope(
       ? (body.decision as Record<string, unknown>)
       : null;
 
+  const transaction =
+    resourceType === 'TRANSACTION'
+      ? extractTransaction(resolvedResourceId, body)
+      : null;
+
   return {
     event: {
-      businessSessionId: asString(body.business_session_id),
+      activityId,
+      businessSessionId,
+      changedFields: asStringArray(body.changed_fields),
       decision,
+      entityId:
+        resourceType === 'USER'
+          ? vendorUserId
+          : resourceType === 'BUSINESS'
+            ? vendorBusinessId
+            : null,
       eventId,
       occurredAt: new Date(
         typeof body.created_at === 'number' ? body.created_at * 1000 : timestamp * 1000,
       ),
+      previousStatus: asString(body.previous_status),
       rawStatus,
       resubmitInfo:
         body.resubmit_info && typeof body.resubmit_info === 'object'
           ? (body.resubmit_info as Record<string, unknown>)
           : null,
+      resourceId: resolvedResourceId,
+      resourceType,
       sandbox: body.environment === 'sandbox',
       sessionId,
       sessionKind,
       status: isDiditStatus(rawStatus) ? rawStatus : null,
       timestamp,
-      vendorBusinessId: asString(body.vendor_business_id),
+      transaction,
+      transactionId,
+      trigger: asString(body.trigger),
+      vendorBusinessId,
       vendorData: asString(body.vendor_data),
-      webhookType,
+      webhookType: typedWebhookType,
       workflowId: asString(body.workflow_id),
     },
     ignorable: false,
@@ -330,6 +456,34 @@ export function parseDiditEnvelope(
   };
 }
 
+function extractTransaction(
+  transactionId: string,
+  body: Record<string, unknown>,
+): DiditTransactionPayload {
+  const actionRequired =
+    body.action_required &&
+    typeof body.action_required === 'object' &&
+    !Array.isArray(body.action_required)
+      ? (body.action_required as Record<string, unknown>)
+      : null;
+  return {
+    actionRequired,
+    amount: asString(body.amount),
+    currency: asString(body.currency),
+    direction: asString(body.direction),
+    id: transactionId,
+    score: typeof body.score === 'number' ? body.score : null,
+    severity: asString(body.severity),
+    status: asString(body.status),
+    txnId: asString(body.txn_id),
+  };
+}
+
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }

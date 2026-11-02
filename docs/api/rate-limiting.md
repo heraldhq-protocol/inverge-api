@@ -26,7 +26,7 @@ traffic. Limits are per policy, not a global quota.
 | `comments` | comments and survey responses | user id | 10/min | 3 | local bucket |
 | `dashboard` | `/ideas/:id/insights`, `/auth/me`, `/auth/capabilities`, `mine=true` | user id | 60/min | 20 | local bucket |
 | `financial` | `POST /ideas/:id/boosts` | user id | 5/min | 2 | **fail closed (503)** |
-| `webhook` | `/flat-fee/webhook`, `/kyc/webhook` | IP | 300/min | 60 | process (signature is authoritative) |
+| `webhook` | `/flat-fee/webhook`, `/webhooks/didit`, `/verification/webhook`, `/kyc/webhook` | IP | 300/min | 60 | process (signature is authoritative) |
 | `admin` | every `/admin/**` route | user id | 60/min | 10 | **fail closed (503)** |
 
 A user-scoped policy falls back to the IP key when no user is resolved. The limiter

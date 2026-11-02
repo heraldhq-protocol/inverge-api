@@ -221,11 +221,14 @@ describe('Verification domain (e2e)', () => {
         vendor_data: user.id,
       }).expect(200);
 
+      // `timestamp` is the signed dispatch time and must be fresh; `created_at` is the
+      // event time used for the stale/out-of-order guard.
       const stale = await webhook({
+        created_at: Math.floor(Date.now() / 1000) - 3_600,
         event_id: `evt-stale-${session.providerRef}`,
         providerRef: session.providerRef,
         status: 'REJECTED',
-        timestamp: Math.floor(Date.now() / 1000) - 3_600,
+        timestamp: Math.floor(Date.now() / 1000),
         vendor_data: user.id,
       }).expect(200);
       expect(stale.body).toMatchObject({ applied: false, stale: true });
@@ -236,6 +239,82 @@ describe('Verification domain (e2e)', () => {
         .expect(200);
       expect(state.body.overall).toBe('APPROVED');
       expect(state.body.identityVerified).toBe(true);
+    });
+  });
+
+  // ─────────────── canonical webhook endpoint + non-session events ───────────────
+  describe('webhooks/didit', () => {
+    const post = (body: Record<string, unknown>) =>
+      http().post('/api/v1/webhooks/didit').send(body);
+
+    it('records an entity status event once and replays idempotently', async () => {
+      const eventId = `evt-entity-${PREFIX}`;
+      const body = {
+        event_id: eventId,
+        previous_status: 'ACTIVE',
+        status: 'BLOCKED',
+        timestamp: Math.floor(Date.now() / 1000),
+        vendor_data: `didit-user-${PREFIX}`,
+        vendor_user_id: `vendor-user-${PREFIX}`,
+        webhook_type: 'user.status.updated',
+      };
+
+      const first = await post(body).expect(200);
+      expect(first.body).toMatchObject({
+        eventId,
+        processed: true,
+        resourceType: 'USER',
+      });
+
+      const replay = await post(body).expect(200);
+      expect(replay.body).toMatchObject({ replayed: true });
+
+      const rows = await prisma.diditWebhookEvent.findMany({
+        where: { eventId },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        previousStatus: 'ACTIVE',
+        resourceId: `vendor-user-${PREFIX}`,
+        resourceType: 'USER',
+        status: 'BLOCKED',
+        webhookType: 'user.status.updated',
+      });
+    });
+
+    it('records a transaction event with its verdict fields', async () => {
+      const eventId = `evt-txn-${PREFIX}`;
+      await post({
+        amount: '1200.00',
+        currency: 'EUR',
+        direction: 'OUTBOUND',
+        event_id: eventId,
+        score: 0,
+        severity: 'UNKNOWN',
+        status: 'APPROVED',
+        timestamp: Math.floor(Date.now() / 1000),
+        transaction_id: `txn-${PREFIX}`,
+        txn_id: `finance-${PREFIX}`,
+        webhook_type: 'transaction.created',
+      }).expect(200);
+
+      const row = await prisma.diditWebhookEvent.findUniqueOrThrow({
+        where: { eventId },
+      });
+      expect(row.resourceType).toBe('TRANSACTION');
+      expect(row.resourceId).toBe(`txn-${PREFIX}`);
+      expect(row.status).toBe('APPROVED');
+    });
+
+    it('accepts activity events even though no projection exists yet', async () => {
+      const eventId = `evt-activity-${PREFIX}`;
+      const res = await post({
+        event_id: eventId,
+        status: 'APPROVED',
+        timestamp: Math.floor(Date.now() / 1000),
+        webhook_type: 'activity.created',
+      }).expect(200);
+      expect(res.body).toMatchObject({ processed: true, resourceType: 'ACTIVITY' });
     });
   });
 
