@@ -332,6 +332,8 @@ model User {
   mediaAssets            MediaAsset[]            @relation("MediaAssetOwner")
   notifications          Notification[]
   emailVerificationChallenges EmailVerificationChallenge[]
+  emailDeliveries        EmailDelivery[]
+  emailSubscription      EmailSubscription?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -884,9 +886,12 @@ model Campaign {
   // location). Presentation-only fields stay here so a schema column is added
   // only when the lifecycle or money depends on it.
   story                    Json?
-  targetAmount             Decimal        @db.Decimal(14, 2)
+  // A converted draft can exist before the creator has set the funding terms.
+  // Submission and deployment both require both values; they are nullable only so
+  // an incomplete draft is represented honestly instead of being fabricated.
+  targetAmount             Decimal?       @db.Decimal(14, 2)
   fundingFloorPct          Int? // Flexible Funding only (FR-306)
-  deadline                 DateTime
+  deadline                 DateTime?
   termsHash                String? // FR-303: content hash, stored on-chain once published
   objectionWindowDays      Int? // FR-602; must be inside the programme's allowed range at deployment
   workingCapitalPct        Decimal        @default(0) @db.Decimal(5, 2) // FR-503a: capped 20–25%
@@ -1645,12 +1650,102 @@ model Notification {
   @@index([userId, readAt])
 }
 
+// Outbound email ledger. One row per logical message, keyed by the caller's
+// idempotency key, so a retried enqueue cannot send twice. Only the row's own
+// status is stored; the subject, body and provider response never are. The
+// recipient address is retained because suppression, support and provider
+// webhook correlation all need it.
+enum EmailCategory {
+  TRANSACTIONAL
+  MARKETING
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  DELAYED
+  BOUNCED
+  COMPLAINED
+  FAILED
+  SUPPRESSED
+}
+
+model EmailDelivery {
+  id                String              @id @default(cuid())
+  idempotencyKey    String              @unique
+  userId            String?
+  user              User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  template          String
+  category          EmailCategory
+  recipient         String // lower-case/trimmed destination
+  status            EmailDeliveryStatus @default(PENDING)
+  providerMessageId String?             @unique
+  attempts          Int                 @default(0)
+  lastError         String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  bouncedAt         DateTime?
+  complainedAt      DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([recipient, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+}
+
+// Addresses that must not receive mail. A hard bounce or complaint is permanent
+// independent of account state; an unsubscribe applies to marketing only and is
+// cleared when the account owner opts back in.
+enum EmailSuppressionReason {
+  HARD_BOUNCE
+  COMPLAINT
+  UNSUBSCRIBED
+  MANUAL
+}
+
+model EmailSuppression {
+  id        String                  @id @default(cuid())
+  email     String                  @unique // lower-case/trimmed; the only address copy
+  reason    EmailSuppressionReason
+  source    String?
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+}
+
+// Explicit editorial opt-in. Registration never creates a row, so a missing row
+// means "not subscribed". The unsubscribe token is derived from the id with an
+// HMAC and is never stored, so a database leak alone cannot unsubscribe users.
+enum EmailSubscriptionStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+}
+
+model EmailSubscription {
+  id             String                  @id @default(cuid())
+  userId         String                  @unique
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email          String
+  status         EmailSubscriptionStatus @default(SUBSCRIBED)
+  source         String
+  subscribedAt   DateTime?
+  unsubscribedAt DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([status])
+  @@index([email])
+}
+
 // Durable receipt for a verified provider callback. The raw body is never stored:
 // only a hash plus the normalized event type and minimum routing metadata. A
 // duplicate retry returns without reapplying; a failed event can be retried.
 enum WebhookProvider {
   PAYSTACK
   DIDIT
+  RESEND
 }
 
 enum WebhookReceiptStatus {
@@ -1709,3 +1804,4 @@ model DiditWebhookEvent {
   @@index([webhookType, occurredAt(sort: Desc)])
   @@index([occurredAt(sort: Desc)])
 }
+

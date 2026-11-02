@@ -36,8 +36,14 @@ const mediaMock = () =>
   }) as any;
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
+const notificationsMock = () => ({ notify: jest.fn().mockResolvedValue(undefined) }) as any;
 
-function make(idea: any = null, params = paramsMock(), cache?: any) {
+function make(
+  idea: any = null,
+  params = paramsMock(),
+  cache?: any,
+  notifications = notificationsMock(),
+) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
   return { svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache), p, m, q, mod };
 }

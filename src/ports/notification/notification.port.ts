@@ -1,5 +1,6 @@
-// Port: notifications (FR-702). Production adapter: Resend email delivery.
-// Objection-window alerts are time-critical (Phase 2).
+// Contract for one persisted notification. Delivery is performed by the shared
+// email pipeline (`EmailDeliveryService`), which owns idempotency, suppression
+// and provider status; there is no second notification adapter to keep in sync.
 
 export interface NotificationMessage {
   toUserId: string;
@@ -15,9 +16,3 @@ export interface NotificationMessage {
    */
   dedupeKey?: string;
 }
-
-export interface NotificationPort {
-  send(message: NotificationMessage): Promise<void>;
-}
-
-export const NOTIFICATION_PORT = Symbol('NOTIFICATION_PORT');

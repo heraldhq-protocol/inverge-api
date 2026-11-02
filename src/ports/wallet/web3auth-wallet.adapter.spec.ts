@@ -93,6 +93,7 @@ describe('Web3AuthWalletAdapter', () => {
     await expect(adapter.verifyAccessToken(token)).resolves.toEqual({
       providerUserId: 'google|user-1',
       email: 'amara@example.com',
+      emailVerified: false,
       wallet: undefined,
     });
   });

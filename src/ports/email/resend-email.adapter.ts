@@ -1,9 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Env } from '../../config/env.validation';
-import { EmailDeliveryError, EmailMessage, EmailPort } from './email.port';
+import {
+  EmailDeliveryError,
+  EmailMessage,
+  EmailPort,
+  EmailSendResult,
+} from './email.port';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+interface ResendResponse {
+  id?: unknown;
+}
 
 /**
  * Resend adapter (REST, no SDK).
@@ -17,7 +26,7 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 export class ResendEmailAdapter implements EmailPort {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<EmailSendResult> {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     const from = this.fromAddress();
     if (!apiKey)
@@ -27,6 +36,7 @@ export class ResendEmailAdapter implements EmailPort {
     const timeoutMs = this.config.get('EMAIL_DELIVERY_TIMEOUT_MS', {
       infer: true,
     });
+    const unsubscribe = message.listUnsubscribeUrl;
 
     let response: Response;
     try {
@@ -46,6 +56,17 @@ export class ResendEmailAdapter implements EmailPort {
           html: message.html,
           text: message.text,
           ...(replyTo ? { reply_to: replyTo } : {}),
+          ...(message.deliveryId
+            ? { tags: [{ name: 'delivery_id', value: message.deliveryId }] }
+            : {}),
+          ...(unsubscribe
+            ? {
+                headers: {
+                  'List-Unsubscribe': `<${unsubscribe}>`,
+                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                },
+              }
+            : {}),
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -59,6 +80,13 @@ export class ResendEmailAdapter implements EmailPort {
         response.status,
       );
     }
+
+    // The id is optional in the contract: a provider that omits it still
+    // accepted the message, and the delivery row records that fact.
+    const body = (await response.json().catch(() => null)) as ResendResponse | null;
+    return typeof body?.id === 'string' && body.id.length > 0
+      ? { providerMessageId: body.id }
+      : {};
   }
 
   private fromAddress(): string {

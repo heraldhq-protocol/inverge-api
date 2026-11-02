@@ -24,8 +24,12 @@ const productionBase = {
   PAYSTACK_WEBHOOK_SECRET: 'paystack-webhook-secret',
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 're_test_example',
+  RESEND_WEBHOOK_SECRET: 'whsec_dGVzdC13ZWJob29rLXNlY3JldA==',
   EMAIL_FROM: 'no-reply@mail.inverge.test',
   EMAIL_CODE_SECRET: 'email-code-secret-for-tests-0000000000',
+  EMAIL_UNSUBSCRIBE_SECRET: 'unsubscribe-secret-for-tests-0000000000',
+  PUBLIC_APP_URL: 'https://inverge.test',
+  PUBLIC_API_URL: 'https://api.inverge.test',
 };
 
 describe('validateEnv — SESSION_JWT_SECRET', () => {

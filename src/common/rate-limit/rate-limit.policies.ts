@@ -19,6 +19,7 @@ export type RateLimitPolicyName =
   | 'email_request'
   | 'email_resend'
   | 'email_verify'
+  | 'email_preferences'
   | 'ai_assistant'
   | 'media_upload';
 
@@ -71,6 +72,9 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // Wrong guesses are cheap to send but expensive to allow: bounded per user,
   // while the challenge row independently enforces max attempts.
   email_verify: { limit: 10, windowSeconds: 300, burst: 5, scope: 'user', failClosed: false },
+  // A public unsubscribe/preference link. It is unauthenticated, so the link
+  // holder is the credential; the bucket only bounds enumeration attempts.
+  email_preferences: { limit: 20, windowSeconds: 60, burst: 6, scope: 'ip', failClosed: false },
   // Every call costs provider tokens. The daily token cap is the real budget
   // guard; this bucket stops a retry loop from spending it in one minute.
   ai_assistant: { limit: 12, windowSeconds: 60, burst: 4, scope: 'user', failClosed: false },
@@ -124,6 +128,7 @@ export function resolveRateLimitPolicy(
   if (path === '/auth/email/request') return 'email_request';
   if (path === '/auth/email/resend') return 'email_resend';
   if (path === '/auth/email/verify') return 'email_verify';
+  if (path.startsWith('/email/preferences')) return 'email_preferences';
 
   if (path.startsWith('/internal/analytics')) return 'analytics_ingest';
   if (path.startsWith('/admin/analytics')) return 'analytics_admin';
@@ -152,7 +157,8 @@ export function resolveRateLimitPolicy(
     path === '/flat-fee/webhook' ||
     path === '/kyc/webhook' ||
     path === '/verification/webhook' ||
-    path === '/webhooks/didit'
+    path === '/webhooks/didit' ||
+    path === '/webhooks/resend'
   ) {
     return 'webhook';
   }

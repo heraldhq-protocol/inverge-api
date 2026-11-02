@@ -12,6 +12,7 @@ import { CacheService } from '../../common/cache/cache.service';
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import { VerificationService } from '../kyc/verification.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ListCampaignsQueryDto, SubmitCampaignDto } from './dto/campaign.dto';
 import {
   resolveTaxonomyPair,
@@ -48,6 +49,7 @@ export class CampaignsService {
     private readonly prisma: PrismaService,
     private readonly verification: VerificationService,
     @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async list(query: ListCampaignsQueryDto, currentUserId?: string) {
@@ -490,6 +492,12 @@ export class CampaignsService {
       // surfaces. Invalidate after commit, never inside the transaction.
       this.cache?.bumpEventually('campaigns');
       this.cache?.bumpEventually('campaign');
+      await this.notifications?.notify({
+        toUserId: userId,
+        template: 'CAMPAIGN_SUBMITTED',
+        data: { campaignId, campaignTitle: result.title },
+        dedupeKey: `CAMPAIGN_SUBMITTED:${campaignId}:${result.submittedAt?.toISOString() ?? ''}`,
+      });
       return result;
     } catch (error) {
       if (

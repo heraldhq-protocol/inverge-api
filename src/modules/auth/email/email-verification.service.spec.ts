@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Env } from '../../../config/env.validation';
-import { EmailPort } from '../../../ports/email/email.port';
+import { EmailDeliveryService } from '../../email/email-delivery.service';
 import { EmailVerificationService } from './email-verification.service';
 import { hashVerificationCode } from './email-code';
 
@@ -56,15 +56,19 @@ function makeService(tx: ReturnType<typeof makeTx>) {
       update: jest.fn().mockResolvedValue({}),
     },
   };
-  const email: jest.Mocked<EmailPort> = {
-    send: jest.fn().mockResolvedValue(undefined),
-  };
+  const delivery = {
+    deliver: jest.fn().mockResolvedValue({
+      status: 'sent',
+      deliveryId: 'delivery-1',
+      providerMessageId: 'provider-1',
+    }),
+  } as unknown as jest.Mocked<EmailDeliveryService>;
   const service = new EmailVerificationService(
     prisma as unknown as PrismaService,
     config(),
-    email,
+    delivery,
   );
-  return { service, prisma, email };
+  return { service, prisma, delivery };
 }
 
 describe('EmailVerificationService', () => {
@@ -75,7 +79,7 @@ describe('EmailVerificationService', () => {
       // #given an account with no verified address
       const tx = makeTx();
       tx.user.update.mockResolvedValue({});
-      const { service, prisma, email } = makeService(tx);
+      const { service, prisma, delivery } = makeService(tx);
       prisma.user.findUnique.mockResolvedValue({
         email: null,
         emailVerifiedAt: null,
@@ -90,11 +94,12 @@ describe('EmailVerificationService', () => {
         status: 'code_sent',
         email: 'ada@example.com',
       });
-      expect(email.send).toHaveBeenCalledTimes(1);
-      const message = email.send.mock.calls[0][0];
+      expect(delivery.deliver).toHaveBeenCalledTimes(1);
+      const message = delivery.deliver.mock.calls[0][0];
       expect(message.to).toBe('ada@example.com');
-      const code = /Verification code: (\d{6})/.exec(message.text)?.[1];
-      expect(code).toBeTruthy();
+      expect(message.templateId).toBe('VERIFICATION_CODE');
+      const code = String(message.variables.code);
+      expect(code).toMatch(/^\d{6}$/);
 
       const created =
         tx.emailVerificationChallenge.create.mock.calls[0][0].data;
@@ -111,7 +116,7 @@ describe('EmailVerificationService', () => {
     it('does not issue a second code while a verified address is unchanged', async () => {
       // #given an account whose address is already confirmed
       const tx = makeTx();
-      const { service, prisma, email } = makeService(tx);
+      const { service, prisma, delivery } = makeService(tx);
       prisma.user.findUnique.mockResolvedValue({
         email: 'ada@example.com',
         emailVerifiedAt: new Date(),
@@ -125,7 +130,7 @@ describe('EmailVerificationService', () => {
         status: 'already_verified',
         email: 'ada@example.com',
       });
-      expect(email.send).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
       expect(tx.emailVerificationChallenge.create).not.toHaveBeenCalled();
     });
 
@@ -135,7 +140,7 @@ describe('EmailVerificationService', () => {
       tx.emailVerificationChallenge.findFirst.mockResolvedValue({
         lastSentAt: new Date(),
       });
-      const { service, prisma, email } = makeService(tx);
+      const { service, prisma, delivery } = makeService(tx);
       prisma.user.findUnique.mockResolvedValue({
         email: 'old@example.com',
         emailVerifiedAt: new Date(),
@@ -149,32 +154,32 @@ describe('EmailVerificationService', () => {
       if (result.status === 'cooldown') {
         expect(result.retryAfterSeconds).toBeGreaterThan(0);
       }
-      expect(email.send).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
       expect(tx.emailVerificationChallenge.create).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid address before touching the database', async () => {
       // #given a malformed address
       const tx = makeTx();
-      const { service, prisma, email } = makeService(tx);
+      const { service, prisma, delivery } = makeService(tx);
 
       // #then the request fails as a validation error
       await expect(
         service.request(USER_ID, 'not-an-email'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.user.findUnique).not.toHaveBeenCalled();
-      expect(email.send).not.toHaveBeenCalled();
+      expect(delivery.deliver).not.toHaveBeenCalled();
     });
 
     it('clears a pending change when delivery fails', async () => {
       // #given a verified account changing address and a provider outage
       const tx = makeTx();
-      const { service, prisma, email } = makeService(tx);
+      const { service, prisma, delivery } = makeService(tx);
       prisma.user.findUnique.mockResolvedValue({
         email: 'old@example.com',
         emailVerifiedAt: new Date(),
       });
-      email.send.mockRejectedValue(new Error('provider down'));
+      delivery.deliver.mockRejectedValue(new Error('provider down'));
 
       // #when the code cannot be delivered
       const result = await service.request(USER_ID, 'new@example.com');

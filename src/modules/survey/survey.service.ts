@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { ProductAnalyticsService } from '../analytics/product-analytics.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SetSurveyDto, SubmitResponseDto } from './dto/survey.dto';
 import {
@@ -25,12 +26,13 @@ export class SurveyService {
     private readonly metrics: MetricsService,
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly analytics?: ProductAnalyticsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   private async resolveIdea(idOrSlug: string) {
     const idea = await this.prisma.idea.findFirst({
       where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
-      select: { id: true, status: true, creatorId: true },
+      select: { id: true, status: true, creatorId: true, title: true },
     });
     if (!idea) throw new NotFoundException('Idea not found');
     return idea;
@@ -217,6 +219,16 @@ export class SurveyService {
       ideaId,
       occurredAt: new Date(),
     });
+    // One notification per responder, even if the response is edited. The
+    // creator is not notified about their own feedback.
+    if (idea.creatorId !== userId) {
+      await this.notifications?.notify({
+        toUserId: idea.creatorId,
+        template: 'IDEA_FEEDBACK',
+        data: { ideaId, ideaTitle: idea.title },
+        dedupeKey: `IDEA_FEEDBACK:${ideaId}:${userId}`,
+      });
+    }
     return result;
   }
 

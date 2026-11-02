@@ -167,6 +167,17 @@ describe('Ideas routes (e2e)', () => {
       expect(res.body.validatingSince).toBeTruthy();
       expect(res.body.discoverabilityTier).toBe('DISCOVERABLE'); // full pitch cleared the floor
       expect(Number(res.body.qualityScore)).toBe(1);
+
+      const creatorUser = await prisma.user.findFirstOrThrow({
+        where: { providerUserId: `did:privy:stub:${PREFIX}-creator` },
+        select: { id: true },
+      });
+      const published = await prisma.notification.findFirst({
+        where: { userId: creatorUser.id, template: 'IDEA_PUBLISHED' },
+        select: { dedupeKey: true, data: true },
+      });
+      expect(published?.dedupeKey).toBe(`IDEA_PUBLISHED:${ideaId}`);
+      expect(published?.data).toMatchObject({ ideaId });
     });
     it('cannot edit a published idea (400)', async () => {
       await http().patch(`/api/v1/ideas/${ideaId}`).set(auth(creator)).send({ title: 'late' }).expect(400);

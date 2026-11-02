@@ -15,10 +15,6 @@ import { KYC_PROVIDER_PORT } from './kyc/kyc-provider.port';
 import { StubKycAdapter } from './kyc/stub-kyc.adapter';
 import { DiditKycAdapter } from './kyc/didit-kyc.adapter';
 
-import { NOTIFICATION_PORT } from './notification/notification.port';
-import { StubNotificationAdapter } from './notification/stub-notification.adapter';
-import { ResendNotificationAdapter } from './notification/resend-notification.adapter';
-
 import { EMAIL_PORT } from './email/email.port';
 import { ResendEmailAdapter } from './email/resend-email.adapter';
 import { StubEmailAdapter } from './email/stub-email.adapter';
@@ -30,15 +26,15 @@ import { MODERATION_CLASSIFIER_PORT } from './moderation/moderation.port';
 import { StubModerationAdapter } from './moderation/stub-moderation.adapter';
 import { AiModerationAdapter } from './moderation/ai-moderation.adapter';
 
-import { AI_COMPLETION_PORT } from './ai/ai-completion.port';
-import { AnthropicAiAdapter } from './ai/anthropic-ai.adapter';
-import { StubAiAdapter } from './ai/stub-ai.adapter';
-
 import { DUPLICATE_DETECTOR_PORT } from './dedup/dedup.port';
 import { StubShingleDetector } from './dedup/stub-shingle-detector.adapter';
 
 import { ESCROW_CHAIN_PORT } from './escrow/escrow-chain.port';
 import { SolanaRpcAdapter } from './escrow/solana-rpc.adapter';
+
+import { AI_COMPLETION_PORT } from './ai/ai-completion.port';
+import { AnthropicAiAdapter } from './ai/anthropic-ai.adapter';
+import { StubAiAdapter } from './ai/stub-ai.adapter';
 
 import { MEDIA_STORAGE_PORT } from './media/media-storage.port';
 import { SupabaseMediaAdapter } from './media/supabase-media.adapter';
@@ -57,15 +53,11 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
     PaystackFlatFeeAdapter,
     StubKycAdapter,
     DiditKycAdapter,
-    StubNotificationAdapter,
-    ResendNotificationAdapter,
     StubEmailAdapter,
     ResendEmailAdapter,
     StubQualityScorerAdapter,
     StubModerationAdapter,
     AiModerationAdapter,
-    AnthropicAiAdapter,
-    StubAiAdapter,
     StubShingleDetector,
     SolanaRpcAdapter,
     StubAiAdapter,
@@ -124,21 +116,6 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
           : stub,
     },
     {
-      // Outbound notifications share the transactional-email transport. With
-      // Resend configured they are delivered; otherwise the stub records a
-      // dispatch so local work stays offline.
-      provide: NOTIFICATION_PORT,
-      inject: [ConfigService, StubNotificationAdapter, ResendNotificationAdapter],
-      useFactory: (
-        config: ConfigService<Env, true>,
-        stub: StubNotificationAdapter,
-        resend: ResendNotificationAdapter,
-      ) =>
-        config.get('EMAIL_PROVIDER', { infer: true }) === 'resend'
-          ? resend
-          : stub,
-    },
-    {
       provide: QUALITY_SCORER_PORT,
       inject: [StubQualityScorerAdapter],
       // 'claude' AI adapter lands at Phase 1; stub (deterministic) is the Phase 0 path.
@@ -152,20 +129,6 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
         stub: StubModerationAdapter,
         ai: AiModerationAdapter,
       ) => (config.get('MODERATION_PROVIDER', { infer: true }) === 'ai' ? ai : stub),
-    },
-    {
-      // The assistant keeps its own credentials/model so moderation and the
-      // creator-facing feature can be configured independently.
-      provide: AI_COMPLETION_PORT,
-      inject: [ConfigService, StubAiAdapter, AnthropicAiAdapter],
-      useFactory: (
-        config: ConfigService<Env, true>,
-        stub: StubAiAdapter,
-        anthropic: AnthropicAiAdapter,
-      ) =>
-        config.get('AI_PROVIDER', { infer: true }) === 'anthropic'
-          ? anthropic
-          : stub,
     },
     {
       provide: DUPLICATE_DETECTOR_PORT,
@@ -215,11 +178,9 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
     EMBEDDED_WALLET_PORT,
     FLAT_FEE_PAYMENT_PORT,
     KYC_PROVIDER_PORT,
-    NOTIFICATION_PORT,
     EMAIL_PORT,
     QUALITY_SCORER_PORT,
     MODERATION_CLASSIFIER_PORT,
-    AI_COMPLETION_PORT,
     DUPLICATE_DETECTOR_PORT,
     ESCROW_CHAIN_PORT,
     AI_COMPLETION_PORT,

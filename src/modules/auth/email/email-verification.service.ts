@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,7 +10,6 @@ import type { EmailVerificationPurpose } from '../../../generated/prisma/client'
 import { randomUUID } from 'node:crypto';
 import { Env } from '../../../config/env.validation';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { EMAIL_PORT, EmailPort } from '../../../ports/email/email.port';
 import { normalizeEmail } from './email-normalization';
 import {
   generateVerificationCode,
@@ -19,7 +17,7 @@ import {
   parseVerificationCode,
   verificationCodeMatches,
 } from './email-code';
-import { renderVerificationEmail } from './email-template';
+import { EmailDeliveryService } from '../../email/email-delivery.service';
 
 export type RequestCodeResult =
   | {
@@ -64,7 +62,7 @@ export class EmailVerificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
-    @Inject(EMAIL_PORT) private readonly email: EmailPort,
+    private readonly emailDelivery: EmailDeliveryService,
   ) {
     this.ttlSeconds = this.config.get('EMAIL_VERIFICATION_CODE_TTL_SECONDS', {
       infer: true,
@@ -171,6 +169,7 @@ export class EmailVerificationService {
 
     const now = new Date();
     let outcome: VerifyCodeResult;
+    let previousEmail: string | null = null;
 
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
@@ -210,6 +209,7 @@ export class EmailVerificationService {
           select: { email: true, emailVerifiedAt: true },
         });
         if (!current) throw new NotFoundException('User not found');
+        previousEmail = current.email;
 
         if (current.email === email && current.emailVerifiedAt !== null) {
           await tx.emailVerificationChallenge.update({
@@ -279,7 +279,61 @@ export class EmailVerificationService {
       throw error;
     }
 
+    if (outcome.status === 'verified') {
+      await this.sendPostVerificationEmails(
+        userId,
+        outcome.email,
+        previousEmail,
+        outcome.verifiedAt,
+      );
+    }
+
     return outcome;
+  }
+
+  /**
+   * Confirmation and security mail. Neither can fail the verification: the
+   * code has already been consumed and the address is authoritative. Failures
+   * are logged without the address and remain in the delivery ledger.
+   */
+  private async sendPostVerificationEmails(
+    userId: string,
+    email: string,
+    previousEmail: string | null,
+    verifiedAt: string,
+  ): Promise<void> {
+    try {
+      await this.emailDelivery.deliver({
+        idempotencyKey: `email-verified:${userId}:${verifiedAt}`,
+        templateId: 'EMAIL_VERIFIED',
+        to: email,
+        userId,
+        variables: {},
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Verified-email confirmation could not be sent: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
+
+    if (!previousEmail || previousEmail === email) return;
+    try {
+      await this.emailDelivery.deliver({
+        idempotencyKey: `email-changed:${userId}:${verifiedAt}`,
+        templateId: 'EMAIL_CHANGED',
+        to: previousEmail,
+        userId,
+        variables: { changedAt: `${verifiedAt.slice(0, 16).replace('T', ' ')} UTC` },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Previous-address security alert could not be sent: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   async resend(userId: string): Promise<RequestCodeResult> {
@@ -494,20 +548,23 @@ export class EmailVerificationService {
     },
     userId: string,
   ): Promise<RequestCodeResult> {
-    const content = renderVerificationEmail({
-      code: issued.code,
-      expiresInMinutes: Math.max(1, Math.round(this.ttlSeconds / 60)),
-      purpose: issued.purpose,
-    });
-
     try {
-      await this.email.send({
-        to: issued.email,
-        subject: content.subject,
-        text: content.text,
-        html: content.html,
+      const outcome = await this.emailDelivery.deliver({
         idempotencyKey: `email-verification/${issued.id}`,
+        templateId: 'VERIFICATION_CODE',
+        to: issued.email,
+        userId,
+        variables: {
+          code: issued.code,
+          expiresInMinutes: Math.max(1, Math.round(this.ttlSeconds / 60)),
+          purpose: issued.purpose,
+        },
       });
+      // A suppressed or exhausted delivery was not sent. Reporting `code_sent`
+      // would leave the caller waiting for a message that cannot arrive.
+      if (outcome.status === 'suppressed' || outcome.status === 'exhausted') {
+        throw new Error(`Verification email not delivered: ${outcome.status}`);
+      }
     } catch (error) {
       const status =
         error instanceof Error && 'providerStatus' in error
@@ -560,7 +617,9 @@ export class EmailVerificationService {
   ): Promise<void> {
     // Serialise issuance/verification for one user across API replicas. Without
     // this, two concurrent requests could both supersede and issue a live code.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`email:${userId}`}))`;
+    // Prisma cannot deserialize a bare `void` column, so the lock call is wrapped
+    // in a subquery that returns an integer.
+    await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${`email:${userId}`}))) AS lock`;
   }
 
   private async lockLatestChallenge(

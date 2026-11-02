@@ -8,9 +8,10 @@ import { IdeasController } from './ideas.controller';
 import { IdeasService } from './ideas.service';
 import { MePrePledgesController } from './me-pre-pledges.controller';
 import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule, MediaModule],
+  imports: [AuthModule, MetricsModule, QualityModule, ModerationModule, AnalyticsModule, MediaModule, NotificationsModule],
   controllers: [IdeasController, MePrePledgesController],
   providers: [IdeasService],
   exports: [IdeasService],

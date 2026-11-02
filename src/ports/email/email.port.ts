@@ -1,6 +1,6 @@
 // Port: transactional email delivery. Adapters: Resend (production) and stub
 // (offline development/tests). Business logic never imports a vendor SDK; the
-// verification service depends only on this interface.
+// delivery service depends only on this interface.
 
 export interface EmailMessage {
   to: string;
@@ -12,11 +12,20 @@ export interface EmailMessage {
    * verification challenge must not create a second message.
    */
   idempotencyKey?: string;
+  /** Internal delivery row id, used as a provider tag for webhook correlation. */
+  deliveryId?: string;
+  /** One-click unsubscribe target for marketing mail. */
+  listUnsubscribeUrl?: string;
+}
+
+export interface EmailSendResult {
+  /** Provider message id. Used to correlate delivered/bounced webhooks. */
+  providerMessageId?: string;
 }
 
 export interface EmailPort {
   /** Deliver one message. Throws when the provider rejects or times out. */
-  send(message: EmailMessage): Promise<void>;
+  send(message: EmailMessage): Promise<EmailSendResult>;
 }
 
 export const EMAIL_PORT = Symbol('EMAIL_PORT');

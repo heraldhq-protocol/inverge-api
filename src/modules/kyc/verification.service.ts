@@ -17,6 +17,7 @@ import type { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Env } from '../../config/env.validation';
 import { WebhookInboxService } from '../../common/webhooks/webhook-inbox.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   KYC_PROVIDER_PORT,
   KycDecision,
@@ -66,6 +67,8 @@ import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
 import type { VerificationWebhookJob } from './verification.queue';
 import {
   VerificationRepository,
+  type ApplyDecisionInput,
+  type ApplyDecisionResult,
   type SubjectSnapshot,
 } from './verification.repository';
 
@@ -213,6 +216,7 @@ export class VerificationService {
     @Optional()
     @InjectQueue(JOBS_QUEUE)
     private readonly webhookQueue?: Queue<VerificationWebhookJob>,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ── reads ──────────────────────────────────────────────────────────────────────
@@ -739,7 +743,7 @@ export class VerificationService {
       await this.recordWebhookFailure(job, 'DECISION_UNAVAILABLE');
       return { applied: false, reason: 'decision_unavailable' };
     }
-    return this.repo.applyDecision({
+    return this.applyAndNotify({
       amlSummary: null,
       caseId: job.caseId,
       decisionCode: 'DECISION_FETCH_FAILED',
@@ -785,7 +789,7 @@ export class VerificationService {
       throw new BadRequestException('Webhook payload could not be authenticated');
     }
     const mapped = stateFromWebhook(event);
-    return this.repo.applyDecision({
+    return this.applyAndNotify({
       amlSummary: null,
       caseId,
       decisionCode: 'DECISION_FETCH_FAILED',
@@ -813,9 +817,8 @@ export class VerificationService {
       occurredAt: Date;
       source: 'PROVIDER_WEBHOOK' | 'RECONCILIATION';
     },
-  ) {
-    const mapped = stateFromDecision(decision);
-    return this.repo.applyDecision({
+  ) {    const mapped = stateFromDecision(decision);
+    return this.applyAndNotify({
       amlSummary: decision.amlSummary,
       caseId,
       decisionCode: decision.warningCodes[0] ?? null,
@@ -830,6 +833,73 @@ export class VerificationService {
       source: meta.source,
       state: mapped.state,
     });
+  }
+
+  /**
+   * Applies one provider decision, then emails the account owner after commit.
+   * Notification failure is logged and swallowed: the decision is already
+   * durable and must not be re-applied by a provider retry.
+   */
+  private async applyAndNotify(
+    input: ApplyDecisionInput,
+  ): Promise<ApplyDecisionResult> {
+    const result = await this.repo.applyDecision(input);
+    await this.notifyDecision(result);
+    return result;
+  }
+
+  private async notifyDecision(result: ApplyDecisionResult): Promise<void> {
+    if (!this.notifications || !result.applied || !result.eventId) return;
+    const templates: Array<{ template: string; dedupeKey: string }> = [];
+
+    if (result.status !== result.previousStatus) {
+      const template =
+        result.status === 'APPROVED'
+          ? 'KYC_APPROVED'
+          : result.status === 'DECLINED'
+            ? 'KYC_DECLINED'
+            : result.status === 'AWAITING_USER'
+              ? 'KYC_ACTION_REQUIRED'
+              : null;
+      if (template) {
+        templates.push({
+          dedupeKey: `KYC_STATUS:${result.eventId}:${result.status}`,
+          template,
+        });
+      }
+    }
+
+    if (result.risk !== result.previousRisk) {
+      const template =
+        result.risk === 'CLEAR'
+          ? 'AML_CLEAR'
+          : result.risk === 'REVIEW' || result.risk === 'FLAGGED'
+            ? 'AML_REVIEW'
+            : null;
+      if (template) {
+        templates.push({
+          dedupeKey: `AML_STATUS:${result.eventId}:${result.risk}`,
+          template,
+        });
+      }
+    }
+
+    for (const entry of templates) {
+      try {
+        await this.notifications.notify({
+          data: {},
+          dedupeKey: entry.dedupeKey,
+          template: entry.template,
+          toUserId: result.userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Verification email could not be queued: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
   }
 
   private async resolveCaseForEvent(
@@ -1211,6 +1281,22 @@ export class VerificationService {
       reasonCode: input.reasonCode,
     });
     if (!result) throw new NotFoundException('Verification case not found');
+    if (this.notifications) {
+      try {
+        await this.notifications.notify({
+          data: {},
+          dedupeKey: `AML_REVIEW:${result.eventId}`,
+          template: result.risk === 'CLEAR' ? 'AML_CLEAR' : 'AML_REVIEW',
+          toUserId: result.userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `AML decision email could not be queued: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
     return result;
   }
 

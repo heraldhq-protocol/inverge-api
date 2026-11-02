@@ -7,6 +7,9 @@ import { z } from 'zod';
 export const DEFAULT_SESSION_JWT_SECRET = 'change-me-in-production';
 /** Dev/test only; production rejects this value for the email code pepper. */
 export const DEFAULT_EMAIL_CODE_SECRET = 'dev-only-email-code-secret-change-me';
+/** Dev/test only; production rejects this value for unsubscribe-link signing. */
+export const DEFAULT_EMAIL_UNSUBSCRIBE_SECRET =
+  'dev-only-email-unsubscribe-secret-change-me';
 
 // `z.coerce.boolean()` treats the string "false" as true, which would make a
 // `REDIS_ENABLED=false` deployment silently connect anyway. Parse the documented
@@ -281,6 +284,43 @@ export const envSchema = z
     .min(1_000)
     .max(30_000)
     .default(10_000),
+  // Svix signing secret for Resend webhooks (`whsec_...`). Required in
+  // production so delivered/bounced/complaint events cannot be forged.
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+  // Web app origin used in every CTA. Emails must never link to a provider
+  // endpoint or an internal host.
+  PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  // Public API origin used for the unsubscribe endpoint. Kept separate from the
+  // web app because the two are different Render services.
+  PUBLIC_API_URL: z.string().url().default('http://localhost:3000'),
+  EMAIL_LOGO_URL: z.string().url().optional(),
+  EMAIL_SUPPORT_ADDRESS: z.string().optional(),
+  // Postal address shown in the footer of editorial mail (CAN-SPAM). Required
+  // before editorial sending can be enabled.
+  EMAIL_COMPANY_ADDRESS: z.string().max(500).optional(),
+  // HMAC pepper for stateless unsubscribe tokens. Rotating it revokes every
+  // outstanding unsubscribe link.
+  EMAIL_UNSUBSCRIBE_SECRET: z
+    .string()
+    .min(1)
+    .default(DEFAULT_EMAIL_UNSUBSCRIBE_SECRET),
+  // Bounded retries for one delivery row. A provider acceptance is not retried.
+  EMAIL_DELIVERY_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .default(5),
+  // A `SENDING` row older than this may be reclaimed after a worker crash.
+  EMAIL_DELIVERY_STALE_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(30)
+    .max(3600)
+    .default(300),
+  // Editorial campaigns are opt-in and manually triggered only. Off by default
+  // until content source, cadence and sender details are configured.
+  EDITORIAL_EMAILS_ENABLED: booleanFlag.default(false),
 
   FEE_PAYER_SECRET_KEY: z.string().optional(),
   SOLANA_RPC_URL: z.string().optional(),
@@ -420,6 +460,26 @@ export const envSchema = z
           });
         }
       }
+      if (env.NODE_ENV === 'production' && !env.RESEND_WEBHOOK_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['RESEND_WEBHOOK_SECRET'],
+          message:
+            'RESEND_WEBHOOK_SECRET is required when EMAIL_PROVIDER=resend in production, so delivery events can be authenticated',
+        });
+      }
+    }
+    if (env.NODE_ENV === 'production') {
+      for (const key of ['PUBLIC_APP_URL', 'PUBLIC_API_URL'] as const) {
+        const value = env[key];
+        if (!value.startsWith('https://') || value.includes('localhost')) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} must be a public https URL in production (email links must not point at a developer host)`,
+          });
+        }
+      }
     }
     if (env.EMAIL_FROM && !env.EMAIL_FROM.includes('@')) {
       ctx.addIssue({
@@ -445,6 +505,33 @@ export const envSchema = z
         path: ['EMAIL_CODE_SECRET'],
         message:
           'EMAIL_CODE_SECRET must be a unique secret of at least 32 characters in production',
+      });
+    }
+    if (
+      env.NODE_ENV === 'production' &&
+      (env.EMAIL_UNSUBSCRIBE_SECRET === DEFAULT_EMAIL_UNSUBSCRIBE_SECRET ||
+        env.EMAIL_UNSUBSCRIBE_SECRET.trim().length < 32)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_UNSUBSCRIBE_SECRET'],
+        message:
+          'EMAIL_UNSUBSCRIBE_SECRET must be a unique secret of at least 32 characters in production',
+      });
+    }
+    if (env.EDITORIAL_EMAILS_ENABLED && !env.EMAIL_COMPANY_ADDRESS?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_COMPANY_ADDRESS'],
+        message:
+          'EMAIL_COMPANY_ADDRESS is required when EDITORIAL_EMAILS_ENABLED=true (sender identification in marketing mail)',
+      });
+    }
+    if (env.EMAIL_SUPPORT_ADDRESS && !env.EMAIL_SUPPORT_ADDRESS.includes('@')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_SUPPORT_ADDRESS'],
+        message: 'EMAIL_SUPPORT_ADDRESS must be a bare email address',
       });
     }
 

@@ -20,6 +20,8 @@ import { FlatFeeModule } from './modules/flat-fee/flat-fee.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { EmailModule } from './modules/email/email.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { SurveyModule } from './modules/survey/survey.module';
@@ -28,7 +30,6 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { AiModule } from './modules/ai/ai.module';
 import { MediaModule } from './modules/media/media.module';
-import { SettingsModule } from './modules/settings/settings.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
@@ -54,7 +55,9 @@ import { JobsModule } from './modules/jobs/jobs.module';
     FlatFeeModule,
     KycModule,
     SyncModule,
+    EmailModule,
     NotificationsModule,
+    SettingsModule,
     AdminModule,
     ModerationModule,
     SurveyModule,
@@ -63,7 +66,6 @@ import { JobsModule } from './modules/jobs/jobs.module';
     TaxonomyModule,
     AiModule,
     MediaModule,
-    SettingsModule,
     // Background work: the single queue Worker plus the in-process timers that
     // replaced repeatable jobs. Last, because it composes the feature modules.
     JobsModule,

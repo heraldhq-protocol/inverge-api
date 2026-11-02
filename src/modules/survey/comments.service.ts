@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
@@ -19,6 +20,7 @@ import {
 
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
 import { ModerationService } from '../moderation/moderation.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const COMMENT_PAGE_SIZE = 50;
 const COMMENT_MAX_PAGE_SIZE = 100;
@@ -31,6 +33,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly moderation: ModerationService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -44,7 +47,7 @@ export class CommentsService {
   ) {
     const idea = await this.prisma.idea.findFirst({
       where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
-      select: { id: true, status: true, creatorId: true },
+      select: { id: true, status: true, creatorId: true, title: true },
     });
     if (!idea || idea.status === 'DRAFT') {
       throw new NotFoundException('Idea not found');
@@ -64,9 +67,15 @@ export class CommentsService {
     const ideaId = idea.id;
     const body = dto.body.trim();
     if (!body) throw new BadRequestException('A comment needs text');
+    let parent: { id: string; userId: string; ideaId: string } | null = null;
     if (dto.parentId) {
-      const parent = await this.prisma.ideaComment.findUnique({ where: { id: dto.parentId } });
-      if (!parent || parent.ideaId !== ideaId) throw new NotFoundException('Parent comment not found');
+      parent = await this.prisma.ideaComment.findUnique({
+        where: { id: dto.parentId },
+        select: { id: true, userId: true, ideaId: true },
+      });
+      if (!parent || parent.ideaId !== ideaId) {
+        throw new NotFoundException('Parent comment not found');
+      }
     }
     // Advisory only (NFR-17/D1): the case informs review and never blocks the
     // post. Comments are public the moment they are created, exactly as before.
@@ -91,6 +100,8 @@ export class CommentsService {
     const isCreator = comment.userId === idea.creatorId;
     const { user, ...rest } = comment;
 
+    await this.notifyComment(idea, comment.id, parent, userId);
+
     return {
       ...rest,
       author: {
@@ -100,6 +111,40 @@ export class CommentsService {
         isCreator,
       },
     };
+  }
+
+  /**
+   * One notification per recipient per comment. A self-comment or a comment by
+   * the idea creator on their own idea sends nothing.
+   */
+  private async notifyComment(
+    idea: { id: string; creatorId: string; title: string },
+    commentId: string,
+    parent: { userId: string } | null,
+    actorId: string,
+  ): Promise<void> {
+    if (!this.notifications) return;
+    const data = { ideaId: idea.id, ideaTitle: idea.title };
+    if (idea.creatorId !== actorId) {
+      await this.notifications.notify({
+        toUserId: idea.creatorId,
+        template: 'IDEA_COMMENT',
+        data: { ...data, kind: parent ? 'REPLY' : 'COMMENT' },
+        dedupeKey: `IDEA_COMMENT:${commentId}:creator`,
+      });
+    }
+    if (
+      parent &&
+      parent.userId !== actorId &&
+      parent.userId !== idea.creatorId
+    ) {
+      await this.notifications.notify({
+        toUserId: parent.userId,
+        template: 'IDEA_COMMENT',
+        data: { ...data, kind: 'REPLY' },
+        dedupeKey: `IDEA_COMMENT:${commentId}:parent`,
+      });
+    }
   }
 
   // Public: highlighted first, then most-liked, then most-recent. Flat page carrying

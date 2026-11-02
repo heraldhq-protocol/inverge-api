@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Env } from '../../config/env.validation';
 import { assertStubProviderAllowed } from '../stub-guard';
-import { EmailMessage, EmailPort } from './email.port';
+import { EmailMessage, EmailPort, EmailSendResult } from './email.port';
 
 /**
  * Offline email adapter. It writes the rendered message (including the code) to
@@ -20,7 +20,7 @@ export class StubEmailAdapter implements EmailPort {
 
   constructor(@Optional() private readonly config?: ConfigService<Env, true>) {}
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<EmailSendResult> {
     assertStubProviderAllowed('email', this.config);
 
     await mkdir(this.outbox, { recursive: true });
@@ -43,5 +43,6 @@ export class StubEmailAdapter implements EmailPort {
       ),
       { encoding: 'utf8', mode: 0o600 },
     );
+    return { providerMessageId: `stub:${name}` };
   }
 }

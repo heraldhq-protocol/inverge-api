@@ -65,7 +65,10 @@ export type ApplyDecisionResult = {
   stale: boolean;
   regression: boolean;
   status: VerificationStatus;
+  previousStatus: VerificationStatus;
   risk: RiskOutcome;
+  previousRisk: RiskOutcome;
+  userId: string;
   eventId: string | null;
 };
 
@@ -511,8 +514,11 @@ export class VerificationRepository {
         duplicate: eventId === null && input.eventReference !== null,
         regression,
         risk: nextRisk,
+        previousRisk: current.riskOutcome,
+        previousStatus: current.status,
         stale,
         status: nextStatus,
+        userId: current.userId,
         eventId,
       };
     });
@@ -716,7 +722,8 @@ export class VerificationRepository {
     return this.prisma.$transaction(async (tx) => {
       // Prisma cannot deserialise the `void` this function returns; the cast keeps the
       // lock and gives the driver a value it can decode.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.userId})::bigint)::text`;
+      // Prisma cannot deserialize a bare `void` column; return an integer instead.
+      await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${input.userId})::bigint)) AS lock`;
       const now = new Date();
 
       const [contributions, reserved] = await Promise.all([
@@ -843,7 +850,7 @@ export class VerificationRepository {
         select: { id: true },
       });
 
-      return { caseId: current.id, eventId: event.id, risk };
+      return { caseId: current.id, eventId: event.id, risk, userId: current.userId };
     });
   }
 

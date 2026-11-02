@@ -9,6 +9,13 @@ and replay policy. There is no outbound webhook product or delivery log.
 |---|---|---|---|
 | Paystack (application fees) | `POST /api/v1/flat-fee/webhook` | `x-paystack-signature` HMAC over the raw body | `WebhookReceipt` on `PAYSTACK:<reference>:<status>` |
 | Didit (verification, entity, transaction) | `POST /api/v1/webhooks/didit` | `X-Signature-V2` / `X-Signature` / `X-Signature-Simple` HMAC over the raw body, then freshness on the signed body `timestamp` | `WebhookReceipt` on `DIDIT:<event_id>`; `DiditWebhookEvent` ledger |
+| Resend (email delivery) | `POST /api/v1/webhooks/resend` | Svix `svix-signature` HMAC-SHA256 over `id.timestamp.rawBody`, then a 300 s timestamp tolerance | `WebhookReceipt` on `RESEND:<svix-id>`; status merge on `EmailDelivery` |
+
+Resend events update the email delivery ledger (`DELIVERED`, `BOUNCED`,
+`COMPLAINED`, `DELAYED`, `FAILED`) and add a `HARD_BOUNCE` or `COMPLAINT`
+suppression. Status is monotonic: a late `delivered` never reopens a bounce, and a
+hard bounce wins even if the send was previously marked delivered. `email.opened`
+and `email.clicked` are acknowledged and ignored. See `docs/email-system.md`.
 
 The legacy Didit routes (`/api/v1/verification/webhook` and `/api/v1/kyc/webhook`)
 remain mounted as aliases. All three handlers read `req.rawBody`, which is why the
