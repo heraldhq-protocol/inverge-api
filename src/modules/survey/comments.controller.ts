@@ -14,9 +14,9 @@ import {
   AuthenticatedUser,
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
-import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
 import { CommentsService } from './comments.service';
 import {
   CreateCommentDto,
@@ -31,7 +31,8 @@ export class CommentsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
+  @UseGuards(PrivyAuthGuard)
+  @RateLimit('comments')
   post(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CreateCommentDto) {
     return this.comments.post(user.id, id, dto);
   }
@@ -48,28 +49,28 @@ export class CommentsController {
 
   @Post(':commentId/like')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
+  @UseGuards(PrivyAuthGuard)
   like(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('commentId') commentId: string) {
     return this.comments.like(user.id, id, commentId);
   }
 
   @Delete(':commentId/like')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
+  @UseGuards(PrivyAuthGuard)
   unlike(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('commentId') commentId: string) {
     return this.comments.unlike(user.id, id, commentId);
   }
 
   @Delete(':commentId')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
+  @UseGuards(PrivyAuthGuard)
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('commentId') commentId: string) {
     return this.comments.remove(user.id, id, commentId);
   }
 
   @Patch(':commentId/highlight')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
+  @UseGuards(PrivyAuthGuard)
   highlight(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

@@ -312,6 +312,7 @@ model User {
   surveyResponses        SurveyResponse[]
   comments               IdeaComment[]
   commentLikes           CommentLike[]
+  campaignComments        CampaignComment[]
   boostsPurchased        IdeaBoost[]
   kycEvents              KycStatusEvent[]
   amlScreenings          AmlScreening[]
@@ -703,9 +704,11 @@ model IdeaQualityReport {
 // Retained per NFR-19 (5-year AML record retention) — never hard-deleted by app logic.
 model ModerationCase {
   id             String             @id @default(cuid())
-  kind           String // 'idea' | 'campaign'
+  kind           String // 'idea' | 'campaign' | 'comment'
   ideaId         String?
   idea           Idea?              @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  campaignId     String?
+  campaign       Campaign?          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   submittedById  String? // acting/submitting user
   decision       ModerationDecision
   maxRisk        Decimal            @db.Decimal(5, 4)
@@ -720,6 +723,7 @@ model ModerationCase {
 
   @@index([decision, createdAt])
   @@index([ideaId])
+  @@index([campaignId])
 }
 
 // FR-204a: daily snapshot of the weighted figure, so the graduation gate can require
@@ -916,6 +920,8 @@ model Campaign {
   ContributionAuthorizations ContributionAuthorization[]
   onChainEvents OnChainEvent[]
   mediaAssets   MediaAsset[]
+  comments      CampaignComment[]
+  moderationCases ModerationCase[]
 
   createdAt  DateTime  @default(now())
   launchedAt DateTime?
@@ -928,6 +934,23 @@ model Campaign {
   @@index([deadline, id])
   @@index([totalRaised(sort: Desc), id(sort: Desc)])
   @@index([taxonomyCategorySlug, taxonomySubcategorySlug, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// FR-701: every campaign has a discussion space. This is deliberately a
+// separate table from IdeaComment: a campaign thread belongs to the funding
+// record, survives the source idea's lifecycle, and carries no idea-thread
+// engagement fields (likes, highlights) the campaign product does not use.
+model CampaignComment {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([userId])
 }
 
 // FR-304 / FR-904: append-only record of every curation decision. Application code

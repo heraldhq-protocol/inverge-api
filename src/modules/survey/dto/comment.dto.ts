@@ -18,6 +18,14 @@ export class CreateCommentDto {
   @IsOptional() @IsString() parentId?: string;
 }
 
+/**
+ * Campaign discussions are flat in this release. A separate DTO keeps a
+ * `parentId` from being accepted and silently ignored by the service.
+ */
+export class CreateCampaignCommentDto {
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(2000) body!: string;
+}
+
 export class ListCommentsQueryDto {
   @ApiPropertyOptional({ default: 50, maximum: 100, description: 'Page size' })
   @IsOptional()
