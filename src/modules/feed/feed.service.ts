@@ -139,8 +139,12 @@ export class FeedService {
     const organic = rankFeed(signals, p.ranking, take);
 
     // ── Stage 3 (paid half): inject promoted slots — walled off from the organic score ──
-    // (injectPaid dedupes promoted ids already present in `organic`.)
-    const promoted = await this.activePromotions(pool, now);
+    // (injectPaid dedupes promoted ids already present in `organic`.) A signed-in
+    // account can opt out in Settings; anonymous callers keep the paid rail.
+    const promoted =
+      user && !user.feedShowPromoted
+        ? []
+        : await this.activePromotions(pool, now);
     const ranked = injectPaid(organic, promoted, p.paid);
 
     // Best-effort exposure accounting for the UCB exploration bonus (never blocks the response).
