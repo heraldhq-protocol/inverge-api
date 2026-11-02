@@ -4,7 +4,7 @@ Status: **guide only.** No Render service exists in this repository and no deplo
 performed during this audit. `render.yaml` is **absent**; every service must be created in
 the dashboard (or you can commit a blueprint once the values below are agreed).
 
-Repository: `github.com/heraldhq-protocol/inverge-api`
+Repository: `github.com/<your-org>/inverge-api`
 Deployment target: the NestJS API. The web app is not deployed to Render; the escrow
 programme is not a Render service.
 
@@ -32,7 +32,7 @@ them over Render's private network.
 
 | Setting | Value | Evidence / reason |
 |---|---|---|
-| Repository | `heraldhq-protocol/inverge-api` | Separate repository |
+| Repository | `<your-org>/inverge-api` | Separate repository |
 | Branch | `main` | Local checkout is 7 commits behind `origin/main` |
 | Root directory | repository root | `package.json`, `prisma/schema.prisma`, `src/main.ts` |
 | Runtime | Node | No Dockerfile exists |
@@ -149,35 +149,28 @@ import, use it; otherwise add variables one by one. Never upload the file to a p
 | `DIDIT_WEBHOOK_SECRET` | staging webhook secret | Secret |
 | `DIDIT_CALLBACK_URL` | `https://<staging-web>/d/settings/verification` | A page that exists; the old `/kyc/callback` example never existed |
 | `ADMIN_ALLOWLIST` | operator email or provider id | Bootstraps the first admin |
+| `EMAIL_PROVIDER` | `resend` | `stub` is rejected when `NODE_ENV=production` |
+| `RESEND_API_KEY` | sending-only key | Secret; domain-restricted |
+| `EMAIL_FROM` | sender on a verified domain | Not `onboarding@resend.dev` outside local testing |
+| `EMAIL_FROM_NAME` | `Inverge` | |
+| `EMAIL_REPLY_TO` | monitored mailbox | Optional but recommended |
+| `EMAIL_CODE_SECRET` | 32+ random characters | Secret; unique per environment |
 | `ANALYTICS_INGEST_ENABLED` | `true` | |
 | `ANALYTICS_INGEST_SECRET` | generated | Secret; identical to the web |
 | `METRICS_TOKEN` | generated | Secret; otherwise `/metrics` is public |
 | `LOG_HASH_SALT` | generated | |
 | `LOG_FORMAT` | `json` | |
 | `CORS_ORIGINS` | empty | Correct for a web-only deployment |
-| `EMAIL_PROVIDER` | `resend` | Production rejects `stub` |
-| `RESEND_API_KEY` | staging key | Secret; send permission on the verified domain |
-| `EMAIL_FROM` | `no-reply@<verified-domain>` | Must be a verified Resend sender |
-| `EMAIL_FROM_NAME` | `Inverge` | |
-| `RESEND_WEBHOOK_SECRET` | `whsec_...` from the destination | Secret; production boot fails without it |
-| `PUBLIC_APP_URL` | `https://<staging-web>` | https, no localhost |
-| `PUBLIC_API_URL` | `https://<staging-api>` | Unsubscribe links reach the API directly |
-| `EMAIL_CODE_SECRET` | generated | >=32 chars; peppers verification codes |
-| `EMAIL_UNSUBSCRIBE_SECRET` | generated | >=32 chars; rotates every unsubscribe link |
-| `EMAIL_SUPPORT_ADDRESS` | support mailbox | Footer contact |
-| `EMAIL_COMPANY_ADDRESS` | postal address | Required only before editorial sending |
-| `EDITORIAL_EMAILS_ENABLED` | `false` | Leave off until editorial content/cadence are agreed |
-| `EMAIL_DELIVERY_MAX_ATTEMPTS` | `5` | |
-| `EMAIL_DELIVERY_STALE_SECONDS` | `300` | |
 
 > With `KYC_PROVIDER=didit` and `NODE_ENV=production`, the API **will not boot** until all
 > five Didit values are present. Create the three workflows first. This is deliberate
 > fail-closed behaviour (`src/config/env.validation.ts:235-251`).
 >
-> The same applies to email: `EMAIL_PROVIDER=resend` requires `RESEND_API_KEY`,
-> `EMAIL_FROM` and (in production) `RESEND_WEBHOOK_SECRET`, plus public https
-> `PUBLIC_APP_URL` / `PUBLIC_API_URL`, a real `EMAIL_CODE_SECRET` and
-> `EMAIL_UNSUBSCRIBE_SECRET`. See `docs/email-system.md`.
+> Email follows the same rule: with `NODE_ENV=production` and
+> `EMAIL_PROVIDER=resend`, boot fails until `RESEND_API_KEY` and `EMAIL_FROM` are set,
+> and `EMAIL_CODE_SECRET` must be at least 32 characters. The current Resend account has
+> no verified domain, so arbitrary recipients cannot receive mail yet. See
+> [email.md](email.md).
 
 ### 3.3 Payment rail
 
@@ -212,7 +205,7 @@ keypair/programme-id mismatch that blocks that step.
 | `PORT` | Render injects it |
 | `FEE_PAYER_SECRET_KEY` | Declared but unread; `FeePayerService` throws `NotImplemented` |
 | `PRIVY_*` | Legacy adapter; the current web client uses Web3Auth |
-| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_CODE_SECRET` | Required when `EMAIL_PROVIDER=resend`; `stub` is refused in production |
+| Notification gateway | No external notification gateway exists; in-app rows use the offline stub. Transactional email is separate (`EMAIL_PROVIDER`). |
 | `ANTHROPIC_API_KEY` | Only needed if `MODERATION_PROVIDER=ai` |
 | `DIRECT_URL` | Only needed behind a pooler |
 

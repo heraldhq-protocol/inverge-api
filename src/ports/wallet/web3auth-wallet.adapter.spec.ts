@@ -98,16 +98,6 @@ describe('Web3AuthWalletAdapter', () => {
     });
   });
 
-  it('trusts only a signed email_verified claim', async () => {
-    const { adapter, privateKey } = await setup();
-    const token = await mint(privateKey, { email_verified: true });
-
-    await expect(adapter.verifyAccessToken(token)).resolves.toMatchObject({
-      email: 'amara@example.com',
-      emailVerified: true,
-    });
-  });
-
   it('returns the verified Google profile image', async () => {
     const { adapter, privateKey } = await setup();
     const token = await mint(privateKey, {

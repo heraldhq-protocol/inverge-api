@@ -31,6 +31,18 @@ one the creator already has. The web re-checks the same allowlist before renderi
 it. This is an external image reference, not an upload: no image bytes are
 downloaded or stored.
 
+### Email ownership
+
+An account email is stored separately from its ownership proof
+(`emailVerifiedAt`). The provider address is stored even when Web3Auth carries no
+signed `email_verified` claim; it is simply unverified until Inverge OTP proves
+mailbox control. Sign-in, onboarding, the dashboard, idea support and pre-pledges
+do not wait for confirmation. Authored actions (ideas, comments, surveys, boosts,
+campaign submission, wallet linking, KYC start) re-check it server-side. Changing
+to a different address is an explicit, rare action. See
+[email-verification.md](./email-verification.md) for the routes, error codes,
+lifecycle and migration caveats.
+
 ## Using the session
 
 ```http
@@ -71,6 +83,7 @@ matches provider user ids and allowlisted emails.
 | Missing or malformed `Authorization` | 401 | `UNAUTHENTICATED` |
 | Expired or invalid session | 401 | `UNAUTHENTICATED` |
 | Valid session, insufficient role | 403 | `FORBIDDEN` |
+| Valid session, email not confirmed on a guarded action | 403 | `EMAIL_VERIFICATION_REQUIRED` |
 | Provider token rejected at exchange | 401 | `UNAUTHENTICATED` |
 
 ## Security boundaries

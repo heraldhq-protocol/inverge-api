@@ -38,7 +38,9 @@ function sessionEndpoint(raw) {
 
 const target = sessionEndpoint(url);
 if (target !== url) {
-  console.log('[migrate] transaction pooler detected; migrating through the session endpoint on 5432.');
+  console.log(
+    '[migrate] transaction pooler detected; migrating through the session endpoint on 5432.',
+  );
 }
 
 const result = spawnSync('prisma', ['migrate', 'deploy'], {

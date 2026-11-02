@@ -16,6 +16,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { OptionalPrivyAuthGuard } from '../auth/guards/optional-privy-auth.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
 import { CommentsService } from './comments.service';
 import {
   CreateCommentDto,
@@ -31,6 +32,7 @@ export class CommentsController {
   @Post()
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard)
+  @RateLimit('comments')
   post(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CreateCommentDto) {
     return this.comments.post(user.id, id, dto);
   }

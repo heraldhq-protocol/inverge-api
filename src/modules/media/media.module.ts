@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { MediaAssetsService } from './media-assets.service';
 import { MediaController } from './media.controller';
@@ -10,7 +10,7 @@ import { MediaController } from './media.controller';
 @Module({
   controllers: [MediaController],
   exports: [MediaAssetsService],
-  imports: [AuthModule],
+  imports: [forwardRef(() => AuthModule)],
   providers: [MediaAssetsService],
 })
 export class MediaModule {}

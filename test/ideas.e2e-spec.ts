@@ -17,7 +17,7 @@ describe('Ideas routes (e2e)', () => {
   async function session(sub: string): Promise<string> {
     const res = await http()
       .post('/api/v1/auth/session')
-      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test` })
+      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test#verified` })
       .expect(201);
     return res.body.sessionToken as string;
   }
@@ -193,6 +193,15 @@ describe('Ideas routes (e2e)', () => {
       const res = await http().get('/api/v1/ideas').expect(200);
       expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
     });
+    it('category filter reaches an idea with only a legacy category', async () => {
+      // `validCreate` has no taxonomy pair. The read-time fallback maps its
+      // legacy `agritech` value to the technology parent so the record is not
+      // stranded outside every category filter.
+      const res = await http()
+        .get('/api/v1/ideas?taxonomyCategory=technology')
+        .expect(200);
+      expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
+    });
     it('404 for an unknown idea', async () => {
       await http().get('/api/v1/ideas/does-not-exist').expect(404);
     });
@@ -242,6 +251,29 @@ describe('Ideas routes (e2e)', () => {
     });
   });
 
+  // ─────────────── Viewer engagement (private, per account) ───────────────
+  describe('engagement', () => {
+    it('requires a signed-in viewer', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}/engagement`).expect(401);
+    });
+
+    it('returns only the caller’s own support and pre-pledge state', async () => {
+      const backer = await http()
+        .get(`/api/v1/ideas/${ideaId}/engagement`)
+        .set(auth(backerB))
+        .expect(200);
+      expect(backer.body.supported).toBe(true);
+      expect(Number(backer.body.prePledge.amountUsd)).toBe(100);
+
+      const withdrawn = await http()
+        .get(`/api/v1/ideas/${ideaId}/engagement`)
+        .set(auth(backerA))
+        .expect(200);
+      expect(withdrawn.body.supported).toBe(true);
+      expect(withdrawn.body.prePledge).toBeNull();
+    });
+  });
+
   // ─────────────── Survey (creator form + backer responses) ───────────────
   describe('survey', () => {
     let ratingQid: string;
@@ -273,6 +305,46 @@ describe('Ideas routes (e2e)', () => {
     it('rejects editing the survey after publish (draft-only)', async () => {
       await http().put(`/api/v1/ideas/${ideaId}/survey`).set(auth(creator))
         .send({ questions: [{ index: 0, prompt: 'Rate', type: 'RATING' }] }).expect(400);
+    });
+  });
+
+  describe('creator reads', () => {
+    it('401 without a token on the pre-pledge and feedback reads', async () => {
+      await http().get('/api/v1/me/pre-pledges').expect(401);
+      await http().get('/api/v1/me/feedback').expect(401);
+      await http().get(`/api/v1/ideas/${ideaId}/survey/responses`).expect(401);
+    });
+
+    it('returns only the caller’s pre-pledges', async () => {
+      const res = await http().get('/api/v1/me/pre-pledges').set(auth(backerB)).expect(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].idea.id).toBe(ideaId);
+      expect(Number(res.body.data[0].amountUsd)).toBe(100);
+      expect(res.body.data[0].idea.creator).toBeDefined();
+    });
+
+    it('does not leak another creator’s feedback responses', async () => {
+      await http().get(`/api/v1/ideas/${ideaId}/survey/responses`).set(auth(backerA)).expect(403);
+      const none = await http().get('/api/v1/me/feedback').set(auth(backerA)).expect(200);
+      expect(none.body.data).toEqual([]);
+      expect(none.body.totalResponses).toBe(0);
+    });
+
+    it('returns anonymous responses to the owning creator', async () => {
+      const one = await http()
+        .get(`/api/v1/ideas/${ideaId}/survey/responses`)
+        .set(auth(creator))
+        .expect(200);
+      expect(one.body.data).toHaveLength(2);
+      expect(one.body.questions.length).toBeGreaterThan(0);
+      expect(one.body.data[0].answers).toBeDefined();
+      expect(one.body.data[0].userId).toBeUndefined();
+
+      const all = await http().get('/api/v1/me/feedback').set(auth(creator)).expect(200);
+      expect(all.body.totalResponses).toBe(2);
+      expect(all.body.data[0].ideaId).toBe(ideaId);
+      expect(all.body.data[0].responses).toHaveLength(2);
+      expect(all.body.data[0].responses[0].userId).toBeUndefined();
     });
   });
 

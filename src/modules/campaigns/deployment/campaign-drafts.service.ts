@@ -32,7 +32,11 @@ import {
   toDraftResponse,
   type DraftCampaignRow,
 } from './campaign-draft.mapper';
-import { evaluateDeploymentReadiness, percentToBps } from './campaign-readiness';
+import {
+  evaluateDeploymentReadiness,
+  evaluateSubmissionReadiness,
+  percentToBps,
+} from './campaign-readiness';
 import { publicationBlockers } from './deployment-state';
 import { resolveTokenMint } from './solana-config';
 import { campaignIdHex, campaignTermsHash, toAtomicUnits } from './campaign-terms';
@@ -323,7 +327,7 @@ export class CampaignDraftsService {
         status: campaign.status,
         story: campaign.story,
         summary: campaign.summary,
-        targetAmount: campaign.targetAmount.toFixed(2),
+        targetAmount: campaign.targetAmount?.toFixed(2) ?? null,
         title: campaign.title,
         tokenType: campaign.tokenType,
         workingCapitalPct: campaign.workingCapitalPct.toString(),
@@ -343,6 +347,13 @@ export class CampaignDraftsService {
    * from the cluster so the atomic amount in the hash matches the instruction.
    */
   termsFor(campaign: DraftCampaignRow, decimals: number) {
+    if (campaign.deadline === null || campaign.targetAmount === null) {
+      throw new BadRequestException({
+        code: 'CAMPAIGN_TERMS_INCOMPLETE',
+        message:
+          'The funding target and deadline must be set before campaign terms can be hashed.',
+      });
+    }
     const story = readStory(campaign.story);
     return campaignTermsHash({
       campaignId: campaign.id,
@@ -393,7 +404,34 @@ export class CampaignDraftsService {
       ...toDraftResponse(campaign),
       applicationFee,
       readiness,
+      submissionReadiness: this.submissionReadiness(campaign),
     };
+  }
+
+  /** Server-side preflight for submission; the browser only renders the verdict. */
+  submissionReadiness(campaign: DraftCampaignRow) {
+    return evaluateSubmissionReadiness({
+      campaign: {
+        creatorId: campaign.creatorId,
+        deadline: campaign.deadline,
+        id: campaign.id,
+        milestones: campaign.milestones.map((milestone) => ({
+          deliverable: milestone.deliverable,
+          evidenceDefinition: milestone.evidenceDefinition,
+          expectedAt: milestone.expectedAt,
+          index: milestone.index,
+          title: milestone.title,
+          tranchePct: milestone.tranchePct.toString(),
+        })),
+        objectionWindowDays: campaign.objectionWindowDays,
+        status: campaign.status,
+        story: campaign.story,
+        summary: campaign.summary,
+        targetAmount: campaign.targetAmount?.toFixed(2) ?? null,
+        title: campaign.title,
+        workingCapitalPct: campaign.workingCapitalPct.toString(),
+      },
+    });
   }
 
   /**
@@ -500,3 +538,11 @@ function mergeStory(existing: DraftCampaignRow, dto: UpdateCampaignDraftDto) {
       current.useOfFunds,
   });
 }
+
+
+
+
+
+
+
+

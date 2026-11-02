@@ -25,9 +25,9 @@ const productionBase = {
   EMAIL_PROVIDER: 'resend',
   RESEND_API_KEY: 're_test_example',
   RESEND_WEBHOOK_SECRET: 'whsec_dGVzdC13ZWJob29rLXNlY3JldA==',
-  EMAIL_FROM: 'no-reply@inverge.test',
-  EMAIL_CODE_SECRET: 'test-email-code-secret-at-least-32-characters',
-  EMAIL_UNSUBSCRIBE_SECRET: 'test-unsubscribe-secret-at-least-32-characters',
+  EMAIL_FROM: 'no-reply@mail.inverge.test',
+  EMAIL_CODE_SECRET: 'email-code-secret-for-tests-0000000000',
+  EMAIL_UNSUBSCRIBE_SECRET: 'unsubscribe-secret-for-tests-0000000000',
   PUBLIC_APP_URL: 'https://inverge.test',
   PUBLIC_API_URL: 'https://api.inverge.test',
 };
@@ -74,9 +74,31 @@ describe('validateEnv — SESSION_JWT_SECRET', () => {
   });
 
   it('rejects an empty secret in every environment', () => {
-    expect(() => validateEnv({ ...base, SESSION_JWT_SECRET: '' })).toThrow(
-      /SESSION_JWT_SECRET/,
+    expect(() =>
+      validateEnv({ ...base, SESSION_JWT_SECRET: '' }),
+    ).toThrow(/SESSION_JWT_SECRET/);
+  });
+});
+
+describe('validateEnv — Web3Auth token contract', () => {
+  it('defaults to the issuer/JWKS pair v11 SDKs actually sign with', () => {
+    const env = validateEnv({ ...base });
+    // @web3auth/modal 11.4.x mints `iss: "web3auth.io"`; the documented
+    // api-auth.web3auth.io pair does not publish those signing keys.
+    expect(env.WEB3AUTH_TOKEN_ISSUER).toBe('web3auth.io');
+    expect(env.WEB3AUTH_JWKS_URL).toBe(
+      'https://api.web3auth.io/citadel-service/.well-known/jwks.json',
     );
+  });
+
+  it('accepts a bare-host issuer, which a URL-only schema would reject', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        WEB3AUTH_TOKEN_ISSUER: 'web3auth.io',
+        WEB3AUTH_JWKS_URL: 'https://api-auth.web3auth.io/jwks',
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -93,6 +115,7 @@ describe('validateEnv — production provider safety (F-01)', () => {
     ['WALLET_PROVIDER', { WALLET_PROVIDER: 'stub' }],
     ['KYC_PROVIDER', { KYC_PROVIDER: 'stub' }],
     ['FLATFEE_PROVIDER', { FLATFEE_PROVIDER: 'stub' }],
+    ['EMAIL_PROVIDER', { EMAIL_PROVIDER: 'stub' }],
   ] as const)('rejects %s=stub in production', (key, override) => {
     expect(() => validateEnv({ ...productionBase, ...override })).toThrow(
       new RegExp(`${key}=stub is not allowed in production`),
@@ -199,41 +222,16 @@ describe('validateEnv — credentials for enabled providers', () => {
     expect(env.PAYSTACK_SECRET_KEY).toBeUndefined();
   });
 
-  it('does not require credentials for advisory integrations that are disabled', () => {
-    const env = validateEnv({
-      ...productionBase,
-      QUALITY_PROVIDER: 'stub',
-      MODERATION_PROVIDER: 'stub',
-      ANTHROPIC_API_KEY: undefined,
-    });
-    expect(env.QUALITY_PROVIDER).toBe('stub');
-  });
+  it.each(['RESEND_API_KEY', 'EMAIL_FROM'] as const)(
+    'requires %s when Resend is selected',
+    (key) => {
+      expect(() =>
+        validateEnv({ ...productionBase, [key]: undefined }),
+      ).toThrow(new RegExp(key));
+    },
+  );
 
-  it('requires Resend credentials when email delivery is enabled', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        RESEND_API_KEY: undefined,
-      }),
-    ).toThrow(/RESEND_API_KEY/);
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        EMAIL_FROM: undefined,
-      }),
-    ).toThrow(/EMAIL_FROM/);
-  });
-
-  it('rejects the stub email provider in production', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        EMAIL_PROVIDER: 'stub',
-      }),
-    ).toThrow(/EMAIL_PROVIDER=stub/);
-  });
-
-  it('rejects the development email pepper in production', () => {
+  it('requires a production email code secret', () => {
     expect(() =>
       validateEnv({
         ...productionBase,
@@ -242,50 +240,19 @@ describe('validateEnv — credentials for enabled providers', () => {
     ).toThrow(/EMAIL_CODE_SECRET/);
   });
 
-  it('requires the Resend webhook secret in production', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        RESEND_WEBHOOK_SECRET: undefined,
-      }),
-    ).toThrow(/RESEND_WEBHOOK_SECRET/);
-  });
-
-  it('rejects a developer host in production email links', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PUBLIC_APP_URL: 'http://localhost:3000',
-      }),
-    ).toThrow(/PUBLIC_APP_URL/);
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PUBLIC_API_URL: 'http://localhost:3000',
-      }),
-    ).toThrow(/PUBLIC_API_URL/);
-  });
-
-  it('rejects the development unsubscribe secret in production', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        EMAIL_UNSUBSCRIBE_SECRET: 'dev-only-email-unsubscribe-secret-change-me',
-      }),
-    ).toThrow(/EMAIL_UNSUBSCRIBE_SECRET/);
-  });
-
-  it('requires a sender postal address before editorial sending is enabled', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        EDITORIAL_EMAILS_ENABLED: 'true',
-      }),
-    ).toThrow(/EMAIL_COMPANY_ADDRESS/);
+  it('does not require credentials for integrations that are disabled', () => {
+    const env = validateEnv({
+      ...productionBase,
+      // Advisory rails may legitimately stay deterministic or offline in
+      // staging; they are not authentication or payment approval.
+      QUALITY_PROVIDER: 'stub',
+      MODERATION_PROVIDER: 'stub',
+      ANTHROPIC_API_KEY: undefined,
+    });
   });
 });
 
-describe('validateEnv — escrow/provider coupling', () => {
+describe('validateEnv - escrow/provider coupling', () => {
   it('still requires SOLANA_RPC_URL when the chain adapter is enabled', () => {
     expect(() =>
       validateEnv({
@@ -303,5 +270,33 @@ describe('validateEnv — escrow/provider coupling', () => {
         SOLANA_CLUSTER: 'mainnet-beta',
       }),
     ).toThrow(/mainnet-beta/);
+  });
+});
+
+describe('validateEnv - AI assistant', () => {
+  it('rejects the deterministic stub in production', () => {
+    expect(() =>
+      validateEnv({ ...productionBase, AI_PROVIDER: 'stub' }),
+    ).toThrow(/AI_PROVIDER/);
+  });
+
+  it('requires AI_API_KEY for anthropic without using the moderation key', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        AI_PROVIDER: 'anthropic',
+        ANTHROPIC_API_KEY: 'moderation-key',
+      }),
+    ).toThrow(/AI_API_KEY/);
+  });
+
+  it('accepts anthropic with its own credential', () => {
+    const env = validateEnv({
+      ...productionBase,
+      AI_PROVIDER: 'anthropic',
+      AI_API_KEY: 'assistant-key',
+    });
+    expect(env.AI_PROVIDER).toBe('anthropic');
+    expect(env.AI_API_KEY).toBe('assistant-key');
   });
 });

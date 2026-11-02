@@ -16,12 +16,12 @@ export type RateLimitPolicyName =
   | 'analytics_premium'
   | 'analytics_request'
   | 'analytics_admin'
-  | 'ai_assistant'
-  | 'media_upload'
   | 'email_request'
   | 'email_resend'
   | 'email_verify'
-  | 'email_preferences';
+  | 'email_preferences'
+  | 'ai_assistant'
+  | 'media_upload';
 
 export type RateLimitScope = 'ip' | 'user';
 
@@ -64,14 +64,6 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // and keeps a retry loop from filling the admin queue.
   analytics_request: { limit: 5, windowSeconds: 3600, burst: 2, scope: 'user', failClosed: false },
   analytics_admin: { limit: 60, windowSeconds: 60, burst: 10, scope: 'user', failClosed: true },
-  // Every call costs provider tokens. The daily token cap is the real budget
-  // guard; this bucket stops a retry loop from spending it in one minute.
-  ai_assistant: { limit: 12, windowSeconds: 60, burst: 4, scope: 'user', failClosed: false },
-  // An upload costs storage and a verification round trip. The daily asset
-  // quota is the real budget guard; this bucket stops a retry loop from spending
-  // it in a minute. Fail-closed: an anonymous unlimited retry here is worse than
-  // a short outage, and every caller is authenticated.
-  media_upload: { limit: 20, windowSeconds: 60, burst: 6, scope: 'user', failClosed: true },
   // Issuing mail is externally visible and costs money. The database also
   // enforces a per-hour cap and cooldown; this bucket stops a retry loop before
   // it reaches the service. Fail closed: an outage must not become a send loop.
@@ -83,6 +75,14 @@ export const RATE_LIMIT_POLICIES: Record<RateLimitPolicyName, RateLimitPolicy> =
   // A public unsubscribe/preference link. It is unauthenticated, so the link
   // holder is the credential; the bucket only bounds enumeration attempts.
   email_preferences: { limit: 20, windowSeconds: 60, burst: 6, scope: 'ip', failClosed: false },
+  // Every call costs provider tokens. The daily token cap is the real budget
+  // guard; this bucket stops a retry loop from spending it in one minute.
+  ai_assistant: { limit: 12, windowSeconds: 60, burst: 4, scope: 'user', failClosed: false },
+  // An upload costs storage and a verification round trip. The daily asset
+  // quota is the real budget guard; this bucket stops a retry loop from spending
+  // it in a minute. Fail-closed: an anonymous unlimited retry here is worse than
+  // a short outage, and every caller is authenticated.
+  media_upload: { limit: 20, windowSeconds: 60, burst: 6, scope: 'user', failClosed: true },
 };
 
 const FILTER_QUERY_KEYS = [
@@ -142,6 +142,10 @@ export function resolveRateLimitPolicy(
     return 'analytics_premium';
   }
   if (path.includes('/analytics/')) return 'analytics_read';
+
+  if (path.startsWith('/ai/') || path.endsWith('/assistant')) {
+    return 'ai_assistant';
+  }
 
   if (path.startsWith('/admin')) return 'admin';
 

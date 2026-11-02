@@ -25,6 +25,7 @@ export interface CapabilityInput {
   amlStatus: string;
   displayName: string | null;
   username: string | null;
+  emailVerified: boolean;
   analytics?: AnalyticsEntitlement;
 }
 
@@ -33,6 +34,7 @@ export interface AccountCapabilities {
   accountActive: boolean;
   requiresOnboarding: boolean;
   verification: {
+    emailVerified: boolean;
     identityVerified: boolean;
     fundsEligible: boolean;
     blockers: string[];
@@ -41,6 +43,8 @@ export interface AccountCapabilities {
     createIdeas: boolean;
     supportIdeas: boolean;
     prePledge: boolean;
+    commentOnIdeas: boolean;
+    submitSurveyResponses: boolean;
     purchaseBoosts: boolean;
     submitCampaigns: boolean;
     reviewCampaigns: boolean;
@@ -70,22 +74,26 @@ export function buildAccountCapabilities(
     accountActive: input.bannedAt === null,
     requiresOnboarding: !input.displayName || !input.username,
     verification: {
+      emailVerified: input.emailVerified,
       identityVerified,
       fundsEligible,
       blockers: fundsEligibilityReasons(verification),
     },
     capabilities: {
-      // Idea creation, support, pre-pledges and boost purchases are authenticated but
-      // not eligibility-gated. `purchaseBoosts` mirrors that until the fee path gains a
-      // KYC/AML gate; it is a visibility purchase, not a payout.
-      createIdeas: true,
+      // Verified email is the account-integrity bar for authored actions. Idea
+      // support and pre-pledges are deliberately exempt: a person can signal
+      // demand before finishing signup. Everything else re-checks the same
+      // condition server-side via EmailVerifiedGuard.
+      createIdeas: input.emailVerified,
       supportIdeas: true,
       prePledge: true,
-      purchaseBoosts: true,
+      commentOnIdeas: input.emailVerified,
+      submitSurveyResponses: input.emailVerified,
+      purchaseBoosts: input.emailVerified,
       // Campaign submission runs `evaluateCampaignReviewGates`, whose creator bar is
       // funds-eligibility. KYB and per-campaign gates are evaluated at submit time and
       // are intentionally not folded into this account-level flag.
-      submitCampaigns: fundsEligible,
+      submitCampaigns: fundsEligible && input.emailVerified,
       // Admin-guarded surfaces.
       reviewCampaigns: isAdmin,
       reviewVerification: reviewsCompliance,

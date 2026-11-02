@@ -10,11 +10,17 @@ import { PrivyAuthGuard } from './guards/privy-auth.guard';
 import { OptionalPrivyAuthGuard } from './guards/optional-privy-auth.guard';
 import { SessionService } from './session.service';
 import { ModerationModule } from '../moderation/moderation.module';
+import { MediaModule } from '../media/media.module';
 import { EmailDeliveryModule } from '../email/email-delivery.module';
 
 // Exports guards + SessionService so other feature modules can protect their routes.
 @Module({
-  imports: [forwardRef(() => ModerationModule), EmailDeliveryModule],
+  // MediaModule imports this module for its guards, so both sides are lazy.
+  imports: [
+    forwardRef(() => ModerationModule),
+    forwardRef(() => MediaModule),
+    EmailDeliveryModule,
+  ],
   controllers: [AuthController, EmailVerificationController],
   providers: [
     AuthService,
@@ -38,4 +44,3 @@ import { EmailDeliveryModule } from '../email/email-delivery.module';
   ],
 })
 export class AuthModule {}
-

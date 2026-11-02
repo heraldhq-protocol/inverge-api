@@ -56,20 +56,26 @@ describe('Application fee (e2e)', () => {
       create: { key: 'campaign.applicationFeeNGN', value: 10000 },
     });
 
-    ({ id: creatorId, token: creatorToken } = await session(`fee-c-${RUN}`));
+    ({ id: creatorId, token: creatorToken } = await session(
+      `stub:fee-c-${RUN}:fee-c-${RUN}@e2e.test#verified`,
+    ));
     await prisma.user.update({
       where: { id: creatorId },
       data: { amlStatus: 'CLEAR', kycStatus: 'VERIFIED' },
     });
 
-    ({ id: otherId, token: otherToken } = await session(`fee-o-${RUN}`));
+    ({ id: otherId, token: otherToken } = await session(
+      `stub:fee-o-${RUN}:fee-o-${RUN}@e2e.test#verified`,
+    ));
     await prisma.user.update({
       where: { id: otherId },
       data: { amlStatus: 'CLEAR', kycStatus: 'VERIFIED' },
     });
 
+    // "Unverified" here means KYC, not email: the email gate must let the
+    // request through so the KYC blocker is the one under test.
     ({ id: unverifiedId, token: unverifiedToken } = await session(
-      `fee-u-${RUN}`,
+      `stub:fee-u-${RUN}:fee-u-${RUN}@e2e.test#verified`,
     ));
   });
 

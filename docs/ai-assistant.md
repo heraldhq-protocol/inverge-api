@@ -43,9 +43,9 @@ latency). It does not contain an idea write.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `AI_PROVIDER` | `disabled` | `disabled`, `stub` or `anthropic` |
-| `AI_API_KEY` | – | Falls back to `ANTHROPIC_API_KEY` when blank or unset |
-| `AI_BASE_URL` | – | Falls back to `ANTHROPIC_BASE_URL` |
-| `AI_MODEL` | – | Falls back to `ANTHROPIC_MODEL`; the current deployment uses `deepseek-flash` |
+| `AI_API_KEY` | – | Required when `AI_PROVIDER=anthropic`; never falls back to `ANTHROPIC_API_KEY` |
+| `AI_BASE_URL` | – | DeepSeek: `https://api.deepseek.com/anthropic` |
+| `AI_MODEL` | `deepseek-flash` | Assistant model; independent of `ANTHROPIC_MODEL` |
 | `AI_TIMEOUT_MS` | `20000` | 1s–60s |
 | `AI_MAX_OUTPUT_TOKENS` | `1200` | 64–4000 |
 | `AI_MAX_INPUT_CHARS` | `6000` | Target text plus context |
@@ -65,8 +65,9 @@ and never contains a value.
 ## Entitlement and quota
 
 There is no client-side `isPremium` flag and `CreatorProfile.tier` is not an
-entitlement. `AiAccessGrant` is keyed by user and feature (`ai.assistant`) and is
-admin-approved (D-049). Admins are entitled without a grant. A user may request
+entitlement. `AiAccessGrant` is one row per user (`ai.assistant` is the only
+feature today) and is
+admin-approved (D-055). Admins are entitled without a grant. A user may request
 access when the grant is absent, rejected or expired; a pending request is not
 re-created.
 
@@ -94,9 +95,9 @@ Unit and e2e tests force `AI_PROVIDER=stub`; they never call a provider. A live
 call spends real tokens, so run it only with explicit approval and a disposable
 test account.
 
-1. Put a key in `AI_API_KEY` (or `ANTHROPIC_API_KEY`) and confirm `AI_PROVIDER`,
-   `AI_BASE_URL` and `AI_MODEL`. Start the API and web app against the same
-   database.
+1. Put a key in `AI_API_KEY` and confirm `AI_PROVIDER`, `AI_BASE_URL` and
+   `AI_MODEL`. `ANTHROPIC_*` configures the moderation adapter only. Start the API
+   and web app against the same database.
 2. Sign in as an admin (entitled without a grant) or approve an `AiAccessGrant`
    for the test user through `PATCH /api/v1/admin/ai/access-requests/:id`.
 3. Create a draft in the idea builder (the assistant needs a real idea id), open a

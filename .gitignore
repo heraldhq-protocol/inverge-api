@@ -7,6 +7,9 @@ node_modules/
 dist/
 build/
 
+# Local development aids (stub email outbox contains one-time codes)
+.local/
+
 # Prisma generated client (prisma-client generator, regenerated on install)
 src/generated/
 

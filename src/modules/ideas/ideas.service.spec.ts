@@ -45,14 +45,7 @@ function make(
   notifications = notificationsMock(),
 ) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return {
-    svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache, undefined, notifications),
-    p,
-    m,
-    q,
-    mod,
-    notifications,
-  };
+  return { svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache), p, m, q, mod };
 }
 
 const validDto = {
@@ -134,22 +127,6 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
   it('rejects publishing a non-draft idea', async () => {
     const { svc } = make({ id: 'idea1', creatorId: 'u1', status: 'VALIDATING' });
     await expect(svc.publish('u1', 'idea1')).rejects.toBeInstanceOf(BadRequestException);
-  });
-  it('notifies the creator once with the confirmed publication event', async () => {
-    const { svc, notifications } = make({
-      id: 'idea1',
-      creatorId: 'u1',
-      status: 'DRAFT',
-      title: 'Solar cold storage',
-    });
-    await svc.publish('u1', 'idea1');
-
-    expect(notifications.notify).toHaveBeenCalledWith({
-      data: { ideaId: 'idea1', ideaTitle: 'Solar cold storage' },
-      dedupeKey: 'IDEA_PUBLISHED:idea1',
-      template: 'IDEA_PUBLISHED',
-      toUserId: 'u1',
-    });
   });
   it('publishes a feedback-only idea with no roadmap (askAmount 0)', async () => {
     const { svc, p } = make({

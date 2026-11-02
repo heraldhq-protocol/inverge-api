@@ -23,8 +23,8 @@ process.env.ANALYTICS_INGEST_SECRET =
   'e2e-analytics-ingest-secret-0000000000000000';
 process.env.ANALYTICS_READ_ENABLED = 'true';
 
-// Deterministic assistant output for e2e; the stub says plainly that no model
-// was called, and production rejects it at boot.
+// The assistant suite must be deterministic and offline. The production guard
+// rejects `stub`, but tests run with NODE_ENV=test.
 process.env.AI_PROVIDER = 'stub';
 process.env.AI_DAILY_REQUESTS_PER_USER = '50';
 process.env.AI_DAILY_TOKENS_PER_USER = '1000000';

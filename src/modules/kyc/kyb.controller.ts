@@ -12,6 +12,7 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { KycService } from './kyc.service';
 import { AmlScreenDto } from './dto/aml-screen.dto';
@@ -34,7 +35,7 @@ export class KybController {
   // Register/update the business and start KYB verification.
   @Post('session')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   session(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartBusinessDto) {
     return this.kyc.startBusinessSession(user.id, dto);
   }

@@ -36,8 +36,8 @@ export interface ReadinessCampaign {
   summary: string;
   status: string;
   tokenType: string;
-  targetAmount: string;
-  deadline: Date;
+  targetAmount: string | null;
+  deadline: Date | null;
   workingCapitalPct: string;
   objectionWindowDays: number | null;
   story: unknown;
@@ -134,19 +134,23 @@ export function evaluateDeploymentReadiness(input: {
     'The story needs a location, the problem, the solution and who benefits.',
   );
 
-  const target = Number(campaign.targetAmount);
+  const target = campaign.targetAmount === null ? null : Number(campaign.targetAmount);
   check(
     'target',
     'Funding target',
-    Number.isFinite(target) && target > 0,
-    'The funding target must be greater than zero.',
+    target !== null && Number.isFinite(target) && target > 0,
+    campaign.targetAmount === null
+      ? 'The funding target has not been set.'
+      : 'The funding target must be greater than zero.',
   );
 
   check(
     'deadline',
     'Funding deadline',
-    campaign.deadline.getTime() > now.getTime(),
-    'The funding deadline has passed. Choose a future date.',
+    campaign.deadline !== null && campaign.deadline.getTime() > now.getTime(),
+    campaign.deadline === null
+      ? 'The funding deadline has not been set.'
+      : 'The funding deadline has passed. Choose a future date.',
   );
 
   check(
@@ -256,6 +260,123 @@ export function evaluateDeploymentReadiness(input: {
     trancheBps,
     workingCapitalBps,
   };
+}
+
+/**
+ * Submission readiness (FR-301/302/311): everything curation needs to review a
+ * campaign, without the deployment-only requirements (a linked wallet, a
+ * configured mint and the settlement-asset policy). The backend calls this
+ * before moving a campaign into review, so a client cannot submit a draft by
+ * skipping a wizard step.
+ */
+export interface SubmissionReadinessResult {
+  ready: boolean;
+  blockers: string[];
+  checks: ReadinessCheck[];
+}
+
+export function evaluateSubmissionReadiness(input: {
+  campaign: Omit<ReadinessCampaign, 'tokenType'> & { tokenType?: string };
+  now?: Date;
+}): SubmissionReadinessResult {
+  const { campaign } = input;
+  const now = input.now ?? new Date();
+  const checks: ReadinessCheck[] = [];
+  const blockers: string[] = [];
+
+  const check = (key: string, label: string, satisfied: boolean, detail: string) => {
+    checks.push({ detail, key, label, satisfied });
+    if (!satisfied) blockers.push(detail);
+  };
+
+  check(
+    'title',
+    'Title and summary',
+    campaign.title.trim().length >= 3 && campaign.summary.trim().length >= 20,
+    'The campaign needs a title and a summary of at least 20 characters.',
+  );
+
+  const story = storyStrings(campaign.story);
+  check(
+    'story',
+    'Story',
+    ['problem', 'solution', 'beneficiaries', 'location'].every(
+      (key) => (story[key] ?? '').trim().length > 0,
+    ),
+    'The story needs a location, the problem, the solution and who benefits.',
+  );
+
+  const target = campaign.targetAmount === null ? null : Number(campaign.targetAmount);
+  check(
+    'target',
+    'Funding target',
+    target !== null && Number.isFinite(target) && target > 0,
+    campaign.targetAmount === null
+      ? 'Set the funding target before submitting.'
+      : 'The funding target must be greater than zero.',
+  );
+
+  check(
+    'deadline',
+    'Funding deadline',
+    campaign.deadline !== null && campaign.deadline.getTime() > now.getTime(),
+    campaign.deadline === null
+      ? 'Set a future funding deadline before submitting.'
+      : 'The funding deadline has passed. Choose a future date.',
+  );
+
+  const milestones = [...campaign.milestones].sort((a, b) => a.index - b.index);
+  const countOk = milestones.length >= MIN_MILESTONES && milestones.length <= MAX_MILESTONES;
+  check(
+    'milestone-count',
+    'Milestone plan',
+    countOk,
+    `The programme accepts ${MIN_MILESTONES}-${MAX_MILESTONES} milestones; this campaign has ${milestones.length}.`,
+  );
+
+  const trancheBps = milestones.map((milestone) => percentToBps(milestone.tranchePct) ?? 0);
+  const milestoneBpsTotal = trancheBps.reduce((sum, bps) => sum + bps, 0);
+  check(
+    'tranches',
+    'Milestone tranches',
+    countOk && trancheBps.every((bps) => bps > 0) && milestoneBpsTotal === TOTAL_BPS,
+    `Milestone tranche weights must be greater than zero and total exactly 100%; this campaign totals ${
+      milestoneBpsTotal / 100
+    }%.`,
+  );
+
+  const detailsOk = milestones.every(
+    (milestone) =>
+      milestone.title.trim().length > 0 &&
+      milestone.deliverable.trim().length > 0 &&
+      milestone.evidenceDefinition !== null &&
+      milestone.evidenceDefinition !== undefined,
+  );
+  check(
+    'milestone-detail',
+    'Milestone evidence',
+    countOk && detailsOk,
+    'Every milestone needs a title, a deliverable and an evidence definition (FR-302).',
+  );
+
+  const workingCapitalBps = percentToBps(campaign.workingCapitalPct) ?? 0;
+  check(
+    'working-capital',
+    'Working capital',
+    workingCapitalBps === WORKING_CAPITAL_BPS,
+    `The working-capital tranche is fixed at 20% of the target (FR-503a); this campaign sets ${
+      workingCapitalBps / 100
+    }%.`,
+  );
+
+  check(
+    'objection-window',
+    'Objection window',
+    campaign.objectionWindowDays === DEPLOYMENT_OBJECTION_WINDOW_DAYS,
+    `The escrow programme fixes the objection window at ${DEPLOYMENT_OBJECTION_WINDOW_DAYS} days (FR-602).`,
+  );
+
+  return { blockers, checks, ready: blockers.length === 0 };
 }
 
 /**

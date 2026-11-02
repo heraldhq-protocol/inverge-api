@@ -19,6 +19,7 @@ import {
 } from './comment-cursor';
 
 import { toPublicCreator } from '../../common/projections/creator-profile.projection';
+import { ModerationService } from '../moderation/moderation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const COMMENT_PAGE_SIZE = 50;
@@ -31,24 +32,41 @@ const COMMENT_MAX_PAGE_SIZE = 100;
 export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly moderation: ModerationService,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
-  private async resolveIdea(idOrSlug: string) {
+  /**
+   * A readable idea. `DRAFT` is unpublished, so its thread is not public even
+   * when the caller knows an id. An optional write check keeps posting limited
+   * to the lifecycle states FR-273 opens for comments.
+   */
+  private async resolveIdea(
+    idOrSlug: string,
+    options: { requireOpen?: boolean } = {},
+  ) {
     const idea = await this.prisma.idea.findFirst({
       where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
       select: { id: true, status: true, creatorId: true, title: true },
     });
-    if (!idea) throw new NotFoundException('Idea not found');
+    if (!idea || idea.status === 'DRAFT') {
+      throw new NotFoundException('Idea not found');
+    }
+    if (
+      options.requireOpen &&
+      idea.status !== 'VALIDATING' &&
+      idea.status !== 'THRESHOLD_MET'
+    ) {
+      throw new BadRequestException('Idea is not open for comments');
+    }
     return idea;
   }
 
   async post(userId: string, ideaIdOrSlug: string, dto: CreateCommentDto) {
-    const idea = await this.resolveIdea(ideaIdOrSlug);
-    if (idea.status !== 'VALIDATING' && idea.status !== 'THRESHOLD_MET') {
-      throw new BadRequestException('Idea is not open for comments');
-    }
+    const idea = await this.resolveIdea(ideaIdOrSlug, { requireOpen: true });
     const ideaId = idea.id;
+    const body = dto.body.trim();
+    if (!body) throw new BadRequestException('A comment needs text');
     let parent: { id: string; userId: string; ideaId: string } | null = null;
     if (dto.parentId) {
       parent = await this.prisma.ideaComment.findUnique({
@@ -59,9 +77,15 @@ export class CommentsService {
         throw new NotFoundException('Parent comment not found');
       }
     }
+    // Advisory only (NFR-17/D1): the case informs review and never blocks the
+    // post. Comments are public the moment they are created, exactly as before.
+    await this.moderation.screenSafe(
+      { kind: 'comment', text: body },
+      { ideaId, submittedById: userId },
+    );
     const comment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.ideaComment.create({
-        data: { ideaId, userId, body: dto.body, parentId: dto.parentId ?? null },
+        data: { ideaId, userId, body, parentId: dto.parentId ?? null },
         include: {
           user: {
             include: { creatorProfile: true },

@@ -124,7 +124,7 @@ export function toDraftResponse(campaign: DraftCampaignRow) {
     category: campaign.taxonomyCategorySlug,
     createdAt: campaign.createdAt,
     creatorId: campaign.creatorId,
-    deadline: campaign.deadline,
+    deadline: campaign.deadline?.toISOString() ?? null,
     deployment: deployment
       ? {
           attemptNo: deployment.attemptNo,
@@ -172,7 +172,7 @@ export function toDraftResponse(campaign: DraftCampaignRow) {
     },
     subcategory: campaign.taxonomySubcategorySlug,
     summary: campaign.summary,
-    targetAmount: campaign.targetAmount.toFixed(2),
+    targetAmount: campaign.targetAmount?.toFixed(2) ?? null,
     termsHash: campaign.termsHash,
     title: campaign.title,
     tokenType: campaign.tokenType,
@@ -232,3 +232,4 @@ export function campaignEditBlockedReason(campaign: {
   }
   return null;
 }
+

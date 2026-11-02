@@ -13,8 +13,9 @@ and expire on their own TTL. There is no `KEYS`/`SCAN` and no wildcard delete.
 |---|---|---|---|
 | `v1:idea:g{n}:{idOrSlug}` | public idea + creator projection + gate progress | 30 s ±10 % | idea update, publish, support, pre-pledge, survey response |
 | `v1:ideas:g{n}:{filterHash}:{limit}:{cursor}` | one public idea page | 20 s ±10 % | same as above (a new idea appears on the next generation) |
-| `v1:campaign:g{n}:{id}` | public campaign detail (anonymous view) | 30 s ±10 % | submission, review decision |
+| `v1:campaign:g{n}:{idOrSlug}` | public campaign detail (anonymous view) | 30 s ±10 % | submission, review decision |
 | `v1:campaigns:g{n}:{filterHash}:{limit}:{cursor}` | one public campaign page | 20 s ±10 % | submission, review decision |
+| `v1:platform:g{n}:summary` | public platform counters + `asOf` | 60 s | time only |
 | `v1:platform:g{n}:escrow` | escrow aggregates + `asOf` | 60 s | time only |
 
 `filterHash` is the same fingerprint used by the cursor codec, so a cursor from a

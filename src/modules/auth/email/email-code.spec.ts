@@ -31,11 +31,7 @@ describe('email verification codes', () => {
     const secret = 'test-secret-that-is-long-enough';
     const first = hashVerificationCode(secret, 'challenge-a', '123456');
     const same = hashVerificationCode(secret, 'challenge-a', '123456');
-    const otherChallenge = hashVerificationCode(
-      secret,
-      'challenge-b',
-      '123456',
-    );
+    const otherChallenge = hashVerificationCode(secret, 'challenge-b', '123456');
     const otherCode = hashVerificationCode(secret, 'challenge-a', '654321');
 
     // #then only the same pair reproduces the digest

@@ -124,6 +124,13 @@ export class CampaignDeploymentService {
       throw new BadRequestException('The campaign is missing a settlement mint or wallet.');
     }
 
+    if (campaign.deadline === null || campaign.targetAmount === null) {
+      // Readiness reports the missing term; this is the type-narrowing guard.
+      throw new BadRequestException(
+        'The campaign needs a funding target and deadline before deployment.',
+      );
+    }
+
     const decimals = await this.settlementDecimals(readiness.tokenMint);
     const terms = this.drafts.termsFor(campaign, decimals);
     const idHex = campaignIdHex(campaign.id);
@@ -971,3 +978,5 @@ export function explorerUrl(cluster: string, signature: string): string {
 
 /** Re-exported so the preparation response's default fee rate is explicit. */
 export const DEFAULT_SUCCESS_FEE_BPS = DEFAULT_FEE_BPS;
+
+

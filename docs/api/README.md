@@ -13,18 +13,19 @@ same surface as the committed document.
 | Document | Covers | Status |
 |---|---|---|
 | [authentication.md](./authentication.md) | Session exchange, bearer token, roles, boundaries | Implemented |
+| [email-verification.md](./email-verification.md) | Email capture, OTP lifecycle, gates, provider trust | Implemented; delivery setup outstanding |
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
 | [campaign-deployment.md](../campaign-deployment.md) | Draft persistence, escrow deployment, on-chain verification, reconciliation, fee policy, blockers | Implemented against programme source; not yet verified against a deployed binary |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
+| [discussions.md](./discussions.md) | Idea and campaign comment threads, permissions, pagination, moderation | Implemented |
 | [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |
 | [analytics.md](./analytics.md) | Ingest contract, owner/admin reports, premium access, frontend rules | Implemented (Phase 1) |
 | [product-analytics.md](./product-analytics.md) | Pipeline, taxonomy, aggregation, retention | Implemented (Phase 1) |
 | [analytics-privacy.md](./analytics-privacy.md) | Event taxonomy, IP policy, retention, consent boundary | Implemented for server-side views and signals; Phase 2 target |
-| [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe | Implemented |
-| [email-system.md](../email-system.md) | Template catalogue, delivery ledger, suppression, consent, Resend webhooks, staging checks | Implemented for account, idea, campaign and verification events; payment events blocked |
-| [settings.md](./settings.md) | Settings aggregate, feed/notification preferences, email verification, support requests | Implemented |
+| [notifications.md](./notifications.md) | Read model, dispatch queue, retries, dedupe, email preferences | Implemented |
+| [settings.md](./settings.md) | Account settings aggregate, feed scope, notification preferences, support requests | Implemented |
 | [advertising.md](./advertising.md) | Placement registry, creative lifecycle, serving, event intake, cache keys | Proposed - no routes, schema not applied |
 | [realtime.md](./realtime.md) | Polling decisions and when SSE would be justified | Target — polling only, later |
 | [webhooks.md](./webhooks.md) | Providers, signatures, idempotency | Partly implemented |
@@ -78,8 +79,10 @@ source of truth. It does not query Postgres or Redis.
 
 ## Status of the underlying system
 
-Campaign drafts, their escrow deployment attempt and publication now exist:
-`POST /campaigns`, `PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
+Campaign reads and review exist (`GET /campaigns`, `GET /campaigns/{idOrSlug}`,
+`POST /campaigns/{id}/submit`, the admin review queue). Campaign drafts, their
+escrow deployment attempt and publication exist too: `POST /campaigns`,
+`PATCH /campaigns/:id`, `GET /campaigns/:id/draft` and
 `/campaigns/:id/deployment/{prepare,submit,reconcile}`. See
 [campaign-deployment.md](../campaign-deployment.md); the escrow programme has no
 committed IDL, so verification against a deployed binary is still an open blocker.
@@ -87,3 +90,5 @@ committed IDL, so verification against a deployed binary is still an open blocke
 Contribution, refund, milestone-claim and transparency endpoints do **not** exist.
 They depend on an event indexer that is not in either repository, and chain-owned
 state is never synthesised off-chain. Do not stub them; see [gaps.md](./gaps.md).
+Public marketing pages therefore show campaign totals as the API's indexed record
+and never as a live escrow balance.

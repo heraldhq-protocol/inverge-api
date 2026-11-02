@@ -21,6 +21,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { Env } from '../../config/env.validation';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { EmailVerifiedGuard } from '../auth/guards/email-verified.guard';
 import { PrivyAuthGuard } from '../auth/guards/privy-auth.guard';
 import { KycService } from './kyc.service';
 import { AmlScreenDto } from './dto/aml-screen.dto';
@@ -45,7 +46,7 @@ export class KycController {
   // Start a hosted verification. Body picks the purpose (default idea-validation identity).
   @Post('session')
   @ApiBearerAuth()
-  @UseGuards(PrivyAuthGuard)
+  @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   session(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartSessionDto) {
     return this.kyc.startSession(user.id, dto.purpose ?? 'IDEA_VALIDATION');
   }

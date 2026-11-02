@@ -124,10 +124,6 @@ export class SyncService {
   }
 
   private async notifyWaitlist(ideaId: string, campaignId: string) {
-    const idea = await this.prisma.idea.findUnique({
-      where: { id: ideaId },
-      select: { title: true },
-    });
     const supporters = await this.prisma.ideaSignal.findMany({
       where: { ideaId, type: 'SUPPORT' },
       select: { userId: true },
@@ -136,7 +132,7 @@ export class SyncService {
       await this.notifications.notify({
         toUserId: s.userId,
         template: 'WAITLIST_CONVERSION',
-        data: { ideaId, ideaTitle: idea?.title, campaignId },
+        data: { ideaId, campaignId },
         // A retried sync must not send the same conversion alert twice.
         dedupeKey: `WAITLIST_CONVERSION:${campaignId}:${s.userId}`,
       });

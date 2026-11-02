@@ -14,6 +14,15 @@ export class SessionUserDto {
 
   @ApiProperty({ type: String, nullable: true })
   email!: string | null;
+
+  @ApiProperty()
+  emailVerified!: boolean;
+
+  @ApiProperty({ type: String, nullable: true })
+  emailVerifiedAt!: string | null;
+
+  @ApiProperty({ enum: ['USER', 'ADMIN'] })
+  role!: 'USER' | 'ADMIN';
 }
 
 export class PublicCreatorLinkDto {
@@ -72,11 +81,22 @@ export class SessionResponseDto {
   @ApiProperty({ type: SessionUserDto })
   user!: SessionUserDto;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Provider-supplied address that is not proven. Prefill only; never stored.',
+  })
+  suggestedEmail!: string | null;
+
   @ApiProperty({ type: PublicCreatorDto, nullable: true })
   creator!: PublicCreatorDto | null;
 
   @ApiProperty()
   requiresOnboarding!: boolean;
+
+  @ApiProperty()
+  requiresEmailVerification!: boolean;
 }
 
 export class MeResponseDto {
@@ -86,6 +106,12 @@ export class MeResponseDto {
   @ApiProperty({ type: String, nullable: true })
   email!: string | null;
 
+  @ApiProperty()
+  emailVerified!: boolean;
+
+  @ApiProperty({ type: String, nullable: true })
+  emailVerifiedAt!: string | null;
+
   @ApiProperty({ enum: ['USER', 'ADMIN'] })
   role!: 'USER' | 'ADMIN';
 
@@ -94,6 +120,9 @@ export class MeResponseDto {
 
   @ApiProperty()
   requiresOnboarding!: boolean;
+
+  @ApiProperty()
+  requiresEmailVerification!: boolean;
 }
 
 export class UsernameAvailabilityDto {

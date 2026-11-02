@@ -1,124 +1,147 @@
-import { PrismaService } from '../../prisma/prisma.service';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 
-const IDEA = {
-  id: 'idea-1',
-  status: 'VALIDATING',
-  creatorId: 'creator-1',
-  title: 'Solar cold storage',
-};
-
-function member(userId: string) {
-  return {
-    id: userId,
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    kycStatus: 'NOT_REQUIRED',
-    creatorProfile: {
-      avatarUrl: null,
-      displayName: 'Ada',
-      tenureStartedAt: null,
-      tier: 'STARTER',
-    },
+function prismaMock() {
+  const tx = {
+    ideaComment: { create: jest.fn() },
+    idea: { update: jest.fn() },
+    ideaCommentCount: undefined,
   };
-}
-
-function createdComment(data: Record<string, unknown>) {
   return {
-    ...data,
-    createdAt: new Date(),
-    highlighted: false,
-    id: 'comment-1',
-    likeCount: 0,
-    user: member(String(data.userId)),
-  };
-}
-
-function prisma(options: {
-  parent?: { id: string; userId: string; ideaId: string } | null;
-} = {}) {
-  return {
-    idea: {
-      findFirst: jest.fn().mockResolvedValue(IDEA),
-    },
-    ideaComment: {
-      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) =>
-        createdComment(data),
-      ),
-      findUnique: jest.fn().mockResolvedValue(options.parent ?? null),
-    },
-    $transaction: jest.fn(async (callback: (client: unknown) => unknown) =>
+    _tx: tx,
+    $transaction: jest.fn(async (callback: (client: any) => unknown) =>
       callback({
+        ...tx,
         ideaComment: {
+          create: jest.fn().mockResolvedValue({
+            body: 'Hello',
+            createdAt: new Date('2026-11-01T10:00:00.000Z'),
+            highlighted: false,
+            id: 'comment-1',
+            ideaId: 'idea-1',
+            likeCount: 0,
+            parentId: null,
+            userId: 'user-1',
+            user: {
+              createdAt: new Date('2026-01-01T00:00:00.000Z'),
+              creatorProfile: {
+                avatarUrl: null,
+                displayName: 'Ada Obi',
+                username: 'ada',
+              },
+              id: 'user-1',
+            },
+          }),
           count: jest.fn().mockResolvedValue(1),
-          create: jest.fn(async ({ data }: { data: Record<string, unknown> }) =>
-            createdComment(data),
-          ),
         },
-        idea: { update: jest.fn().mockResolvedValue({}) },
       }),
     ),
-  };
+    idea: { findFirst: jest.fn() },
+    ideaComment: {
+      count: jest.fn().mockResolvedValue(1),
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+    },
+  } as any;
 }
 
-function service(
-  client: ReturnType<typeof prisma>,
-  notify = jest.fn().mockResolvedValue(undefined),
-) {
-  const svc = new CommentsService(
-    client as unknown as PrismaService,
-    { notify } as never,
-  );
-  return { svc, notify };
+const moderationMock = () =>
+  ({ screenSafe: jest.fn().mockResolvedValue(null) }) as any;
+
+function make() {
+  const prisma = prismaMock();
+  const moderation = moderationMock();
+  return { moderation, prisma, svc: new CommentsService(prisma, moderation) };
 }
 
-describe('CommentsService notifications', () => {
-  it('notifies the idea creator with a confirmed comment event', async () => {
-    const client = prisma();
-    const { svc, notify } = service(client);
-
-    await svc.post('backer-1', 'idea-1', { body: 'Looks promising' });
-
-    expect(notify).toHaveBeenCalledWith({
-      data: {
-        ideaId: 'idea-1',
-        ideaTitle: 'Solar cold storage',
-        kind: 'COMMENT',
-      },
-      dedupeKey: 'IDEA_COMMENT:comment-1:creator',
-      template: 'IDEA_COMMENT',
-      toUserId: 'creator-1',
+describe('CommentsService public read', () => {
+  it('does not expose a draft idea thread', async () => {
+    // #given
+    const { prisma, svc } = make();
+    prisma.idea.findFirst.mockResolvedValue({
+      creatorId: 'creator-1',
+      id: 'idea-1',
+      status: 'DRAFT',
     });
+
+    // #when / #then
+    await expect(svc.list('idea-1', {})).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(prisma.ideaComment.findMany).not.toHaveBeenCalled();
   });
 
-  it('does not email the creator about their own comment', async () => {
-    const client = prisma();
-    const { svc, notify } = service(client);
+  it('reads a converted idea thread as history', async () => {
+    // #given
+    const { prisma, svc } = make();
+    prisma.idea.findFirst.mockResolvedValue({
+      creatorId: 'creator-1',
+      id: 'idea-1',
+      status: 'CONVERTED',
+    });
 
-    await svc.post('creator-1', 'idea-1', { body: 'An update' });
+    // #when
+    const page = await svc.list('idea-1', { limit: 20 });
 
-    expect(notify).not.toHaveBeenCalled();
+    // #then
+    expect(page.data).toEqual([]);
+    expect(prisma.ideaComment.findMany).toHaveBeenCalled();
+  });
+});
+
+describe('CommentsService.post', () => {
+  it('posts as the authenticated author and records a moderation case', async () => {
+    // #given
+    const { moderation, prisma, svc } = make();
+    prisma.idea.findFirst.mockResolvedValue({
+      creatorId: 'creator-1',
+      id: 'idea-1',
+      status: 'VALIDATING',
+    });
+
+    // #when
+    const created = await svc.post('user-1', 'idea-1', { body: '  Hello  ' });
+
+    // #then
+    expect(created.author).toEqual({
+      avatarUrl: null,
+      displayName: 'Ada Obi',
+      id: 'user-1',
+      isCreator: false,
+    });
+    expect(moderation.screenSafe).toHaveBeenCalledWith(
+      { kind: 'comment', text: 'Hello' },
+      { ideaId: 'idea-1', submittedById: 'user-1' },
+    );
   });
 
-  it('notifies a parent comment author once on a reply', async () => {
-    const client = prisma({
-      parent: { id: 'parent-1', userId: 'backer-2', ideaId: 'idea-1' },
+  it('rejects posting on an archived idea', async () => {
+    // #given
+    const { prisma, svc } = make();
+    prisma.idea.findFirst.mockResolvedValue({
+      creatorId: 'creator-1',
+      id: 'idea-1',
+      status: 'ARCHIVED',
     });
-    const { svc, notify } = service(client);
 
-    await svc.post('backer-1', 'idea-1', { body: 'Agreed', parentId: 'parent-1' });
+    // #when / #then
+    await expect(
+      svc.post('user-1', 'idea-1', { body: 'Hello' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 
-    expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ kind: 'REPLY' }),
-        dedupeKey: 'IDEA_COMMENT:comment-1:parent',
-        toUserId: 'backer-2',
-      }),
-    );
-    expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dedupeKey: 'IDEA_COMMENT:comment-1:creator',
-        toUserId: 'creator-1',
-      }),
-    );
+  it('rejects a body that is only whitespace', async () => {
+    // #given
+    const { prisma, svc } = make();
+    prisma.idea.findFirst.mockResolvedValue({
+      creatorId: 'creator-1',
+      id: 'idea-1',
+      status: 'VALIDATING',
+    });
+
+    // #when / #then
+    await expect(
+      svc.post('user-1', 'idea-1', { body: '   ' }),
+    ).rejects.toThrow('A comment needs text');
   });
 });

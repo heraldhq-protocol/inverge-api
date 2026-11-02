@@ -15,7 +15,7 @@ describe('Product analytics (e2e)', () => {
   async function signIn(sub: string): Promise<string> {
     const res = await http()
       .post('/api/v1/auth/session')
-      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test` })
+      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test#verified` })
       .expect(201);
     return res.body.sessionToken as string;
   }

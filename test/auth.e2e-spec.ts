@@ -12,7 +12,7 @@ describe('Auth capabilities (e2e)', () => {
   async function signIn(sub: string): Promise<string> {
     const res = await http()
       .post('/api/v1/auth/session')
-      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test` })
+      .send({ accessToken: `stub:${PREFIX}-${sub}:${PREFIX}-${sub}@e2e.test#verified` })
       .expect(201);
     return res.body.sessionToken as string;
   }
@@ -75,6 +75,7 @@ describe('Auth capabilities (e2e)', () => {
       .expect(200);
 
     expect(res.body.verification).toEqual({
+      emailVerified: true,
       identityVerified: true,
       fundsEligible: true,
       blockers: [],
@@ -116,7 +117,7 @@ describe('Auth capabilities (e2e)', () => {
     const res = await http()
       .post('/api/v1/auth/session')
       .send({
-        accessToken: `stub:${PREFIX}-banned-exchange:${PREFIX}-banned-exchange@e2e.test`,
+        accessToken: `stub:${PREFIX}-banned-exchange:${PREFIX}-banned-exchange@e2e.test#verified`,
       })
       .expect(403);
 

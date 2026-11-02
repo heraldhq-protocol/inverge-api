@@ -20,6 +20,7 @@ import {
 
 export interface ScreenOptions {
   ideaId?: string;
+  campaignId?: string;
   submittedById?: string;
   submitterBanned?: boolean; // L1 deterministic gate input (FR-1002)
   submitterAmlFlagged?: boolean; // L1 sanctions gate — usually resolved from the DB
@@ -89,6 +90,7 @@ export class ModerationService {
       data: {
         kind: content.kind,
         ideaId: opts.ideaId ?? null,
+        campaignId: opts.campaignId ?? null,
         submittedById: opts.submittedById ?? null,
         decision: routing.decision,
         maxRisk: Math.round(maxRisk * 1e4) / 1e4,

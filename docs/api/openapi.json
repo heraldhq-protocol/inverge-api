@@ -822,6 +822,9 @@
       },
       "CapabilityFlagsDto": {
         "properties": {
+          "commentOnIdeas": {
+            "type": "boolean"
+          },
           "createIdeas": {
             "type": "boolean"
           },
@@ -843,6 +846,9 @@
           "submitCampaigns": {
             "type": "boolean"
           },
+          "submitSurveyResponses": {
+            "type": "boolean"
+          },
           "supportIdeas": {
             "type": "boolean"
           }
@@ -851,6 +857,8 @@
           "createIdeas",
           "supportIdeas",
           "prePledge",
+          "commentOnIdeas",
+          "submitSurveyResponses",
           "purchaseBoosts",
           "submitCampaigns",
           "reviewCampaigns",
@@ -868,6 +876,9 @@
             },
             "type": "array"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
           "fundsEligible": {
             "type": "boolean"
           },
@@ -876,6 +887,7 @@
           }
         },
         "required": [
+          "emailVerified",
           "identityVerified",
           "fundsEligible",
           "blockers"
@@ -958,6 +970,17 @@
         },
         "required": [
           "type"
+        ],
+        "type": "object"
+      },
+      "CreateCampaignCommentDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
         ],
         "type": "object"
       },
@@ -1896,8 +1919,18 @@
             "nullable": true,
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "emailVerifiedAt": {
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "type": "string"
+          },
+          "requiresEmailVerification": {
+            "type": "boolean"
           },
           "requiresOnboarding": {
             "type": "boolean"
@@ -1913,9 +1946,12 @@
         "required": [
           "id",
           "email",
+          "emailVerified",
+          "emailVerifiedAt",
           "role",
           "creator",
-          "requiresOnboarding"
+          "requiresOnboarding",
+          "requiresEmailVerification"
         ],
         "type": "object"
       },
@@ -2049,6 +2085,43 @@
           "hasMore",
           "total",
           "totalKind"
+        ],
+        "type": "object"
+      },
+      "PlatformSummaryDto": {
+        "properties": {
+          "activeCampaigns": {
+            "description": "Campaigns with status ACTIVE.",
+            "example": 12,
+            "type": "number"
+          },
+          "asOf": {
+            "description": "When the counters were read. The response may be served from a 60 s cache.",
+            "example": "2026-10-26T09:30:00.000Z",
+            "type": "string"
+          },
+          "completedCampaigns": {
+            "description": "Campaigns with status COMPLETED.",
+            "example": 34,
+            "type": "number"
+          },
+          "publishedIdeas": {
+            "description": "Ideas a visitor can find through GET /ideas: published (VALIDATING or THRESHOLD_MET) and discoverable (DISCOVERABLE or FEATURED).",
+            "example": 128,
+            "type": "number"
+          },
+          "totalCampaigns": {
+            "description": "Campaigns in any public state (ACTIVE, FUNDED, FAILED, COMPLETED). Drafts, review and rejected rows are excluded.",
+            "example": 58,
+            "type": "number"
+          }
+        },
+        "required": [
+          "asOf",
+          "publishedIdeas",
+          "activeCampaigns",
+          "completedCampaigns",
+          "totalCampaigns"
         ],
         "type": "object"
       },
@@ -2388,11 +2461,19 @@
             "nullable": true,
             "type": "object"
           },
+          "requiresEmailVerification": {
+            "type": "boolean"
+          },
           "requiresOnboarding": {
             "type": "boolean"
           },
           "sessionToken": {
             "description": "One-hour HS256 session token. The web BFF stores it in an HttpOnly cookie and never returns it to the browser.",
+            "type": "string"
+          },
+          "suggestedEmail": {
+            "description": "Provider-supplied address that is not proven. Prefill only; never stored.",
+            "nullable": true,
             "type": "string"
           },
           "user": {
@@ -2402,8 +2483,10 @@
         "required": [
           "sessionToken",
           "user",
+          "suggestedEmail",
           "creator",
-          "requiresOnboarding"
+          "requiresOnboarding",
+          "requiresEmailVerification"
         ],
         "type": "object"
       },
@@ -2413,13 +2496,30 @@
             "nullable": true,
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "emailVerifiedAt": {
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "ADMIN"
+            ],
             "type": "string"
           }
         },
         "required": [
           "id",
-          "email"
+          "email",
+          "emailVerified",
+          "emailVerifiedAt",
+          "role"
         ],
         "type": "object"
       },
@@ -2761,6 +2861,7 @@
       "UpdateCreatorProfileDto": {
         "properties": {
           "avatarUrl": {
+            "description": "Uploaded asset reference (`/api/media/<id>`) or an https image URL; send an empty string to clear.",
             "type": "string"
           },
           "bio": {
@@ -2776,7 +2877,7 @@
             "type": "array"
           },
           "location": {
-            "description": "Public location, e.g. “Lagos, Nigeria”.",
+            "description": "Public location shown on the creator profile.",
             "type": "string"
           },
           "username": {
@@ -4925,6 +5026,7 @@
     },
     "/api/v1/campaigns/{id}": {
       "get": {
+        "description": "A campaign is publicly readable in ACTIVE, FUNDED, FAILED or COMPLETED. A draft, in-review or rejected campaign resolves only for its creator; every other caller receives 404.",
         "operationId": "CampaignsController_get",
         "parameters": [
           {
@@ -4951,7 +5053,7 @@
             "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
-        "summary": "Get campaign details by ID",
+        "summary": "Get a public campaign by id or source-idea slug",
         "tags": [
           "campaigns"
         ]
@@ -5200,6 +5302,155 @@
         "summary": "Start or resume the FR-311 application-fee charge for a draft",
         "tags": [
           "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/comments": {
+      "get": {
+        "description": "Readable for a publicly accessible campaign only. Draft, in-review and rejected campaigns return 404.",
+        "operationId": "CampaignCommentsController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page. Omitting it starts at page one.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "List the public discussion thread for a campaign",
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "CampaignCommentsController_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCampaignCommentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Post a comment on a public campaign",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/comments/{commentId}": {
+      "delete": {
+        "operationId": "CampaignCommentsController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete your own comment (or one on your campaign)",
+        "tags": [
+          "comments"
         ]
       }
     },
@@ -6789,6 +7040,44 @@
         ]
       }
     },
+    "/api/v1/ideas/{id}/engagement": {
+      "get": {
+        "operationId": "IdeasController_engagement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
     "/api/v1/ideas/{id}/insights": {
       "get": {
         "operationId": "InsightsController_get",
@@ -7139,6 +7428,42 @@
     "/api/v1/ideas/{id}/survey/responses": {
       "delete": {
         "operationId": "SurveyController_withdraw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "survey"
+        ]
+      },
+      "get": {
+        "operationId": "SurveyController_listResponses",
         "parameters": [
           {
             "in": "path",
@@ -8039,6 +8364,45 @@
         ]
       }
     },
+    "/api/v1/me/pre-pledges": {
+      "get": {
+        "operationId": "MePrePledgesController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the signed-in user’s non-binding pre-pledges",
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
     "/api/v1/me/settings": {
       "get": {
         "description": "Profile, email state, feed scope, notification preferences, verification summary, wallet link and recent support requests. Private provider references are never included.",
@@ -8449,7 +8813,7 @@
     },
     "/api/v1/platform/escrow": {
       "get": {
-        "operationId": "PlatformEscrowController_getEscrowStats",
+        "operationId": "PlatformController_getEscrowStats",
         "parameters": [],
         "responses": {
           "200": {
@@ -8467,6 +8831,39 @@
           }
         },
         "summary": "Get aggregate platform escrow figures (FR-801)",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/api/v1/platform/summary": {
+      "get": {
+        "description": "Counts only: published ideas a visitor can discover, plus active, completed and total public campaigns. No escrow balance, funding total or per-user data is returned. Cached for 60 s; read `asOf` for freshness.",
+        "operationId": "PlatformController_getSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformSummaryDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Get public platform counters",
         "tags": [
           "platform"
         ]

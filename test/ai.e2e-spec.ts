@@ -29,7 +29,7 @@ describe('AI assistant routes (e2e)', () => {
     const res = await http()
       .post('/api/v1/auth/session')
       .send({
-        accessToken: `stub:${PREFIX}-${name}:${PREFIX}-${name}@e2e.test`,
+        accessToken: `stub:${PREFIX}-${name}:${PREFIX}-${name}@e2e.test#verified`,
       })
       .expect(201);
     return { token: res.body.sessionToken as string, id: res.body.user.id as string };
