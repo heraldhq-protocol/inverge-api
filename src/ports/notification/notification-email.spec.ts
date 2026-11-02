@@ -21,6 +21,28 @@ describe('notificationEmailTemplate', () => {
     });
   });
 
+  it('maps a pre-pledge campaign conversion and drops unknown data', () => {
+    const mapping = notificationEmailTemplate(
+      message('IDEA_CONVERTED_TO_CAMPAIGN', {
+        campaignId: 'c1',
+        campaignTitle: 'Solar cold chain',
+        firstName: 'Amara',
+        fundingGoal: '$5,000.00',
+        ideaTitle: 'Cold chain',
+        secret: 'do-not-render',
+      }),
+    );
+
+    expect(mapping.templateId).toBe('IDEA_CONVERTED_TO_CAMPAIGN');
+    expect(mapping.variables).toEqual({
+      campaignId: 'c1',
+      campaignTitle: 'Solar cold chain',
+      firstName: 'Amara',
+      fundingGoal: '$5,000.00',
+      ideaTitle: 'Cold chain',
+    });
+  });
+
   it('maps milestone aliases to one template', () => {
     expect(
       notificationEmailTemplate(message('MILESTONE_OBJECTION_WINDOW', { milestoneTitle: 'M1' }))

@@ -4,11 +4,15 @@ import { JOB_NAMES } from '../../common/queue/job-names';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailDeliveryService } from '../email/email-delivery.service';
-import { NotificationsService } from './notifications.service';
+import {
+  NotificationsService,
+  notificationPreferenceFor,
+} from './notifications.service';
 
 type FakePrisma = {
   notification: {
     create: jest.Mock;
+    createManyAndReturn: jest.Mock;
     findUnique: jest.Mock;
     findFirst: jest.Mock;
     findMany: jest.Mock;
@@ -22,6 +26,7 @@ function fakePrisma(): FakePrisma {
   return {
     notification: {
       create: jest.fn(),
+      createManyAndReturn: jest.fn(),
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -370,5 +375,114 @@ describe('NotificationsService read model', () => {
       where: { userId: 'u1', readAt: null },
       data: { readAt: expect.any(Date) },
     });
+  });
+});
+
+describe('notification preference categories', () => {
+  it('uses the email-updates preference for a pre-pledge campaign notice', () => {
+    expect(notificationPreferenceFor('IDEA_CONVERTED_TO_CAMPAIGN')).toBe(
+      'notifyEmailUpdates',
+    );
+  });
+
+  it('keeps creator updates separate from campaign lifecycle mail', () => {
+    expect(notificationPreferenceFor('IDEA_COMMENT')).toBe('notifyCreatorUpdates');
+    expect(notificationPreferenceFor('CAMPAIGN_FUNDED')).toBe('notifyCreatorUpdates');
+    expect(notificationPreferenceFor('KYC_APPROVED')).toBeNull();
+  });
+});
+
+describe('NotificationsService durable fan-out', () => {
+  it('creates rows inside the caller transaction with stable dedupe keys', async () => {
+    const prisma = fakePrisma();
+    const delivery = fakeDelivery();
+    const queue = fakeQueue();
+    const tx = {
+      notification: {
+        createManyAndReturn: jest
+          .fn()
+          .mockResolvedValue([{ id: 'n1' }, { id: 'n2' }]),
+      },
+    };
+
+    const ids = await service(prisma, delivery, queue).createManyInTransaction(
+      tx as never,
+      [
+        {
+          data: { campaignId: 'c1' },
+          dedupeKey: 'IDEA_CONVERTED_TO_CAMPAIGN:c1:u1',
+          template: 'IDEA_CONVERTED_TO_CAMPAIGN',
+          toUserId: 'u1',
+        },
+        {
+          data: { campaignId: 'c1' },
+          dedupeKey: 'IDEA_CONVERTED_TO_CAMPAIGN:c1:u2',
+          template: 'IDEA_CONVERTED_TO_CAMPAIGN',
+          toUserId: 'u2',
+        },
+      ],
+    );
+
+    expect(tx.notification.createManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            dedupeKey: 'IDEA_CONVERTED_TO_CAMPAIGN:c1:u1',
+            template: 'IDEA_CONVERTED_TO_CAMPAIGN',
+            userId: 'u1',
+          }),
+          expect.objectContaining({
+            dedupeKey: 'IDEA_CONVERTED_TO_CAMPAIGN:c1:u2',
+            userId: 'u2',
+          }),
+        ],
+        skipDuplicates: true,
+      }),
+    );
+    expect(ids).toEqual(['n1', 'n2']);
+  });
+
+  it('reschedules only undelivered rows with attempts left', async () => {
+    const prisma = fakePrisma();
+    const delivery = fakeDelivery();
+    const queue = fakeQueue();
+    prisma.notification.findMany.mockResolvedValue([{ id: 'n2' }]);
+
+    const count = await service(prisma, delivery, queue).sweepUndispatched(25);
+
+    expect(count).toBe(1);
+    expect(prisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          dispatchAttempts: { lt: 5 },
+          dispatchedAt: null,
+          suppressedAt: null,
+        }),
+        take: 25,
+      }),
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      JOB_NAMES.notificationDispatch,
+      { notificationId: 'n2' },
+      expect.objectContaining({ jobId: 'notification:n2' }),
+    );
+  });
+});
+
+describe('NotificationsService.dispatchPersisted isolation', () => {
+  it('does not let one recipient failure stop the others', async () => {
+    const prisma = fakePrisma();
+    const delivery = fakeDelivery();
+    const svc = service(prisma, delivery);
+    const dispatch = jest
+      .spyOn(svc, 'dispatch')
+      .mockRejectedValueOnce(new Error('vendor down'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(svc.dispatchPersisted(['n1', 'n2'])).resolves.toBeUndefined();
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenNthCalledWith(1, 'n1');
+    expect(dispatch).toHaveBeenNthCalledWith(2, 'n2');
   });
 });

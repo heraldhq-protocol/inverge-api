@@ -7,7 +7,6 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { Idea } from '../../generated/prisma/client';
 import { MetricsService } from '../metrics/metrics.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { ConvertIdeaDto } from './dto/convert-idea.dto';
 
@@ -16,7 +15,6 @@ export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly params: PlatformParamsService,
-    private readonly notifications: NotificationsService,
     private readonly metrics: MetricsService,
   ) {}
 
@@ -80,7 +78,8 @@ export class SyncService {
       return created;
     });
 
-    await this.notifyWaitlist(idea.id, campaign.id); // FR-205
+    // FR-205 is delivered on publication by CampaignDraftsService: the carried
+    // waitlist must not receive a launch email while the campaign is still a draft.
     return campaign;
   }
 
@@ -123,19 +122,4 @@ export class SyncService {
     );
   }
 
-  private async notifyWaitlist(ideaId: string, campaignId: string) {
-    const supporters = await this.prisma.ideaSignal.findMany({
-      where: { ideaId, type: 'SUPPORT' },
-      select: { userId: true },
-    });
-    for (const s of supporters) {
-      await this.notifications.notify({
-        toUserId: s.userId,
-        template: 'WAITLIST_CONVERSION',
-        data: { ideaId, campaignId },
-        // A retried sync must not send the same conversion alert twice.
-        dedupeKey: `WAITLIST_CONVERSION:${campaignId}:${s.userId}`,
-      });
-    }
-  }
 }

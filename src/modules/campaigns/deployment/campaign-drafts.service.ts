@@ -13,6 +13,11 @@ import { CacheService } from '../../../common/cache/cache.service';
 import { Env } from '../../../config/env.validation';
 import { PlatformParamsService } from '../../platform-params/platform-params.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { PrePledgeCampaignNotifier } from '../pre-pledge-campaign.notifier';
+import {
+  IDEA_CONVERTED_TO_CAMPAIGN,
+  type IdeaConvertedToCampaignEvent,
+} from '../pre-pledge-conversion.event';
 import {
   APPLICATION_FEE_CURRENCY,
   APPLICATION_FEE_FALLBACK_AMOUNT,
@@ -66,6 +71,8 @@ export class CampaignDraftsService {
     private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly notifications?: NotificationsService,
+    @Optional()
+    private readonly prePledgeNotifications?: PrePledgeCampaignNotifier,
   ) {}
 
   async create(userId: string, dto: CreateCampaignDraftDto) {
@@ -279,10 +286,28 @@ export class CampaignDraftsService {
         });
       }
 
-      return tx.campaign.findUniqueOrThrow({
+      const published = await tx.campaign.findUniqueOrThrow({
         where: { id: campaignId },
         include: DRAFT_INCLUDE,
       });
+
+      // The notification rows are written in this transaction. A published
+      // campaign therefore always has its durable recipient rows; a failure here
+      // rolls the publication back instead of leaving the two out of sync.
+      const event: IdeaConvertedToCampaignEvent = {
+        campaignId,
+        creatorId: userId,
+        eventId: `idea-converted:${campaignId}`,
+        ideaId: campaign.ideaId ?? '',
+        occurredAt: now.toISOString(),
+        type: IDEA_CONVERTED_TO_CAMPAIGN,
+      };
+      const notificationIds =
+        campaign.ideaId && this.prePledgeNotifications
+          ? await this.prePledgeNotifications.prepare(tx, event, published)
+          : [];
+
+      return { campaign: published, notificationIds };
     });
 
     this.cache?.bumpEventually('campaigns');
@@ -290,10 +315,15 @@ export class CampaignDraftsService {
     await this.notifications?.notify({
       toUserId: userId,
       template: 'CAMPAIGN_PUBLISHED',
-      data: { campaignId, campaignTitle: result.title },
+      data: { campaignId, campaignTitle: result.campaign.title },
       dedupeKey: `CAMPAIGN_PUBLISHED:${campaignId}`,
     });
-    return this.present(result);
+    // Enqueue after commit and do not await provider work: publication must not
+    // depend on email availability. The persisted rows are also swept later.
+    void this.prePledgeNotifications
+      ?.dispatch(result.notificationIds)
+      .catch(() => undefined);
+    return this.present(result.campaign);
   }
 
   /** Readiness is computed server-side; the browser only renders the verdict. */

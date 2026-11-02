@@ -70,6 +70,62 @@ describe('renderEmailTemplate', () => {
     expect(rendered.subject).toBe('Your Inverge verification code');
   });
 
+  it('renders the converted-idea campaign email with a safe CTA and no fabricated figures', () => {
+    const rendered = renderEmailTemplate(
+      'IDEA_CONVERTED_TO_CAMPAIGN',
+      {
+        campaignId: 'cmp 1',
+        campaignSummary: 'A shared solar cold room for smallholder farmers.',
+        campaignTitle: 'Solar cold storage',
+        firstName: 'Amara',
+        ideaTitle: 'Solar cold storage',
+      },
+      context,
+    );
+
+    expect(rendered.subject).toBe('An idea you supported is now a campaign');
+    expect(rendered.html).toContain('Hi Amara');
+    expect(rendered.html).toContain('https://inverge.test/campaigns/cmp%201');
+    expect(rendered.html).toContain('did not charge you');
+    expect(rendered.text).toContain('did not charge you');
+    expect(rendered.text).not.toContain('Funding goal');
+    expect(rendered.text).not.toContain('Funding deadline');
+  });
+
+  it('renders optional campaign figures and a cover only when provided', () => {
+    const rendered = renderEmailTemplate(
+      'IDEA_CONVERTED_TO_CAMPAIGN',
+      {
+        campaignId: 'cmp1',
+        campaignTitle: 'Solar cold storage',
+        coverImageUrl: '/images/solar.jpg',
+        fundingDeadline: '1 December 2026',
+        fundingGoal: '$5,000.00',
+      },
+      context,
+    );
+
+    expect(rendered.html).toContain('$5,000.00');
+    expect(rendered.html).toContain('1 December 2026');
+    expect(rendered.html).toContain('https://inverge.test/images/solar.jpg');
+    expect(rendered.html).toContain('Hi there');
+  });
+
+  it('drops an invalid campaign cover instead of rendering a broken image', () => {
+    const rendered = renderEmailTemplate(
+      'IDEA_CONVERTED_TO_CAMPAIGN',
+      {
+        campaignId: 'cmp1',
+        campaignTitle: 'Solar cold storage',
+        coverImageUrl: 'javascript:alert(1)',
+      },
+      context,
+    );
+
+    expect(rendered.html).not.toContain('javascript:');
+    expect(rendered.html).not.toContain('<img src="javascript');
+  });
+
   it('refuses marketing mail without an unsubscribe link or sender address', () => {
     expect(() =>
       renderEmailTemplate(
@@ -116,6 +172,18 @@ describe('renderEmailTemplate', () => {
     const rendered = renderEmailTemplate('EMAIL_VERIFIED', {}, context);
     expect(rendered.html).toContain('You received this because');
     expect(rendered.text).toContain('You received this because');
+  });
+
+  it('keeps preference and unsubscribe paths instead of truncating them to the origin', () => {
+    const rendered = renderEmailTemplate('IDEA_CONVERTED_TO_CAMPAIGN', {
+      campaignId: 'cmp1',
+      campaignTitle: 'Solar cold storage',
+    }, context);
+
+    expect(rendered.html).toContain('https://inverge.test/d/settings');
+    expect(rendered.text).toContain('https://inverge.test/d/settings');
+    expect(rendered.html).toContain('https://inverge.test/privacy');
+    expect(rendered.text).toContain('Privacy: https://inverge.test/privacy');
   });
 });
 
