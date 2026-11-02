@@ -1,7 +1,7 @@
 import type { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.validation';
 
-export type StubProvider = 'wallet' | 'KYC' | 'flat-fee';
+export type StubProvider = 'wallet' | 'KYC' | 'flat-fee' | 'email';
 
 /**
  * Defence in depth for the offline adapters (audit F-01). `validateEnv` already

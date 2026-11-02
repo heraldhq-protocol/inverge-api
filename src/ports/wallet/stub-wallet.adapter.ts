@@ -35,12 +35,24 @@ export class StubWalletAdapter implements EmbeddedWalletPort {
     // The `did:privy:` prefix is preserved so existing dev users and e2e
     // fixtures keep resolving; the column itself is provider-neutral.
     const providerUserId = `did:privy:${identity}`;
+    // Test fixture suffix: `stub:<id>:<email>#verified` simulates a provider
+    // that signed an `email_verified: true` claim. Without it the address is a
+    // suggestion and the account still needs OTP.
+    const verified = suppliedEmail?.endsWith('#verified') === true;
+    const candidate = verified
+      ? suppliedEmail!.slice(0, -'#verified'.length)
+      : suppliedEmail;
     const email =
-      suppliedEmail && suppliedEmail.includes('@')
-        ? suppliedEmail
+      candidate && candidate.includes('@')
+        ? candidate
         : `stub-${digest}@user.inverge`;
 
-    return { providerUserId, email, wallet: this.derive(providerUserId) };
+    return {
+      providerUserId,
+      email,
+      emailVerified: verified,
+      wallet: this.derive(providerUserId),
+    };
   }
 
   async getEmbeddedWallet(providerUserId: string): Promise<EmbeddedWalletInfo> {

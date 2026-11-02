@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { Env } from '../../config/env.validation';
 import { KeyValueStore } from './key-value-store';
+import { redisOptionsFromUrl } from './redis-connection';
 
 /**
  * Redis connection for cache and rate-limit state (architecture plan §7.1–7.2).
@@ -39,17 +40,17 @@ export class RedisService implements KeyValueStore, OnModuleDestroy {
       return;
     }
 
-    const url = new URL(config.get('REDIS_URL', { infer: true }));
     this.client = new Redis({
-      host: url.hostname,
-      port: Number(url.port || 6379),
-      password: url.password || undefined,
-      username: url.username || undefined,
+      ...redisOptionsFromUrl(config.get('REDIS_URL', { infer: true })),
       lazyConnect: true,
       enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
-      connectTimeout: 500,
-      commandTimeout: 250,
+      // A managed Redis is usually a TLS hop away, not a unix socket: the
+      // handshake costs ~1.5 s and a round trip a few hundred ms. The old
+      // 500/250 ms budgets rejected every connection and every command, so
+      // Redis read as down even once TLS was configured correctly.
+      connectTimeout: 5_000,
+      commandTimeout: 1_000,
       // Reconnect in the background but never block a request on it.
       retryStrategy: (attempt) => Math.min(attempt * 250, 5_000),
     });

@@ -25,7 +25,10 @@ export class UpdateCreatorProfileDto {
   @IsOptional()
   @IsString()
   @Length(3, 30)
-  @Matches(/^[a-zA-Z0-9_-]+$/, { message: 'Username can only contain letters, numbers, underscores, and dashes' })
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message:
+      'Username can only contain letters, numbers, underscores, and dashes',
+  })
   username?: string;
 
   @ApiPropertyOptional()
@@ -44,6 +47,14 @@ export class UpdateCreatorProfileDto {
   @IsString()
   @Length(0, 280)
   bio?: string;
+
+  @ApiPropertyOptional({
+    description: 'Public location, e.g. “Lagos, Nigeria”.',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  location?: string;
 
   @ApiPropertyOptional({ type: [CreatorLinkDto] })
   @IsOptional()

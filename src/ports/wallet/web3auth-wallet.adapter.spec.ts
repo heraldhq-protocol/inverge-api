@@ -93,7 +93,18 @@ describe('Web3AuthWalletAdapter', () => {
     await expect(adapter.verifyAccessToken(token)).resolves.toEqual({
       providerUserId: 'google|user-1',
       email: 'amara@example.com',
+      emailVerified: false,
       wallet: undefined,
+    });
+  });
+
+  it('trusts only a signed email_verified claim', async () => {
+    const { adapter, privateKey } = await setup();
+    const token = await mint(privateKey, { email_verified: true });
+
+    await expect(adapter.verifyAccessToken(token)).resolves.toMatchObject({
+      email: 'amara@example.com',
+      emailVerified: true,
     });
   });
 

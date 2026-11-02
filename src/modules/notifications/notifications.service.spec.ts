@@ -3,7 +3,7 @@ import { Queue } from 'bullmq';
 import { JOB_NAMES } from '../../common/queue/job-names';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationPort } from '../../ports/notification/notification.port';
+import { EmailDeliveryService } from '../email/email-delivery.service';
 import { NotificationsService } from './notifications.service';
 
 type FakePrisma = {
@@ -32,8 +32,51 @@ function fakePrisma(): FakePrisma {
   };
 }
 
-function fakePort(): NotificationPort & { send: jest.Mock } {
-  return { send: jest.fn().mockResolvedValue(undefined) };
+function fakeDelivery() {
+  return {
+    sendNotification: jest.fn().mockResolvedValue({
+      status: 'sent',
+      deliveryId: 'd1',
+      providerMessageId: 'p1',
+    }),
+  } as unknown as jest.Mocked<EmailDeliveryService>;
+}
+
+type NotificationRow = {
+  id: string;
+  userId: string;
+  template: string;
+  data: Record<string, unknown>;
+  dispatchedAt: Date | null;
+  suppressedAt: Date | null;
+  user: {
+    email: string | null;
+    emailVerifiedAt: Date | null;
+    notifyEmailUpdates: boolean;
+    notifyMilestoneReviews: boolean;
+    notifyCreatorUpdates: boolean;
+    notifyDiscoveryDigest: boolean;
+  };
+};
+
+function notificationRow(overrides: Partial<NotificationRow> = {}): NotificationRow {
+  return {
+    id: 'n1',
+    userId: 'u1',
+    template: 'CAMPAIGN_FUNDED',
+    data: { campaignId: 'c1' },
+    dispatchedAt: null,
+    suppressedAt: null,
+    user: {
+      email: 'amara@example.test',
+      emailVerifiedAt: new Date('2026-10-01T00:00:00.000Z'),
+      notifyEmailUpdates: true,
+      notifyMilestoneReviews: true,
+      notifyCreatorUpdates: true,
+      notifyDiscoveryDigest: false,
+    },
+    ...overrides,
+  };
 }
 
 function fakeQueue(): Queue & { add: jest.Mock } {
@@ -49,12 +92,12 @@ function fakeQueue(): Queue & { add: jest.Mock } {
 
 function service(
   prisma: FakePrisma,
-  port: NotificationPort,
+  delivery: EmailDeliveryService,
   queue?: Queue,
 ): NotificationsService {
   return new NotificationsService(
     prisma as unknown as PrismaService,
-    port,
+    delivery,
     queue,
   );
 }
@@ -62,11 +105,11 @@ function service(
 describe('NotificationsService.notify', () => {
   it('persists the row before enqueueing delivery', async () => {
     const prisma = fakePrisma();
-    const port = fakePort();
+    const delivery = fakeDelivery();
     const queue = fakeQueue();
     prisma.notification.create.mockResolvedValue({ id: 'n1' });
 
-    await service(prisma, port, queue).notify({
+    await service(prisma, delivery, queue).notify({
       toUserId: 'u1',
       template: 'WAITLIST_CONVERSION',
       data: { ideaId: 'i1' },
@@ -91,7 +134,7 @@ describe('NotificationsService.notify', () => {
       }),
     );
     // The worker owns delivery; the request path does not call the vendor.
-    expect(port.send).not.toHaveBeenCalled();
+    expect(delivery.sendNotification).not.toHaveBeenCalled();
   });
 
   it('treats a duplicate dedupe key as a no-op', async () => {
@@ -105,7 +148,7 @@ describe('NotificationsService.notify', () => {
     );
 
     await expect(
-      service(prisma, fakePort(), queue).notify({
+      service(prisma, fakeDelivery(), queue).notify({
         toUserId: 'u1',
         template: 'WAITLIST_CONVERSION',
         data: {},
@@ -118,25 +161,23 @@ describe('NotificationsService.notify', () => {
 
   it('dispatches inline when the queue is not registered', async () => {
     const prisma = fakePrisma();
-    const port = fakePort();
+    const delivery = fakeDelivery();
     prisma.notification.create.mockResolvedValue({ id: 'n1' });
-    prisma.notification.findUnique.mockResolvedValue({
-      id: 'n1',
-      userId: 'u1',
-      template: 'CAMPAIGN_FUNDED',
-      data: { campaignId: 'c1' },
-      dispatchedAt: null,
-    });
+    prisma.notification.findUnique.mockResolvedValue(
+      notificationRow({ template: 'CAMPAIGN_FUNDED', data: { campaignId: 'c1' } }),
+    );
     prisma.notification.update.mockResolvedValue({});
 
-    await service(prisma, port).notify({
+    await service(prisma, delivery).notify({
       toUserId: 'u1',
       template: 'CAMPAIGN_FUNDED',
       data: { campaignId: 'c1' },
     });
 
-    expect(port.send).toHaveBeenCalledWith({
+    expect(delivery.sendNotification).toHaveBeenCalledWith({
       toUserId: 'u1',
+      toEmail: 'amara@example.test',
+      notificationId: 'n1',
       template: 'CAMPAIGN_FUNDED',
       data: { campaignId: 'c1' },
     });
@@ -150,20 +191,16 @@ describe('NotificationsService.notify', () => {
 
   it('does not fail the domain action when inline delivery fails', async () => {
     const prisma = fakePrisma();
-    const port = fakePort();
+    const delivery = fakeDelivery();
     prisma.notification.create.mockResolvedValue({ id: 'n1' });
-    prisma.notification.findUnique.mockResolvedValue({
-      id: 'n1',
-      userId: 'u1',
-      template: 'WAITLIST_CONVERSION',
-      data: {},
-      dispatchedAt: null,
-    });
+    prisma.notification.findUnique.mockResolvedValue(
+      notificationRow({ template: 'WAITLIST_CONVERSION', data: {} }),
+    );
     prisma.notification.update.mockResolvedValue({});
-    port.send.mockRejectedValue(new Error('vendor down'));
+    delivery.sendNotification.mockRejectedValue(new Error('vendor down'));
 
     await expect(
-      service(prisma, port).notify({
+      service(prisma, delivery).notify({
         toUserId: 'u1',
         template: 'WAITLIST_CONVERSION',
         data: {},
@@ -181,32 +218,28 @@ describe('NotificationsService.notify', () => {
 describe('NotificationsService.dispatch', () => {
   it('is a no-op for a missing or already dispatched row', async () => {
     const prisma = fakePrisma();
-    const port = fakePort();
+    const delivery = fakeDelivery();
     prisma.notification.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ dispatchedAt: new Date() });
 
-    await service(prisma, port).dispatch('missing');
-    await service(prisma, port).dispatch('sent');
+    await service(prisma, delivery).dispatch('missing');
+    await service(prisma, delivery).dispatch('sent');
 
-    expect(port.send).not.toHaveBeenCalled();
+    expect(delivery.sendNotification).not.toHaveBeenCalled();
     expect(prisma.notification.update).not.toHaveBeenCalled();
   });
 
   it('records the failure and rethrows so the worker retries', async () => {
     const prisma = fakePrisma();
-    const port = fakePort();
-    prisma.notification.findUnique.mockResolvedValue({
-      id: 'n1',
-      userId: 'u1',
-      template: 'WAITLIST_CONVERSION',
-      data: {},
-      dispatchedAt: null,
-    });
+    const delivery = fakeDelivery();
+    prisma.notification.findUnique.mockResolvedValue(
+      notificationRow({ template: 'WAITLIST_CONVERSION', data: {} }),
+    );
     prisma.notification.update.mockResolvedValue({});
-    port.send.mockRejectedValue(new Error('timeout'));
+    delivery.sendNotification.mockRejectedValue(new Error('timeout'));
 
-    await expect(service(prisma, port).dispatch('n1')).rejects.toThrow(
+    await expect(service(prisma, delivery).dispatch('n1')).rejects.toThrow(
       'timeout',
     );
     expect(prisma.notification.update).toHaveBeenCalledWith({
@@ -216,6 +249,39 @@ describe('NotificationsService.dispatch', () => {
         lastDispatchError: 'timeout',
       },
     });
+  });
+
+  it('suppresses delivery when the template preference is off', async () => {
+    const prisma = fakePrisma();
+    const delivery = fakeDelivery();
+    const row = notificationRow({ template: 'CAMPAIGN_FUNDED' });
+    row.user.notifyCreatorUpdates = false;
+    prisma.notification.findUnique.mockResolvedValue(row);
+    prisma.notification.update.mockResolvedValue({});
+
+    await service(prisma, delivery).dispatch('n1');
+
+    expect(delivery.sendNotification).not.toHaveBeenCalled();
+    expect(prisma.notification.update).toHaveBeenCalledWith({
+      where: { id: 'n1' },
+      data: { suppressedAt: expect.any(Date) },
+    });
+  });
+
+  it('suppresses delivery when the account email is unverified', async () => {
+    const prisma = fakePrisma();
+    const delivery = fakeDelivery();
+    const row = notificationRow({ template: 'WAITLIST_CONVERSION' });
+    row.user.emailVerifiedAt = null;
+    prisma.notification.findUnique.mockResolvedValue(row);
+    prisma.notification.update.mockResolvedValue({});
+
+    await service(prisma, delivery).dispatch('n1');
+
+    expect(delivery.sendNotification).not.toHaveBeenCalled();
+    expect(prisma.notification.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { suppressedAt: expect.any(Date) } }),
+    );
   });
 });
 
@@ -240,7 +306,7 @@ describe('NotificationsService read model', () => {
       },
     ]);
 
-    const result = await service(prisma, fakePort()).list('u1', {
+    const result = await service(prisma, fakeDelivery()).list('u1', {
       limit: 1,
       unreadOnly: true,
     });
@@ -275,7 +341,7 @@ describe('NotificationsService read model', () => {
     prisma.notification.findFirst.mockResolvedValue(null);
 
     await expect(
-      service(prisma, fakePort()).markRead('u1', 'n2'),
+      service(prisma, fakeDelivery()).markRead('u1', 'n2'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.notification.update).not.toHaveBeenCalled();
   });
@@ -288,7 +354,7 @@ describe('NotificationsService read model', () => {
     });
 
     await expect(
-      service(prisma, fakePort()).markRead('u1', 'n1'),
+      service(prisma, fakeDelivery()).markRead('u1', 'n1'),
     ).resolves.toEqual({ id: 'n1', readAt: '2026-10-22T12:00:00.000Z' });
     expect(prisma.notification.update).not.toHaveBeenCalled();
   });
@@ -298,7 +364,7 @@ describe('NotificationsService read model', () => {
     prisma.notification.updateMany.mockResolvedValue({ count: 3 });
 
     await expect(
-      service(prisma, fakePort()).markAllRead('u1'),
+      service(prisma, fakeDelivery()).markAllRead('u1'),
     ).resolves.toEqual({ updated: 3 });
     expect(prisma.notification.updateMany).toHaveBeenCalledWith({
       where: { userId: 'u1', readAt: null },

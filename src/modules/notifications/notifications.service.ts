@@ -1,15 +1,12 @@
-import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
 import { logQueueErrors } from '../../common/queue/queue-errors';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  NOTIFICATION_PORT,
-  NotificationMessage,
-  NotificationPort,
-} from '../../ports/notification/notification.port';
+import { NotificationMessage } from '../../ports/notification/notification.port';
+import { EmailDeliveryService } from '../email/email-delivery.service';
 import {
   asCursorDate,
   buildPage,
@@ -35,6 +32,32 @@ function asData(value: Prisma.JsonValue | null): Record<string, unknown> | null 
     : null;
 }
 
+interface NotificationPreferences {
+  notifyEmailUpdates: boolean;
+  notifyMilestoneReviews: boolean;
+  notifyCreatorUpdates: boolean;
+  notifyDiscoveryDigest: boolean;
+}
+
+/**
+ * Which setting governs a template. Mandatory account, security, campaign and
+ * compliance mail returns `null`: it is not a marketing preference and cannot be
+ * turned off, only suppressed by an unverified address or a provider block.
+ */
+export function notificationPreferenceFor(
+  template: string,
+): keyof NotificationPreferences | null {
+  if (template.startsWith('MILESTONE_')) return 'notifyMilestoneReviews';
+  if (template === 'DISCOVERY_DIGEST') return 'notifyDiscoveryDigest';
+  if (template.startsWith('KYC_') || template.startsWith('AML_')) {
+    return null;
+  }
+  if (template.startsWith('IDEA_') || template.startsWith('CAMPAIGN_')) {
+    return 'notifyCreatorUpdates';
+  }
+  return 'notifyEmailUpdates';
+}
+
 /**
  * Persist-then-dispatch notifications (FR-702).
  *
@@ -50,7 +73,7 @@ export class NotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(NOTIFICATION_PORT) private readonly port: NotificationPort,
+    private readonly emailDelivery: EmailDeliveryService,
     @Optional()
     @InjectQueue(JOBS_QUEUE)
     private readonly queue?: Queue,
@@ -138,16 +161,69 @@ export class NotificationsService {
         template: true,
         data: true,
         dispatchedAt: true,
+        suppressedAt: true,
+        user: {
+          select: {
+            email: true,
+            emailVerifiedAt: true,
+            notifyEmailUpdates: true,
+            notifyMilestoneReviews: true,
+            notifyCreatorUpdates: true,
+            notifyDiscoveryDigest: true,
+          },
+        },
       },
     });
-    if (!notification || notification.dispatchedAt) return;
+    if (!notification || notification.dispatchedAt || notification.suppressedAt) {
+      return;
+    }
+
+    const preference = notificationPreferenceFor(notification.template);
+    if (
+      !notification.user.email ||
+      notification.user.emailVerifiedAt === null ||
+      (preference !== null && !notification.user[preference])
+    ) {
+      await this.prisma.notification.update({
+        where: { id: notification.id },
+        data: { suppressedAt: new Date() },
+      });
+      return;
+    }
 
     try {
-      await this.port.send({
+      const outcome = await this.emailDelivery.sendNotification({
         toUserId: notification.userId,
+        toEmail: notification.user.email,
+        notificationId: notification.id,
         template: notification.template,
         data: asData(notification.data) ?? {},
       });
+
+      if (outcome.status === 'suppressed') {
+        await this.prisma.notification.update({
+          where: { id: notification.id },
+          data: {
+            dispatchAttempts: { increment: 1 },
+            lastDispatchError: outcome.reason.slice(0, 500),
+            suppressedAt: new Date(),
+          },
+        });
+        return;
+      }
+      if (outcome.status === 'exhausted') {
+        // The delivery ledger already holds the provider error. Do not claim a
+        // send and do not spin the queue on a permanently failed row.
+        await this.prisma.notification.update({
+          where: { id: notification.id },
+          data: {
+            dispatchAttempts: { increment: 1 },
+            lastDispatchError: 'EMAIL_RETRIES_EXHAUSTED',
+          },
+        });
+        return;
+      }
+
       await this.prisma.notification.update({
         where: { id: notification.id },
         data: {

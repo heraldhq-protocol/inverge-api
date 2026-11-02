@@ -30,9 +30,14 @@ accounts or filters.
    exponential-backoff attempts.
 3. If the enqueue fails, dispatch inline once. If queues are disabled entirely
    (tests, a web-only replica), dispatch inline.
-4. The worker calls the notification port and records `dispatchedAt`,
-   `dispatchAttempts` and `lastDispatchError`. A vendor failure throws so BullMQ
-   retries; an already-dispatched row is a no-op.
+4. `dispatch` resolves the recipient, checks the template's preference (KYC/AML
+   templates are mandatory and have no preference) and calls
+   `EmailDeliveryService.sendNotification()`. The email ledger claims a unique
+   row, applies suppression, renders the shared template and calls the provider.
+5. The worker records `dispatchedAt`, `dispatchAttempts` and
+   `lastDispatchError`. A provider failure throws so BullMQ retries; an
+   already-dispatched row is a no-op. `dispatchedAt` means the provider accepted
+   the message — delivery itself is confirmed only by the Resend webhook.
 
 The domain action never fails because a notification could not be written or
 delivered: the failure is logged, and the durable row (when it exists) can be
@@ -46,35 +51,48 @@ replayed campaign conversion does not alert a supporter twice.
 `data` is template input only (`ideaId`, `campaignId`, numeric/string fields).
 Do not put emails, wallet addresses, KYC payloads, free text or provider
 responses in it. The row has no IP address, user agent or session identifier.
+`src/ports/notification/notification-email.ts` copies only declared keys into the
+template and falls back to generic copy for an unknown template.
 
 ## Configuration
 
 | Variable | Effect |
 |---|---|
 | `QUEUE_ENABLED` | `false` registers no Worker; the service dispatches inline. |
-| `NOTIFICATION_PROVIDER` | `stub` (offline log) or `herald` (reference adapter). |
+| `EMAIL_PROVIDER` | `stub` (local outbox) or `resend` (verification + notifications). |
+| `RESEND_API_KEY` | Required when `EMAIL_PROVIDER=resend`. |
+| `EMAIL_FROM` | Verified Resend sender address. |
+| `RESEND_WEBHOOK_SECRET` | Authenticates delivered/bounced/complaint callbacks; required in production. |
+| `PUBLIC_APP_URL` / `PUBLIC_API_URL` | CTA and unsubscribe origins. |
 | `REDIS_URL` | Queue transport. The queue is optional infrastructure. |
+
+Outbound delivery is skipped when the account email is unverified or the
+template's Settings preference is off. The in-app row is still persisted and
+`suppressedAt` records why no email was sent. Hard bounces, complaints and
+marketing opt-outs are additional suppression in `EmailSuppression`; see
+`docs/email-system.md`.
 
 ## Verification
 
-- `src/modules/notifications/notifications.service.spec.ts` — persist before
+- `src/modules/notifications/notifications.service.spec.ts` - persist before
   enqueue, duplicate dedupe key, inline fallback, vendor failure recorded without
   failing the caller, worker retry contract, pagination, ownership `404`,
   idempotent read, read-all.
-- `test/notifications.e2e-spec.ts` — session required, caller isolation, newest
+- `src/modules/email/` - template rendering, consent, suppression, delivery
+  idempotency and Resend webhook signature/status tests.
+- `test/notifications.e2e-spec.ts` - session required, caller isolation, newest
   first, unread filter and badge, invalid boolean, cursor walk, idempotent
   single read, cross-user `404`, read-all.
-
-The e2e suite needs the `20261022234500_notifications` migration applied. It passed
-6/6 against a disposable PostgreSQL 16 container with every committed migration
-applied; the local Windows developer database still needs `prisma migrate deploy`
-after its service is started.
+- `test/email-system.e2e-spec.ts` - verification lifecycle, cooldown/expiry,
+  editorial consent and unsubscribe, signed webhooks, replay and hard bounce.
 
 ## Deferred
 
-- No delivery receipt from Herald; `dispatchedAt` means the adapter call
-  resolved, not that an email or wallet push was read.
-- No user preference or unsubscribe model yet. Muting belongs with the read model
-  once the web exposes settings.
+- No open/click tracking is consumed. `email.opened` and `email.clicked` are
+  acknowledged and ignored.
+- Preferences cover email delivery only. In-app notifications are always
+  recorded so the product surface stays complete.
 - No admin trigger to replay a failed notification; a failed job is retained in
-  BullMQ (`removeOnFail: 1000`).
+  BullMQ (`removeOnFail: 1000`) and the email ledger keeps its bounded error.
+- Payment, contribution, milestone and refund notifications remain blocked until
+  their domain events exist; see `docs/email-system.md`.

@@ -174,6 +174,14 @@ describe('Campaign review (e2e)', () => {
     expect(res.body.submittedAt).toBeTruthy();
     queuedCampaignId = campaignId;
 
+    const submittedMail = await prisma.notification.findFirst({
+      where: { userId: creatorId, template: 'CAMPAIGN_SUBMITTED' },
+      orderBy: { createdAt: 'desc' },
+      select: { dedupeKey: true, data: true },
+    });
+    expect(submittedMail?.dedupeKey).toContain(campaignId);
+    expect(submittedMail?.data).toMatchObject({ campaignId });
+
     const secondCampaign = await createCampaign();
     const reuse = await submit(secondCampaign, feeId);
     expect(reuse.status).toBeGreaterThanOrEqual(400);
@@ -265,6 +273,13 @@ describe('Campaign review (e2e)', () => {
       changed.body.items.some((item: { id: string }) => item.id === campaignId),
     ).toBe(true);
 
+    const changesMail = await prisma.notification.findFirst({
+      where: { userId: creatorId, template: 'CAMPAIGN_CHANGES_REQUESTED' },
+      orderBy: { createdAt: 'desc' },
+      select: { dedupeKey: true },
+    });
+    expect(changesMail?.dedupeKey).toContain('CAMPAIGN_REVIEW:');
+
     const resubmitted = await submit(campaignId).expect(201);
     expect(resubmitted.body.reviewStatus).toBe('IN_REVIEW');
     expect(resubmitted.body.reviewReason).toBeNull();
@@ -300,6 +315,13 @@ describe('Campaign review (e2e)', () => {
       toStatus: 'APPROVED',
       actorId: adminId,
     });
+
+    const approvedMail = await prisma.notification.findFirst({
+      where: { userId: creatorId, template: 'CAMPAIGN_APPROVED' },
+      orderBy: { createdAt: 'desc' },
+      select: { dedupeKey: true },
+    });
+    expect(approvedMail?.dedupeKey).toContain('CAMPAIGN_REVIEW:');
   });
 
   it('blocks approval when KYC is revoked after submission', async () => {

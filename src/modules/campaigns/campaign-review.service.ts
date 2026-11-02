@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { evaluateCampaignReviewGates } from './campaign-review.preconditions';
 import { VerificationService } from '../kyc/verification.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   nextReviewStatus,
   normalizeReviewReason,
@@ -62,6 +63,7 @@ export class CampaignReviewService {
     private readonly prisma: PrismaService,
     private readonly verification: VerificationService,
     @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async listQueue(query: ListCampaignReviewQueueDto) {
@@ -257,6 +259,7 @@ export class CampaignReviewService {
         where: { id: campaignId },
         select: {
           id: true,
+          title: true,
           reviewStatus: true,
           creatorId: true,
           applicationFeeChargeId: true,
@@ -361,6 +364,8 @@ export class CampaignReviewService {
 
       return {
         id: campaignId,
+        creatorId: campaign.creatorId,
+        campaignTitle: campaign.title,
         reviewStatus: toStatus,
         reviewedAt: now,
         reviewedById: actorId,
@@ -370,6 +375,17 @@ export class CampaignReviewService {
     });
     this.cache?.bumpEventually('campaigns');
     this.cache?.bumpEventually('campaign');
+    // A reviewer decision is a confirmed domain event. `REQUEST_CHANGES` is not
+    // a rejection, so it gets its own template rather than "declined" copy.
+    await this.notifications?.notify({
+      toUserId: result.creatorId,
+      template:
+        result.reviewStatus === 'APPROVED'
+          ? 'CAMPAIGN_APPROVED'
+          : 'CAMPAIGN_CHANGES_REQUESTED',
+      data: { campaignId: result.id, campaignTitle: result.campaignTitle },
+      dedupeKey: `CAMPAIGN_REVIEW:${result.event.id}`,
+    });
     return result;
   }
 }

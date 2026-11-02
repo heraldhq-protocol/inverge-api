@@ -208,6 +208,67 @@
         ],
         "type": "object"
       },
+      "AiAccessDto": {
+        "properties": {
+          "canRequest": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "nullable": true,
+            "type": "object"
+          },
+          "feature": {
+            "type": "string"
+          },
+          "premium": {
+            "type": "boolean"
+          },
+          "requestStatus": {
+            "enum": [
+              "NONE",
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED",
+              "NOT_REQUIRED"
+            ],
+            "type": "string"
+          },
+          "requestsPerDay": {
+            "type": "number"
+          },
+          "requestsToday": {
+            "type": "number"
+          },
+          "source": {
+            "nullable": true,
+            "type": "object"
+          },
+          "tokensPerDay": {
+            "type": "number"
+          },
+          "tokensToday": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature",
+          "configured",
+          "premium",
+          "requestStatus",
+          "canRequest",
+          "source",
+          "expiresAt",
+          "requestsToday",
+          "tokensToday",
+          "requestsPerDay",
+          "tokensPerDay"
+        ],
+        "type": "object"
+      },
       "AmlScreenDto": {
         "properties": {
           "dateOfBirth": {
@@ -715,6 +776,7 @@
             "type": "string"
           },
           "poster": {
+            "description": "Poster image: an uploaded `/api/media/<id>` reference or an https URL.",
             "type": "string"
           },
           "src": {
@@ -880,6 +942,25 @@
         ],
         "type": "object"
       },
+      "CreateAccountRequestDto": {
+        "properties": {
+          "note": {
+            "description": "Optional context for the support team. Never used for authentication.",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "DATA_EXPORT",
+              "ACCOUNT_DELETION"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
       "CreateCampaignDraftDto": {
         "properties": {
           "beneficiaries": {
@@ -1021,11 +1102,12 @@
       "CreateIdeaDto": {
         "properties": {
           "askAmount": {
-            "description": "Intended ask amount (USD)",
+            "default": 0,
+            "description": "Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.",
             "type": "number"
           },
           "askBreakdown": {
-            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "description": "Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.",
             "type": "object"
           },
           "category": {
@@ -1060,7 +1142,7 @@
             "type": "string"
           },
           "coverImageUrl": {
-            "description": "Cover image URL for image-led cards",
+            "description": "Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be the caller's own verified asset) or an https URL to an externally hosted image.",
             "type": "string"
           },
           "creatorPrePledgeTarget": {
@@ -1069,6 +1151,10 @@
           },
           "currentAlternative": {
             "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "demoUrl": {
+            "description": "Demo video as a YouTube or Vimeo page URL (for example `https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the host is recognised. Videos are never uploaded to this service.",
             "type": "string"
           },
           "problem": {
@@ -1091,7 +1177,7 @@
             "type": "string"
           },
           "roadmapSteps": {
-            "description": "At least two dated roadmap steps",
+            "description": "Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.",
             "items": {
               "$ref": "#/components/schemas/RoadmapStepDto"
             },
@@ -1126,10 +1212,51 @@
           "solution",
           "targetUser",
           "currentAlternative",
-          "askBreakdown",
-          "roadmapSteps",
-          "category",
-          "askAmount"
+          "category"
+        ],
+        "type": "object"
+      },
+      "CreateMediaUploadDto": {
+        "properties": {
+          "altText": {
+            "description": "Alt text. Required for meaningful images.",
+            "type": "string"
+          },
+          "byteSize": {
+            "description": "Declared byte length.",
+            "example": 482311,
+            "type": "number"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "category": {
+            "default": "OTHER",
+            "enum": [
+              "AVATAR",
+              "IDEA_COVER",
+              "IDEA_GALLERY",
+              "CAMPAIGN_COVER",
+              "CAMPAIGN_HERO",
+              "CAMPAIGN_STORY",
+              "REWARD",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "contentType": {
+            "description": "Declared MIME type. Must be in the configured image allowlist; the bytes are verified at completion.",
+            "example": "image/jpeg",
+            "type": "string"
+          },
+          "displayName": {
+            "description": "Original filename, for display only.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentType",
+          "byteSize"
         ],
         "type": "object"
       },
@@ -1151,6 +1278,25 @@
       },
       "CreatorLinkDto": {
         "properties": {},
+        "type": "object"
+      },
+      "DecideAiAccessDto": {
+        "properties": {
+          "expiresAt": {
+            "description": "ISO instant; omit for no expiry",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
         "type": "object"
       },
       "DecideAnalyticsAccessRequestDto": {
@@ -1441,6 +1587,147 @@
           "conversion",
           "premium",
           "generatedAt"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "improve",
+              "shorten",
+              "expand",
+              "critique"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "description": "Revision of the text the client sent, echoed back for staleness checks",
+            "type": "string"
+          },
+          "clientRequestId": {
+            "description": "Client-generated idempotency/telemetry id",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Other draft fields for coherence. Unknown keys and non-strings are ignored server-side.",
+            "type": "object"
+          },
+          "target": {
+            "description": "The draft field the proposal is for",
+            "enum": [
+              "title",
+              "summary",
+              "problem",
+              "targetUser",
+              "currentAlternative",
+              "solution",
+              "risks"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "Current text of the target field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "target",
+          "text",
+          "baseRevision",
+          "clientRequestId"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantMetaDto": {
+        "properties": {
+          "inputTokens": {
+            "type": "number"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string"
+          },
+          "outputTokens": {
+            "type": "number"
+          },
+          "promptVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "promptVersion",
+          "inputTokens",
+          "outputTokens",
+          "latencyMs"
+        ],
+        "type": "object"
+      },
+      "IdeaAssistantResultDto": {
+        "properties": {
+          "action": {
+            "enum": [
+              "improve",
+              "shorten",
+              "expand",
+              "critique"
+            ],
+            "type": "string"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "baseRevision": {
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/IdeaAssistantMetaDto"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proposal": {
+            "nullable": true,
+            "type": "object"
+          },
+          "suggestionId": {
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "title",
+              "summary",
+              "problem",
+              "targetUser",
+              "currentAlternative",
+              "solution",
+              "risks"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggestionId",
+          "action",
+          "target",
+          "baseRevision",
+          "proposal",
+          "notes",
+          "assumptions",
+          "meta"
         ],
         "type": "object"
       },
@@ -1798,6 +2085,51 @@
         ],
         "type": "object"
       },
+      "PreviewEditorialDto": {
+        "properties": {
+          "templateId": {
+            "enum": [
+              "VERIFICATION_CODE",
+              "EMAIL_VERIFIED",
+              "EMAIL_CHANGED",
+              "IDEA_PUBLISHED",
+              "IDEA_FEEDBACK",
+              "IDEA_COMMENT",
+              "WAITLIST_IDEA_LIVE",
+              "ACCOUNT_UPDATE",
+              "CAMPAIGN_SUBMITTED",
+              "CAMPAIGN_APPROVED",
+              "CAMPAIGN_CHANGES_REQUESTED",
+              "CAMPAIGN_PUBLISHED",
+              "CAMPAIGN_FUNDED",
+              "MILESTONE_REVIEW",
+              "KYC_APPROVED",
+              "KYC_DECLINED",
+              "KYC_ACTION_REQUIRED",
+              "AML_REVIEW",
+              "AML_CLEAR",
+              "EDIT_INVERGE",
+              "IDEA_OF_THE_WEEK",
+              "EDITORS_PICK",
+              "CREATOR_OF_THE_WEEK",
+              "UPCOMING_COMPETITIONS",
+              "CAMPAIGN_HIGHLIGHTS",
+              "PLATFORM_ANNOUNCEMENT"
+            ],
+            "type": "string"
+          },
+          "variables": {
+            "additionalProperties": true,
+            "description": "Template variables. No recipient data is accepted or rendered.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "templateId",
+          "variables"
+        ],
+        "type": "object"
+      },
       "PublicCreatorDto": {
         "properties": {
           "avatarUrl": {
@@ -1830,6 +2162,10 @@
             },
             "type": "array"
           },
+          "location": {
+            "nullable": true,
+            "type": "string"
+          },
           "memberSince": {
             "description": "ISO 8601 timestamp",
             "type": "string"
@@ -1852,6 +2188,7 @@
           "displayName",
           "avatarUrl",
           "bio",
+          "location",
           "links",
           "tier",
           "completedCampaigns",
@@ -1903,6 +2240,18 @@
         "required": [
           "index",
           "reason"
+        ],
+        "type": "object"
+      },
+      "RequestEmailCodeDto": {
+        "properties": {
+          "email": {
+            "description": "Address to verify. Normalised server-side.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
         ],
         "type": "object"
       },
@@ -1967,6 +2316,64 @@
         "required": [
           "kind",
           "text"
+        ],
+        "type": "object"
+      },
+      "SendEditorialDto": {
+        "properties": {
+          "issueId": {
+            "description": "Stable issue id. Repeating a send with the same id and recipient is a no-op.",
+            "type": "string"
+          },
+          "templateId": {
+            "enum": [
+              "VERIFICATION_CODE",
+              "EMAIL_VERIFIED",
+              "EMAIL_CHANGED",
+              "IDEA_PUBLISHED",
+              "IDEA_FEEDBACK",
+              "IDEA_COMMENT",
+              "WAITLIST_IDEA_LIVE",
+              "ACCOUNT_UPDATE",
+              "CAMPAIGN_SUBMITTED",
+              "CAMPAIGN_APPROVED",
+              "CAMPAIGN_CHANGES_REQUESTED",
+              "CAMPAIGN_PUBLISHED",
+              "CAMPAIGN_FUNDED",
+              "MILESTONE_REVIEW",
+              "KYC_APPROVED",
+              "KYC_DECLINED",
+              "KYC_ACTION_REQUIRED",
+              "AML_REVIEW",
+              "AML_CLEAR",
+              "EDIT_INVERGE",
+              "IDEA_OF_THE_WEEK",
+              "EDITORS_PICK",
+              "CREATOR_OF_THE_WEEK",
+              "UPCOMING_COMPETITIONS",
+              "CAMPAIGN_HIGHLIGHTS",
+              "PLATFORM_ANNOUNCEMENT"
+            ],
+            "type": "string"
+          },
+          "userIds": {
+            "description": "Explicit account ids. Every recipient must hold an active editorial subscription.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "variables": {
+            "additionalProperties": true,
+            "description": "Template variables. No recipient data is accepted or rendered.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "templateId",
+          "variables",
+          "issueId",
+          "userIds"
         ],
         "type": "object"
       },
@@ -2368,20 +2775,95 @@
             },
             "type": "array"
           },
+          "location": {
+            "description": "Public location, e.g. “Lagos, Nigeria”.",
+            "type": "string"
+          },
           "username": {
             "type": "string"
           }
         },
         "type": "object"
       },
+      "UpdateEditorialPreferenceDto": {
+        "properties": {
+          "subscribed": {
+            "description": "Explicit editorial consent. Registration never sets this.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subscribed"
+        ],
+        "type": "object"
+      },
+      "UpdateFeedSettingsDto": {
+        "properties": {
+          "region": {
+            "description": "Broad region preference. Global means no region tilt; it never filters ideas out.",
+            "enum": [
+              "global",
+              "africa",
+              "west-africa"
+            ],
+            "type": "string"
+          },
+          "showPromoted": {
+            "description": "When false, paid placements are not injected into this account’s feed.",
+            "type": "boolean"
+          },
+          "topics": {
+            "description": "Idea categories to prioritise in the discovery feed.",
+            "items": {
+              "enum": [
+                "technology",
+                "software",
+                "fintech",
+                "agritech",
+                "healthtech",
+                "cleantech",
+                "edtech",
+                "logistics",
+                "e-commerce",
+                "web3",
+                "art",
+                "comics",
+                "crafts",
+                "dance",
+                "design",
+                "fashion",
+                "film",
+                "food",
+                "games",
+                "journalism",
+                "music",
+                "photography",
+                "publishing",
+                "theater",
+                "community",
+                "other"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "topics",
+          "region",
+          "showPromoted"
+        ],
+        "type": "object"
+      },
       "UpdateIdeaDto": {
         "properties": {
           "askAmount": {
-            "description": "Intended ask amount (USD)",
+            "default": 0,
+            "description": "Intended ask amount (USD). Omit or send 0 for a feedback-only idea; a positive amount makes the roadmap mandatory at publish.",
             "type": "number"
           },
           "askBreakdown": {
-            "description": "Indicative breakdown of what the ask will buy (object or array)",
+            "description": "Indicative breakdown of what the ask will buy. Omit for a feedback-only idea.",
             "type": "object"
           },
           "category": {
@@ -2416,7 +2898,7 @@
             "type": "string"
           },
           "coverImageUrl": {
-            "description": "Cover image URL for image-led cards",
+            "description": "Cover image. Either an uploaded asset reference (`/api/media/<id>`, which must be the caller's own verified asset) or an https URL to an externally hosted image.",
             "type": "string"
           },
           "creatorPrePledgeTarget": {
@@ -2425,6 +2907,10 @@
           },
           "currentAlternative": {
             "description": "What the user does today and why it falls short",
+            "type": "string"
+          },
+          "demoUrl": {
+            "description": "Demo video as a YouTube or Vimeo page URL (for example `https://www.youtube.com/watch?v=<id>`). It is embedded in the idea hero when the host is recognised. Videos are never uploaded to this service.",
             "type": "string"
           },
           "problem": {
@@ -2447,7 +2933,7 @@
             "type": "string"
           },
           "roadmapSteps": {
-            "description": "At least two dated roadmap steps",
+            "description": "Dated roadmap steps. A funding ask (askAmount > 0) requires at least two complete steps at publish.",
             "items": {
               "$ref": "#/components/schemas/RoadmapStepDto"
             },
@@ -2522,6 +3008,43 @@
             "type": "array"
           }
         },
+        "type": "object"
+      },
+      "UpdateMediaAssetDto": {
+        "properties": {
+          "altText": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateNotificationSettingsDto": {
+        "properties": {
+          "creatorUpdates": {
+            "type": "boolean"
+          },
+          "discoveryDigest": {
+            "type": "boolean"
+          },
+          "emailUpdates": {
+            "type": "boolean"
+          },
+          "milestoneReviews": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "emailUpdates",
+          "milestoneReviews",
+          "creatorUpdates",
+          "discoveryDigest"
+        ],
         "type": "object"
       },
       "UpdateParamsDto": {
@@ -2638,6 +3161,23 @@
         },
         "type": "object"
       },
+      "VerifyEmailCodeDto": {
+        "properties": {
+          "code": {
+            "description": "Six-digit numeric code.",
+            "type": "string"
+          },
+          "email": {
+            "description": "The address the code was sent to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ],
+        "type": "object"
+      },
       "WireAnalyticsEventDto": {
         "properties": {
           "amountMinor": {
@@ -2748,6 +3288,109 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/admin/ai/access-requests": {
+      "get": {
+        "operationId": "AdminAiController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List AI assistant access requests",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/ai/access-requests/{id}": {
+      "patch": {
+        "operationId": "AdminAiController_decide",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAiAccessDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve or reject an AI assistant request",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/analytics/access-requests": {
       "get": {
         "operationId": "AdminAnalyticsController_listAccessRequests",
@@ -3168,6 +3811,118 @@
         ]
       }
     },
+    "/api/v1/admin/email/editorial/preview": {
+      "post": {
+        "description": "Returns subject, HTML and plain text. It does not create a delivery row and cannot send.",
+        "operationId": "AdminEmailController_preview",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewEditorialDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Render an editorial template without sending",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/email/editorial/send": {
+      "post": {
+        "description": "Refused unless EDITORIAL_EMAILS_ENABLED=true. Recipients without an active subscription or a verified address are suppressed, never silently subscribed.",
+        "operationId": "AdminEmailController_send",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEditorialDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send one editorial issue to explicit accounts",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/email/templates": {
+      "get": {
+        "operationId": "AdminEmailController_templates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List email templates, category and required variables",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/moderation/screen": {
       "post": {
         "operationId": "ModerationController_screen",
@@ -3453,6 +4208,80 @@
         ]
       }
     },
+    "/api/v1/ai/access": {
+      "get": {
+        "operationId": "AiController_access",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "AI assistant entitlement and today's usage",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/access-requests": {
+      "post": {
+        "operationId": "AiController_requestAccess",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAccessDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request AI assistant access",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
     "/api/v1/analytics/access": {
       "get": {
         "operationId": "AnalyticsAccessController_getAccess",
@@ -3636,6 +4465,176 @@
           }
         },
         "summary": "Get public creator profile and their projects/backed ideas",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email": {
+      "get": {
+        "operationId": "EmailVerificationController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Current email address and verification state",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/pending": {
+      "delete": {
+        "operationId": "EmailVerificationController_cancelPending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancel a pending email change",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/request": {
+      "post": {
+        "operationId": "EmailVerificationController_request",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestEmailCodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request a six-digit code for an address",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/resend": {
+      "post": {
+        "operationId": "EmailVerificationController_resend",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resend the active verification code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/verify": {
+      "post": {
+        "operationId": "EmailVerificationController_verify",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailCodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify a six-digit email code",
         "tags": [
           "auth"
         ]
@@ -4507,6 +5506,72 @@
         ]
       }
     },
+    "/api/v1/email/preferences/{token}": {
+      "get": {
+        "operationId": "EmailPreferencesController_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "tags": [
+          "email"
+        ]
+      }
+    },
+    "/api/v1/email/preferences/{token}/unsubscribe": {
+      "post": {
+        "operationId": "EmailPreferencesController_unsubscribe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "tags": [
+          "email"
+        ]
+      }
+    },
     "/api/v1/feed": {
       "get": {
         "operationId": "FeedController_getFeed",
@@ -4768,6 +5833,62 @@
         ],
         "tags": [
           "ideas"
+        ]
+      }
+    },
+    "/api/v1/ideas/{ideaId}/assistant": {
+      "post": {
+        "operationId": "IdeaAssistantController_suggest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ideaId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdeaAssistantDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeaAssistantResultDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suggest a revision for one idea draft field",
+        "tags": [
+          "ai"
         ]
       }
     },
@@ -6622,6 +7743,77 @@
         ]
       }
     },
+    "/api/v1/me/email/editorial": {
+      "put": {
+        "description": "Explicit consent only. It does not change transactional account mail and registration never subscribes an account.",
+        "operationId": "MeEmailController_setEditorial",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEditorialPreferenceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Opt in to or out of editorial email",
+        "tags": [
+          "email"
+        ]
+      }
+    },
+    "/api/v1/me/email/preferences": {
+      "get": {
+        "operationId": "MeEmailController_state",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Editorial consent and unsubscribe link state",
+        "tags": [
+          "email"
+        ]
+      }
+    },
     "/api/v1/me/interests": {
       "put": {
         "operationId": "FeedController_updateInterests",
@@ -6844,6 +8036,414 @@
         "summary": "Mark one notification read (idempotent)",
         "tags": [
           "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/settings": {
+      "get": {
+        "description": "Profile, email state, feed scope, notification preferences, verification summary, wallet link and recent support requests. Private provider references are never included.",
+        "operationId": "SettingsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Account settings aggregate",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/feed": {
+      "put": {
+        "operationId": "SettingsController_updateFeed",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update discovery-feed topics, region and promoted placement",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/notifications": {
+      "put": {
+        "operationId": "SettingsController_updateNotifications",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update email notification delivery preferences",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/me/settings/requests": {
+      "post": {
+        "description": "Creates an auditable support request. Deletion is reviewed before any data is removed because of retention and campaign obligations.",
+        "operationId": "SettingsController_createRequest",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request a data export or account deletion review",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/media/config": {
+      "get": {
+        "operationId": "MediaController_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Media capabilities and limits for this deployment",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads": {
+      "post": {
+        "operationId": "MediaController_createUpload",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaUploadDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start an image upload and get a signed upload target",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads/{id}/complete": {
+      "post": {
+        "operationId": "MediaController_complete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify the uploaded bytes and make the asset attachable",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/{id}": {
+      "delete": {
+        "operationId": "MediaController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an asset. Idempotent.",
+        "tags": [
+          "media"
+        ]
+      },
+      "get": {
+        "operationId": "MediaController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Media metadata for its owner or published content",
+        "tags": [
+          "media"
+        ]
+      },
+      "patch": {
+        "operationId": "MediaController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMediaAssetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update display metadata (alt text, caption, name)",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/{id}/url": {
+      "get": {
+        "operationId": "MediaController_readUrl",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "A short-lived read URL, when the viewer may see this media",
+        "tags": [
+          "media"
         ]
       }
     },
@@ -7526,6 +9126,56 @@
         ],
         "tags": [
           "wallets"
+        ]
+      }
+    },
+    "/api/v1/webhooks/didit": {
+      "post": {
+        "operationId": "DiditWebhookController_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Receive and verify Didit webhook events",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/v1/webhooks/resend": {
+      "post": {
+        "operationId": "EmailWebhookController_handle",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Receive and verify Resend delivery webhooks",
+        "tags": [
+          "webhooks"
         ]
       }
     }

@@ -17,6 +17,7 @@ import type { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Env } from '../../config/env.validation';
 import { WebhookInboxService } from '../../common/webhooks/webhook-inbox.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   KYC_PROVIDER_PORT,
   KycDecision,
@@ -46,8 +47,10 @@ import {
   riskFromDecision,
 } from './verification-facts';
 import {
+  isActiveState,
   isTerminalState,
   mapDiditStatus,
+  resumeState,
   riskFromAml,
   type RiskState,
   type VerificationState,
@@ -64,6 +67,8 @@ import { JOBS_QUEUE, JOB_NAMES } from '../../common/queue/job-names';
 import type { VerificationWebhookJob } from './verification.queue';
 import {
   VerificationRepository,
+  type ApplyDecisionInput,
+  type ApplyDecisionResult,
   type SubjectSnapshot,
 } from './verification.repository';
 
@@ -211,6 +216,7 @@ export class VerificationService {
     @Optional()
     @InjectQueue(JOBS_QUEUE)
     private readonly webhookQueue?: Queue<VerificationWebhookJob>,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ── reads ──────────────────────────────────────────────────────────────────────
@@ -303,21 +309,27 @@ export class VerificationService {
       type: subject,
       userId,
     });
-    if (attempts >= this.maxAttemptsPerDay()) {
+    const activeCase =
+      subject === 'BUSINESS' ? snapshot.businessCase : snapshot.individualCase;
+    const localState = activeCase?.status as VerificationState | undefined;
+    const canResumeExisting =
+      localState !== undefined &&
+      (isActiveState(localState) ||
+        // A previous interrupted start may have cancelled the local case while
+        // Didit still holds the unfinished session. Allow the provider's
+        // idempotent create to return it instead of blocking on the retry cap.
+        localState === 'CANCELLED' ||
+        localState === 'ERROR');
+
+    // Resuming the provider's unfinished session is not a new attempt. Enforce the
+    // daily cap only when this could create a genuinely new session.
+    if (!canResumeExisting && attempts >= this.maxAttemptsPerDay()) {
       throw new ConflictException({
         blockers: ['Too many verification attempts today. Contact support if you are stuck.'],
         code: 'VERIFICATION_ATTEMPTS_EXCEEDED' satisfies VerificationErrorCode,
         message: 'Verification attempt limit reached',
       });
     }
-
-    // A repeated click replaces an unfinished session rather than stacking cases. The
-    // replaced case stays auditable and is never treated as an approval.
-    await this.repo.cancelActiveCases({
-      reason: 'REPLACED_BY_NEW_SESSION',
-      type: subject,
-      userId,
-    });
 
     const business = subject === 'BUSINESS' ? snapshot.business : null;
     let started;
@@ -348,17 +360,69 @@ export class VerificationService {
       });
     }
 
-    const created = await this.repo.createCase({
-      attempt: attempts + 1,
-      businessId: business?.id ?? null,
-      provider: this.providerName(),
-      providerSessionId: started.providerRef,
-      providerStatus: 'Not Started',
-      providerWorkflowId: started.workflowId ?? null,
-      purpose,
+    // Didit is idempotent for an unfinished (workflow_id, vendor_data) pair: it
+    // returns the existing session, including a reviewer-requested resubmission.
+    // Reuse that case instead of colliding with the unique providerSessionId.
+    const existing = await this.repo.findCaseByProviderSession(
+      started.providerRef,
+    );
+    if (existing) {
+      return this.resumeExistingCase({
+        accountType: snapshot.user.accountType,
+        existing,
+        purpose,
+        started,
+        subject,
+        userId,
+      });
+    }
+
+    // A genuinely new provider session replaces any other unfinished case for this
+    // subject. The replaced case stays auditable and is never treated as an approval.
+    await this.repo.cancelActiveCases({
+      reason: 'REPLACED_BY_NEW_SESSION',
       type: subject,
       userId,
     });
+
+    let created;
+    try {
+      created = await this.repo.createCase({
+        attempt: attempts + 1,
+        businessId: business?.id ?? null,
+        provider: this.providerName(),
+        providerSessionId: started.providerRef,
+        providerStatus: started.providerStatus ?? 'Not Started',
+        providerWorkflowId: started.workflowId ?? null,
+        purpose,
+        type: subject,
+        userId,
+      });
+    } catch (error) {
+      // Two concurrent clicks can both reach the create call. The unique session id
+      // makes one lose; resolve that loser to the same case rather than surfacing a
+      // generic "value already in use" conflict.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raced = await this.repo.findCaseByProviderSession(
+          started.providerRef,
+        );
+        if (raced) {
+          return this.resumeExistingCase({
+            accountType: snapshot.user.accountType,
+            existing: raced,
+            purpose,
+            started,
+            subject,
+            userId,
+          });
+        }
+      }
+      throw error;
+    }
+
     await this.repo.appendCaseEvent({
       caseId: created.id,
       eventReference: null,
@@ -377,6 +441,61 @@ export class VerificationService {
       purpose,
       subject,
       verificationUrl: started.verificationUrl,
+    };
+  }
+
+  private async resumeExistingCase(input: {
+    accountType: 'INDIVIDUAL' | 'BUSINESS';
+    existing: VerificationCase;
+    purpose: KycPurpose;
+    started: {
+      providerRef: string;
+      providerStatus?: string | null;
+      verificationUrl: string;
+    };
+    subject: VerificationType;
+    userId: string;
+  }) {
+    if (
+      input.existing.userId !== input.userId ||
+      input.existing.type !== input.subject
+    ) {
+      throw new ConflictException({
+        code: 'VERIFICATION_SESSION_CONFLICT',
+        message:
+          'The provider returned a session that belongs to another verification. Contact support.',
+      });
+    }
+
+    const mapped = input.started.providerStatus
+      ? mapDiditStatus(input.started.providerStatus)
+      : null;
+    const providerState = mapped?.providerStatus ? mapped.state : null;
+    const currentState = input.existing.status as VerificationState;
+    const nextState = providerState
+      ? resumeState(currentState, providerState)
+      : currentState;
+
+    const resumed = await this.repo.reactivateCase({
+      caseId: input.existing.id,
+      nextReconcileAt: isTerminalState(nextState)
+        ? null
+        : this.nextReconcileAt(),
+      occurredAt: new Date(),
+      providerStatus:
+        input.started.providerStatus ?? input.existing.providerStatus,
+      state: nextState,
+    });
+
+    return {
+      accountType: input.accountType,
+      attempt: resumed.attempt,
+      caseId: resumed.id,
+      providerRef: input.started.providerRef,
+      purpose: resumed.purpose ?? input.purpose,
+      resumed: true,
+      subject: input.subject,
+      verificationUrl: input.started.verificationUrl,
     };
   }
 
@@ -621,7 +740,7 @@ export class VerificationService {
       await this.recordWebhookFailure(job, 'DECISION_UNAVAILABLE');
       return { applied: false, reason: 'decision_unavailable' };
     }
-    return this.repo.applyDecision({
+    return this.applyAndNotify({
       amlSummary: null,
       caseId: job.caseId,
       decisionCode: 'DECISION_FETCH_FAILED',
@@ -667,7 +786,7 @@ export class VerificationService {
       throw new BadRequestException('Webhook payload could not be authenticated');
     }
     const mapped = stateFromWebhook(event);
-    return this.repo.applyDecision({
+    return this.applyAndNotify({
       amlSummary: null,
       caseId,
       decisionCode: 'DECISION_FETCH_FAILED',
@@ -695,9 +814,8 @@ export class VerificationService {
       occurredAt: Date;
       source: 'PROVIDER_WEBHOOK' | 'RECONCILIATION';
     },
-  ) {
-    const mapped = stateFromDecision(decision);
-    return this.repo.applyDecision({
+  ) {    const mapped = stateFromDecision(decision);
+    return this.applyAndNotify({
       amlSummary: decision.amlSummary,
       caseId,
       decisionCode: decision.warningCodes[0] ?? null,
@@ -712,6 +830,73 @@ export class VerificationService {
       source: meta.source,
       state: mapped.state,
     });
+  }
+
+  /**
+   * Applies one provider decision, then emails the account owner after commit.
+   * Notification failure is logged and swallowed: the decision is already
+   * durable and must not be re-applied by a provider retry.
+   */
+  private async applyAndNotify(
+    input: ApplyDecisionInput,
+  ): Promise<ApplyDecisionResult> {
+    const result = await this.repo.applyDecision(input);
+    await this.notifyDecision(result);
+    return result;
+  }
+
+  private async notifyDecision(result: ApplyDecisionResult): Promise<void> {
+    if (!this.notifications || !result.applied || !result.eventId) return;
+    const templates: Array<{ template: string; dedupeKey: string }> = [];
+
+    if (result.status !== result.previousStatus) {
+      const template =
+        result.status === 'APPROVED'
+          ? 'KYC_APPROVED'
+          : result.status === 'DECLINED'
+            ? 'KYC_DECLINED'
+            : result.status === 'AWAITING_USER'
+              ? 'KYC_ACTION_REQUIRED'
+              : null;
+      if (template) {
+        templates.push({
+          dedupeKey: `KYC_STATUS:${result.eventId}:${result.status}`,
+          template,
+        });
+      }
+    }
+
+    if (result.risk !== result.previousRisk) {
+      const template =
+        result.risk === 'CLEAR'
+          ? 'AML_CLEAR'
+          : result.risk === 'REVIEW' || result.risk === 'FLAGGED'
+            ? 'AML_REVIEW'
+            : null;
+      if (template) {
+        templates.push({
+          dedupeKey: `AML_STATUS:${result.eventId}:${result.risk}`,
+          template,
+        });
+      }
+    }
+
+    for (const entry of templates) {
+      try {
+        await this.notifications.notify({
+          data: {},
+          dedupeKey: entry.dedupeKey,
+          template: entry.template,
+          toUserId: result.userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Verification email could not be queued: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
   }
 
   private async resolveCaseForEvent(
@@ -1093,6 +1278,22 @@ export class VerificationService {
       reasonCode: input.reasonCode,
     });
     if (!result) throw new NotFoundException('Verification case not found');
+    if (this.notifications) {
+      try {
+        await this.notifications.notify({
+          data: {},
+          dedupeKey: `AML_REVIEW:${result.eventId}`,
+          template: result.risk === 'CLEAR' ? 'AML_CLEAR' : 'AML_REVIEW',
+          toUserId: result.userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `AML decision email could not be queued: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
     return result;
   }
 

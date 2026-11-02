@@ -155,16 +155,36 @@ import, use it; otherwise add variables one by one. Never upload the file to a p
 | `LOG_HASH_SALT` | generated | |
 | `LOG_FORMAT` | `json` | |
 | `CORS_ORIGINS` | empty | Correct for a web-only deployment |
+| `EMAIL_PROVIDER` | `resend` | Production rejects `stub` |
+| `RESEND_API_KEY` | staging key | Secret; send permission on the verified domain |
+| `EMAIL_FROM` | `no-reply@<verified-domain>` | Must be a verified Resend sender |
+| `EMAIL_FROM_NAME` | `Inverge` | |
+| `RESEND_WEBHOOK_SECRET` | `whsec_...` from the destination | Secret; production boot fails without it |
+| `PUBLIC_APP_URL` | `https://<staging-web>` | https, no localhost |
+| `PUBLIC_API_URL` | `https://<staging-api>` | Unsubscribe links reach the API directly |
+| `EMAIL_CODE_SECRET` | generated | >=32 chars; peppers verification codes |
+| `EMAIL_UNSUBSCRIBE_SECRET` | generated | >=32 chars; rotates every unsubscribe link |
+| `EMAIL_SUPPORT_ADDRESS` | support mailbox | Footer contact |
+| `EMAIL_COMPANY_ADDRESS` | postal address | Required only before editorial sending |
+| `EDITORIAL_EMAILS_ENABLED` | `false` | Leave off until editorial content/cadence are agreed |
+| `EMAIL_DELIVERY_MAX_ATTEMPTS` | `5` | |
+| `EMAIL_DELIVERY_STALE_SECONDS` | `300` | |
 
 > With `KYC_PROVIDER=didit` and `NODE_ENV=production`, the API **will not boot** until all
 > five Didit values are present. Create the three workflows first. This is deliberate
 > fail-closed behaviour (`src/config/env.validation.ts:235-251`).
+>
+> The same applies to email: `EMAIL_PROVIDER=resend` requires `RESEND_API_KEY`,
+> `EMAIL_FROM` and (in production) `RESEND_WEBHOOK_SECRET`, plus public https
+> `PUBLIC_APP_URL` / `PUBLIC_API_URL`, a real `EMAIL_CODE_SECRET` and
+> `EMAIL_UNSUBSCRIBE_SECRET`. See `docs/email-system.md`.
 
 ### 3.3 Payment rail
 
 `FLATFEE_PROVIDER=paystack` with a **test** key (`sk_test_...`) is the staging default.
-`PAYSTACK_WEBHOOK_SECRET` is required because staging runs `NODE_ENV=production`; the API
-refuses to boot without it. If you do not have a test key yet, do not switch staging to
+The API boots even when `PAYSTACK_SECRET_KEY` / `PAYSTACK_WEBHOOK_SECRET` are not set, but the
+rail then fails closed: charges error and every webhook is rejected. Set the secret key before
+testing boost purchases or the campaign application fee. Do not switch staging to
 `FLATFEE_PROVIDER=stub` — production configuration rejects it (F-01). Use a non-production
 environment for offline work.
 
@@ -192,7 +212,7 @@ keypair/programme-id mismatch that blocks that step.
 | `PORT` | Render injects it |
 | `FEE_PAYER_SECRET_KEY` | Declared but unread; `FeePayerService` throws `NotImplemented` |
 | `PRIVY_*` | Legacy adapter; the current web client uses Web3Auth |
-| `HERALD_*` | Notification gateway not selected; stub is deliberate |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_CODE_SECRET` | Required when `EMAIL_PROVIDER=resend`; `stub` is refused in production |
 | `ANTHROPIC_API_KEY` | Only needed if `MODERATION_PROVIDER=ai` |
 | `DIRECT_URL` | Only needed behind a pooler |
 

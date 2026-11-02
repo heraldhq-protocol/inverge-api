@@ -4,6 +4,7 @@ import { envFlag } from '../../config/feature-flags';
 import { JOBS_QUEUE } from '../../common/queue/job-names';
 import { WebhookInboxModule } from '../../common/webhooks/webhook-inbox.module';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ComplianceReviewerGuard } from '../auth/guards/compliance-reviewer.guard';
 import { DiditWebhookController } from './didit-webhook.controller';
 import { KycController } from './kyc.controller';
@@ -22,6 +23,7 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
 @Module({
   imports: [
     AuthModule,
+    NotificationsModule,
     WebhookInboxModule,
     ...(queueEnabled ? [BullModule.registerQueue({ name: JOBS_QUEUE })] : []),
   ],

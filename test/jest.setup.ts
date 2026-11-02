@@ -22,3 +22,19 @@ process.env.ANALYTICS_INGEST_ENABLED = 'true';
 process.env.ANALYTICS_INGEST_SECRET =
   'e2e-analytics-ingest-secret-0000000000000000';
 process.env.ANALYTICS_READ_ENABLED = 'true';
+
+// Deterministic assistant output for e2e; the stub says plainly that no model
+// was called, and production rejects it at boot.
+process.env.AI_PROVIDER = 'stub';
+process.env.AI_DAILY_REQUESTS_PER_USER = '50';
+process.env.AI_DAILY_TOKENS_PER_USER = '1000000';
+
+// Email webhook and unsubscribe signing are deterministic in e2e. The values are
+// test-only; production rejects the development defaults at boot.
+process.env.RESEND_WEBHOOK_SECRET = `whsec_${Buffer.from(
+  'e2e-resend-webhook-secret',
+).toString('base64')}`;
+process.env.EMAIL_UNSUBSCRIBE_SECRET =
+  'e2e-email-unsubscribe-secret-at-least-32-chars';
+process.env.PUBLIC_APP_URL = 'http://localhost:3000';
+process.env.PUBLIC_API_URL = 'http://localhost:3000';

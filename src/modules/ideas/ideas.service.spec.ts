@@ -36,10 +36,23 @@ const mediaMock = () =>
   }) as any;
 const paramsMock = (store: Record<string, number> = { 'idea.maxActivePerCreator': 3 }) =>
   ({ getNumber: jest.fn(async (k: string, fb = 0) => (k in store ? store[k] : fb)) }) as any;
+const notificationsMock = () => ({ notify: jest.fn().mockResolvedValue(undefined) }) as any;
 
-function make(idea: any = null, params = paramsMock(), cache?: any) {
+function make(
+  idea: any = null,
+  params = paramsMock(),
+  cache?: any,
+  notifications = notificationsMock(),
+) {
   const p = prismaMock(idea), m = metricsMock(), q = qualityMock(), mod = moderationMock();
-  return { svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache), p, m, q, mod };
+  return {
+    svc: new IdeasService(p, m, q, mod, params, mediaMock(), cache, undefined, notifications),
+    p,
+    m,
+    q,
+    mod,
+    notifications,
+  };
 }
 
 const validDto = {
@@ -121,6 +134,22 @@ describe('IdeasService.publish (FR-204a + FR-272)', () => {
   it('rejects publishing a non-draft idea', async () => {
     const { svc } = make({ id: 'idea1', creatorId: 'u1', status: 'VALIDATING' });
     await expect(svc.publish('u1', 'idea1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+  it('notifies the creator once with the confirmed publication event', async () => {
+    const { svc, notifications } = make({
+      id: 'idea1',
+      creatorId: 'u1',
+      status: 'DRAFT',
+      title: 'Solar cold storage',
+    });
+    await svc.publish('u1', 'idea1');
+
+    expect(notifications.notify).toHaveBeenCalledWith({
+      data: { ideaId: 'idea1', ideaTitle: 'Solar cold storage' },
+      dedupeKey: 'IDEA_PUBLISHED:idea1',
+      template: 'IDEA_PUBLISHED',
+      toUserId: 'u1',
+    });
   });
   it('publishes a feedback-only idea with no roadmap (askAmount 0)', async () => {
     const { svc, p } = make({

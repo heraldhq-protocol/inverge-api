@@ -130,6 +130,31 @@ describe('personalizationMultiplier', () => {
     expect(r.matchReason).toBe('region');
   });
 
+  it('treats settings’ broad regions as a city-level tilt', () => {
+    const lagos = personalizationMultiplier(
+      { category: 'software', region: 'Lagos', text: '' },
+      { categories: [], regions: ['west-africa'] },
+      [],
+      p,
+    );
+    const nairobi = personalizationMultiplier(
+      { category: 'software', region: 'Nairobi', text: '' },
+      { categories: [], regions: ['west-africa'] },
+      [],
+      p,
+    );
+    const africa = personalizationMultiplier(
+      { category: 'software', region: 'Nairobi', text: '' },
+      { categories: [], regions: ['africa'] },
+      [],
+      p,
+    );
+
+    expect(lagos.matchReason).toBe('region');
+    expect(nairobi.matchReason).toBeNull();
+    expect(africa.matchReason).toBe('region');
+  });
+
   it('is bounded so an out-of-interest item still surfaces (never a filter)', () => {
     const r = personalizationMultiplier(
       { category: 'film', region: null, text: '' },

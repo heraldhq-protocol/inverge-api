@@ -10,10 +10,12 @@ build/
 # Prisma generated client (prisma-client generator, regenerated on install)
 src/generated/
 
-# Env
+# Env — real values only ever live in an untracked file.
+# Staging templates are committed (*.example); generated staging files are not.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Logs
 logs/
@@ -34,6 +36,10 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# Local runtime artefacts. The stub email adapter writes rendered messages
+# (including verification codes) here; it must never be committed.
+.local/
 
 # Local dev/probe helpers (root-level, excluded from build via tsconfig.build.json)
 /_*.ts

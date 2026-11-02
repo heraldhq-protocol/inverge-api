@@ -50,8 +50,12 @@ export class PaystackFlatFeeAdapter implements FlatFeePaymentPort {
   }
 
   parseWebhook(rawBody: string, signature?: string): FlatFeeWebhookEvent | null {
+    // Both keys are optional at boot, so an unprovisioned rail must reject
+    // callbacks rather than throw on every delivery.
     const secret =
-      this.config.get('PAYSTACK_WEBHOOK_SECRET', { infer: true }) ?? this.secret();
+      this.config.get('PAYSTACK_WEBHOOK_SECRET', { infer: true }) ??
+      this.config.get('PAYSTACK_SECRET_KEY', { infer: true });
+    if (!secret) return null;
     const expected = createHmac('sha512', secret).update(rawBody).digest('hex');
     if (!signature || !this.safeEqual(signature, expected)) return null;
 

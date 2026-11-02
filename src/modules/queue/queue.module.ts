@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
+import { redisOptionsFromUrl } from '../../common/cache/redis-connection';
 import { Env } from '../../config/env.validation';
 
 // BullMQ root connection. Global so feature modules can BullModule.registerQueue()
@@ -17,12 +18,10 @@ import { Env } from '../../config/env.validation';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => {
-        const url = new URL(config.get('REDIS_URL', { infer: true }));
         return {
           connection: {
-            host: url.hostname,
-            port: Number(url.port || 6379),
-            password: url.password || undefined,
+            // Shared with the cache connection so `rediss://` keeps its TLS.
+            ...redisOptionsFromUrl(config.get('REDIS_URL', { infer: true })),
             lazyConnect: true,
           },
         };

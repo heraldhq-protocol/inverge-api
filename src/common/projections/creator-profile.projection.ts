@@ -9,6 +9,7 @@ export type PublicCreator = {
   displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  location: string | null;
   links: PublicCreatorLink[];
   tier: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
   completedCampaigns: number;
@@ -26,6 +27,7 @@ export type UserWithProfileForProjection = {
     displayName?: string | null;
     avatarUrl?: string | null;
     bio?: string | null;
+    location?: string | null;
     links?: unknown;
     tier?: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
     completedCampaigns?: number;
@@ -50,20 +52,28 @@ export function toPublicCreator(
   // Prefer the explicitly stored username; derive from displayName as fallback.
   const storedUsername = profile?.username?.trim().toLowerCase() || null;
   const derivedUsername = displayName
-    ? displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    ? displayName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
     : null;
   const username = storedUsername || derivedUsername || user.id;
   const avatarUrl = profile?.avatarUrl?.trim() || null;
   const bio = profile?.bio?.trim() || null;
+  const location = profile?.location?.trim() || null;
 
   let links: PublicCreatorLink[] = [];
   if (Array.isArray(profile?.links)) {
     links = (profile.links as Record<string, unknown>[])
-      .filter((l) => l && typeof l.url === 'string' && typeof l.label === 'string')
+      .filter(
+        (l) => l && typeof l.url === 'string' && typeof l.label === 'string',
+      )
       .map((l) => ({ label: String(l.label), url: String(l.url) }));
   }
 
-  const memberSince = (profile?.tenureStartedAt ?? user.createdAt).toISOString();
+  const memberSince = (
+    profile?.tenureStartedAt ?? user.createdAt
+  ).toISOString();
   const ideasPublished = user.ideasPublished ?? user._count?.ideas ?? 0;
 
   return {
@@ -72,6 +82,7 @@ export function toPublicCreator(
     displayName,
     avatarUrl,
     bio,
+    location,
     links,
     tier: profile?.tier ?? 'STARTER',
     completedCampaigns: profile?.completedCampaigns ?? 0,

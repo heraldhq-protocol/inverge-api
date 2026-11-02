@@ -64,4 +64,11 @@ describe('PaystackFlatFeeAdapter webhook verification (F-01)', () => {
     const noRef = JSON.stringify({ event: 'charge.success', data: {} });
     expect(adapter.parseWebhook(noRef, sign(noRef))).toBeNull();
   });
+
+  it('rejects every callback when no key is provisioned', () => {
+    const unconfigured = new PaystackFlatFeeAdapter({
+      get: () => undefined,
+    } as unknown as ConfigService<Env, true>);
+    expect(unconfigured.parseWebhook(successBody, sign(successBody))).toBeNull();
+  });
 });

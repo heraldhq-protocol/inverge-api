@@ -23,9 +23,10 @@ The **port is the contract**; the adapter is the vendor. Select per env (`stub` 
 | `WALLET_PROVIDER` | `stub` \| `privy` \| `web3auth` | embedded wallet + token verify |
 | `FLATFEE_PROVIDER` | `stub` \| `paystack` | boosts + application fee |
 | `KYC_PROVIDER` | `stub` \| `didit` | identity verification (KYC / AML / KYB) |
-| `NOTIFICATION_PROVIDER` | `stub` \| `herald` | notifications |
+| `EMAIL_PROVIDER` | `stub` \| `resend` | branded transactional + editorial mail (see `docs/email-system.md`) |
 | `QUALITY_PROVIDER` | `stub` \| `claude` | idea quality scoring (FR-271) |
 | `MODERATION_PROVIDER` | `stub` \| `ai` | policy classifier (FR-1003) |
+| `AI_PROVIDER` | `disabled` \| `stub` \| `anthropic` | Creator Studio assistant (see `docs/ai-assistant.md`) |
 
 ## Identity verification — KYC / AML / KYB (Didit)
 

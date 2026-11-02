@@ -162,7 +162,7 @@ describe('AnalyticsIngestService', () => {
     });
     expect(persistBatch).not.toHaveBeenCalled();
     expect(add).toHaveBeenCalledWith(
-      'ingest',
+      'analytics-ingest',
       {
         events: [
           expect.objectContaining({

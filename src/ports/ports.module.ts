@@ -15,9 +15,9 @@ import { KYC_PROVIDER_PORT } from './kyc/kyc-provider.port';
 import { StubKycAdapter } from './kyc/stub-kyc.adapter';
 import { DiditKycAdapter } from './kyc/didit-kyc.adapter';
 
-import { NOTIFICATION_PORT } from './notification/notification.port';
-import { StubNotificationAdapter } from './notification/stub-notification.adapter';
-import { HeraldNotificationAdapter } from './notification/herald-notification.adapter';
+import { EMAIL_PORT } from './email/email.port';
+import { ResendEmailAdapter } from './email/resend-email.adapter';
+import { StubEmailAdapter } from './email/stub-email.adapter';
 
 import { QUALITY_SCORER_PORT } from './quality/quality-scorer.port';
 import { StubQualityScorerAdapter } from './quality/stub-quality-scorer.adapter';
@@ -53,8 +53,8 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
     PaystackFlatFeeAdapter,
     StubKycAdapter,
     DiditKycAdapter,
-    StubNotificationAdapter,
-    HeraldNotificationAdapter,
+    StubEmailAdapter,
+    ResendEmailAdapter,
     StubQualityScorerAdapter,
     StubModerationAdapter,
     AiModerationAdapter,
@@ -104,15 +104,15 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
       ) => (config.get('KYC_PROVIDER', { infer: true }) === 'didit' ? didit : stub),
     },
     {
-      provide: NOTIFICATION_PORT,
-      inject: [ConfigService, StubNotificationAdapter, HeraldNotificationAdapter],
+      provide: EMAIL_PORT,
+      inject: [ConfigService, StubEmailAdapter, ResendEmailAdapter],
       useFactory: (
         config: ConfigService<Env, true>,
-        stub: StubNotificationAdapter,
-        herald: HeraldNotificationAdapter,
+        stub: StubEmailAdapter,
+        resend: ResendEmailAdapter,
       ) =>
-        config.get('NOTIFICATION_PROVIDER', { infer: true }) === 'herald'
-          ? herald
+        config.get('EMAIL_PROVIDER', { infer: true }) === 'resend'
+          ? resend
           : stub,
     },
     {
@@ -178,7 +178,7 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
     EMBEDDED_WALLET_PORT,
     FLAT_FEE_PAYMENT_PORT,
     KYC_PROVIDER_PORT,
-    NOTIFICATION_PORT,
+    EMAIL_PORT,
     QUALITY_SCORER_PORT,
     MODERATION_CLASSIFIER_PORT,
     DUPLICATE_DETECTOR_PORT,

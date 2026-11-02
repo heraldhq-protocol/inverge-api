@@ -12,6 +12,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { CacheService } from '../../../common/cache/cache.service';
 import { Env } from '../../../config/env.validation';
 import { PlatformParamsService } from '../../platform-params/platform-params.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   APPLICATION_FEE_CURRENCY,
   APPLICATION_FEE_FALLBACK_AMOUNT,
@@ -60,6 +61,7 @@ export class CampaignDraftsService {
     private readonly params: PlatformParamsService,
     private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async create(userId: string, dto: CreateCampaignDraftDto) {
@@ -281,6 +283,12 @@ export class CampaignDraftsService {
 
     this.cache?.bumpEventually('campaigns');
     this.cache?.bumpEventually('campaign');
+    await this.notifications?.notify({
+      toUserId: userId,
+      template: 'CAMPAIGN_PUBLISHED',
+      data: { campaignId, campaignTitle: result.title },
+      dedupeKey: `CAMPAIGN_PUBLISHED:${campaignId}`,
+    });
     return this.present(result);
   }
 

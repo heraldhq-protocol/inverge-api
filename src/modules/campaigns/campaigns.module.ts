@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { FlatFeeModule } from '../flat-fee/flat-fee.module';
 import { KycModule } from '../kyc/kyc.module';
 import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminCampaignsController } from './admin-campaigns.controller';
 import { ApplicationFeeService } from './application-fee.service';
 import { CampaignReviewService } from './campaign-review.service';
@@ -23,6 +24,7 @@ import {
     FlatFeeModule,
     KycModule,
     MediaModule,
+    NotificationsModule,
   ],
   controllers: [
     CampaignsController,

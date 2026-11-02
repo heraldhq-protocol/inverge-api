@@ -538,7 +538,7 @@ Creator-facing, all behind `PrivyAuthGuard`:
 |---|---|---|
 | `GET` | `/verification/state` | Normalised account state: account type, per-subject case, requirements, blockers, `nextAction`, `policyVersion`, `identityVerified`, `fundsCleared`, `complianceHold` |
 | `GET` | `/verification/eligibility?purpose=` | Gate preview for one purpose (`IDEA_VALIDATION`, `CAMPAIGN_CREATOR`, `BACKER_THRESHOLD`): `eligible`, stable `code`, `blockers`, `requirements` |
-| `POST` | `/verification/session` | Start/restart a hosted session (`subject`, `purpose`); returns `caseId` + `verificationUrl` |
+| `POST` | `/verification/session` | Start or resume a hosted session (`subject`, `purpose`); returns `caseId` + `verificationUrl`, plus `resumed: true` when Didit returned the existing unfinished session |
 | `POST` | `/verification/business/session` | Register the business and start KYB (legal name required) |
 | `GET` | `/verification/business` | Business registration + KYB/AML projection |
 | `POST` | `/verification/account-type` | Switch `INDIVIDUAL`/`BUSINESS`; cases stay attached to their type |
@@ -554,6 +554,13 @@ Compliance-facing, behind `PrivyAuthGuard` + `ComplianceReviewerGuard` (ADMIN an
 | `GET` | `/verification/admin/cases` | Paginated case list: `status`, `risk`, `type`, `requiresReview`, `cursor`, `limit` |
 | `GET` | `/verification/admin/cases/:id` | Case, subject, business, append-only event history |
 | `POST` | `/verification/admin/cases/:id/resolve` | Reasoned risk resolution (`decision`, `reasonCode`, `reason`); audited, never automatic |
+
+`POST /verification/session` is idempotent in the way Didit is: for the same workflow and
+`vendor_data`, the provider returns an existing unfinished session (including a reviewer-requested
+`Resubmitted` one). Inverge reuses that `VerificationCase` and returns the same hosted URL instead of
+creating a second case, so a repeated click or a resume after resubmission never writes a duplicate
+`providerSessionId`. A genuinely new provider session replaces any other unfinished case for the same
+subject and stays auditable.
 
 Legacy `/kyc/*` and `/kyb/*` remain as a compatibility facade over the same domain so already-shipped
 clients are not broken. Their `reasons` field is the new `blockers` list under the old name.
@@ -571,8 +578,8 @@ the adapter. An unmapped string becomes `ERROR`, which is a support signal, not 
 `VERIFICATION_REQUIRED`, `VERIFICATION_IN_PROGRESS`, `VERIFICATION_IN_REVIEW`,
 `VERIFICATION_ACTION_REQUIRED`, `VERIFICATION_DECLINED`, `VERIFICATION_EXPIRED`,
 `VERIFICATION_PROVIDER_ERROR`, `VERIFICATION_COMPLIANCE_HOLD`, `VERIFICATION_BUSINESS_PROFILE_REQUIRED`,
-`VERIFICATION_ACCOUNT_TYPE_MISMATCH`, `VERIFICATION_ATTEMPTS_EXCEEDED`, `VERIFICATION_UNAVAILABLE`,
-`CONTRIBUTION_THRESHOLD_EXCEEDED`, `CONTRIBUTION_CAMPAIGN_NOT_FUNDABLE`, plus
+`VERIFICATION_ACCOUNT_TYPE_MISMATCH`, `VERIFICATION_ATTEMPTS_EXCEEDED`, `VERIFICATION_SESSION_CONFLICT`,
+`VERIFICATION_UNAVAILABLE`, `CONTRIBUTION_THRESHOLD_EXCEEDED`, `CONTRIBUTION_CAMPAIGN_NOT_FUNDABLE`, plus
 `APPLICATION_FEE_REQUIRED` from the campaign review gate. Clients switch on `code`; the message is copy.
 
 ### Gates

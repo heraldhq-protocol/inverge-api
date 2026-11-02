@@ -12,6 +12,7 @@ import { QualityService } from '../quality/quality.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { PlatformParamsService } from '../platform-params/platform-params.service';
 import { ProductAnalyticsService } from '../analytics/product-analytics.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   resolveTaxonomyPair,
   toTaxonomyProjection,
@@ -69,6 +70,7 @@ export class IdeasService {
     private readonly media: MediaAssetsService,
     @Optional() private readonly cache?: CacheService,
     @Optional() private readonly analytics?: ProductAnalyticsService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   private loadGateThresholds(): Promise<GateThresholds> {
@@ -242,6 +244,14 @@ export class IdeasService {
       },
       { ideaId: id, submittedById: userId },
     );
+    // A confirmed domain transition, not a UI action: the draft is now
+    // VALIDATING. The dedupe key makes a retried publish a single email.
+    await this.notifications?.notify({
+      toUserId: userId,
+      template: 'IDEA_PUBLISHED',
+      data: { ideaId: id, ideaTitle: fresh.title },
+      dedupeKey: `IDEA_PUBLISHED:${id}`,
+    });
     return fresh;
   }
 

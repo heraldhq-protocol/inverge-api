@@ -8,8 +8,14 @@ export interface EmbeddedWalletInfo {
 }
 
 export interface VerifiedIdentity {
-  providerUserId: string; // stable provider subject — maps to User.providerUserId
+  providerUserId: string; // stable provider subject - maps to User.providerUserId
   email?: string;
+  /**
+   * True only when the provider's signed token carries a validated
+   * `email_verified: true` claim. An email without this flag is a suggestion,
+   * never proof of ownership.
+   */
+  emailVerified?: boolean;
   /**
    * Verified provider profile image URL. Adapters only return a URL they have
    * validated against an allowlist; it is an external reference, not an upload.

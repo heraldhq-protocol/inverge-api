@@ -22,6 +22,14 @@ const productionBase = {
   FLATFEE_PROVIDER: 'paystack',
   PAYSTACK_SECRET_KEY: 'sk_test_example',
   PAYSTACK_WEBHOOK_SECRET: 'paystack-webhook-secret',
+  EMAIL_PROVIDER: 'resend',
+  RESEND_API_KEY: 're_test_example',
+  RESEND_WEBHOOK_SECRET: 'whsec_dGVzdC13ZWJob29rLXNlY3JldA==',
+  EMAIL_FROM: 'no-reply@inverge.test',
+  EMAIL_CODE_SECRET: 'test-email-code-secret-at-least-32-characters',
+  EMAIL_UNSUBSCRIBE_SECRET: 'test-unsubscribe-secret-at-least-32-characters',
+  PUBLIC_APP_URL: 'https://inverge.test',
+  PUBLIC_API_URL: 'https://api.inverge.test',
 };
 
 describe('validateEnv — SESSION_JWT_SECRET', () => {
@@ -66,9 +74,9 @@ describe('validateEnv — SESSION_JWT_SECRET', () => {
   });
 
   it('rejects an empty secret in every environment', () => {
-    expect(() =>
-      validateEnv({ ...base, SESSION_JWT_SECRET: '' }),
-    ).toThrow(/SESSION_JWT_SECRET/);
+    expect(() => validateEnv({ ...base, SESSION_JWT_SECRET: '' })).toThrow(
+      /SESSION_JWT_SECRET/,
+    );
   });
 });
 
@@ -181,37 +189,99 @@ describe('validateEnv — credentials for enabled providers', () => {
     ).toThrow(new RegExp(key));
   });
 
-  it('requires PAYSTACK_SECRET_KEY when paystack is selected', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PAYSTACK_SECRET_KEY: undefined,
-      }),
-    ).toThrow(/PAYSTACK_SECRET_KEY/);
-  });
-
-  it('requires PAYSTACK_WEBHOOK_SECRET for paystack in production', () => {
-    expect(() =>
-      validateEnv({
-        ...productionBase,
-        PAYSTACK_WEBHOOK_SECRET: undefined,
-      }),
-    ).toThrow(/PAYSTACK_WEBHOOK_SECRET/);
-  });
-
-  it('does not require credentials for integrations that are disabled', () => {
+  it('boots with paystack selected but no credentials provisioned', () => {
     const env = validateEnv({
       ...productionBase,
-      // Advisory/notification rails may legitimately stay deterministic or
-      // offline in staging; they are not authentication or payment approval.
-      NOTIFICATION_PROVIDER: 'stub',
+      PAYSTACK_SECRET_KEY: undefined,
+      PAYSTACK_WEBHOOK_SECRET: undefined,
+    });
+    expect(env.FLATFEE_PROVIDER).toBe('paystack');
+    expect(env.PAYSTACK_SECRET_KEY).toBeUndefined();
+  });
+
+  it('does not require credentials for advisory integrations that are disabled', () => {
+    const env = validateEnv({
+      ...productionBase,
       QUALITY_PROVIDER: 'stub',
       MODERATION_PROVIDER: 'stub',
       ANTHROPIC_API_KEY: undefined,
-      HERALD_GATEWAY_URL: undefined,
-      HERALD_API_KEY: undefined,
     });
-    expect(env.NOTIFICATION_PROVIDER).toBe('stub');
+    expect(env.QUALITY_PROVIDER).toBe('stub');
+  });
+
+  it('requires Resend credentials when email delivery is enabled', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        RESEND_API_KEY: undefined,
+      }),
+    ).toThrow(/RESEND_API_KEY/);
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EMAIL_FROM: undefined,
+      }),
+    ).toThrow(/EMAIL_FROM/);
+  });
+
+  it('rejects the stub email provider in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EMAIL_PROVIDER: 'stub',
+      }),
+    ).toThrow(/EMAIL_PROVIDER=stub/);
+  });
+
+  it('rejects the development email pepper in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EMAIL_CODE_SECRET: 'dev-only-email-code-secret-change-me',
+      }),
+    ).toThrow(/EMAIL_CODE_SECRET/);
+  });
+
+  it('requires the Resend webhook secret in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        RESEND_WEBHOOK_SECRET: undefined,
+      }),
+    ).toThrow(/RESEND_WEBHOOK_SECRET/);
+  });
+
+  it('rejects a developer host in production email links', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        PUBLIC_APP_URL: 'http://localhost:3000',
+      }),
+    ).toThrow(/PUBLIC_APP_URL/);
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        PUBLIC_API_URL: 'http://localhost:3000',
+      }),
+    ).toThrow(/PUBLIC_API_URL/);
+  });
+
+  it('rejects the development unsubscribe secret in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EMAIL_UNSUBSCRIBE_SECRET: 'dev-only-email-unsubscribe-secret-change-me',
+      }),
+    ).toThrow(/EMAIL_UNSUBSCRIBE_SECRET/);
+  });
+
+  it('requires a sender postal address before editorial sending is enabled', () => {
+    expect(() =>
+      validateEnv({
+        ...productionBase,
+        EDITORIAL_EMAILS_ENABLED: 'true',
+      }),
+    ).toThrow(/EMAIL_COMPANY_ADDRESS/);
   });
 });
 
