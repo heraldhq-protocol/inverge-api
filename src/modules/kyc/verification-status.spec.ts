@@ -2,6 +2,7 @@ import {
   isFundsCleared,
   legacyOutcomeForState,
   mapDiditStatus,
+  resumeState,
   riskFromAml,
   transitionVerdict,
 } from './verification-status';
@@ -45,6 +46,21 @@ describe('isFundsCleared', () => {
     expect(isFundsCleared('APPROVED', 'CLEAR')).toBe(true);
     expect(isFundsCleared('APPROVED', 'NOT_ASSESSED')).toBe(false);
     expect(isFundsCleared('IN_REVIEW', 'CLEAR')).toBe(false);
+  });
+});
+
+describe('resumeState', () => {
+  it('reopens an approved or declined case only for a provider resubmission', () => {
+    expect(resumeState('APPROVED', 'ACTION_REQUIRED')).toBe('ACTION_REQUIRED');
+    expect(resumeState('DECLINED', 'ACTION_REQUIRED')).toBe('ACTION_REQUIRED');
+    expect(resumeState('APPROVED', 'AWAITING_USER')).toBe('APPROVED');
+    expect(resumeState('DECLINED', 'AWAITING_USER')).toBe('DECLINED');
+  });
+
+  it('restores a cancelled or errored case from an active provider session', () => {
+    expect(resumeState('CANCELLED', 'AWAITING_USER')).toBe('AWAITING_USER');
+    expect(resumeState('ERROR', 'SESSION_CREATED')).toBe('SESSION_CREATED');
+    expect(resumeState('EXPIRED', 'EXPIRED')).toBe('EXPIRED');
   });
 });
 

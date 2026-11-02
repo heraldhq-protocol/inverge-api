@@ -47,6 +47,7 @@ export class StubKycAdapter implements KycProviderPort {
     url.searchParams.set('user', params.vendorData);
     return {
       providerRef,
+      providerStatus: 'Not Started',
       sessionKind:
         params.purpose === 'BUSINESS_VERIFICATION' ? 'business' : 'user',
       verificationUrl: url.toString(),
