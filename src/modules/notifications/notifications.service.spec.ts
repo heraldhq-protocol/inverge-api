@@ -123,7 +123,7 @@ describe('NotificationsService.notify', () => {
       JOB_NAMES.notificationDispatch,
       { notificationId: 'n1' },
       expect.objectContaining({
-        jobId: 'notification:n1',
+        jobId: 'notification-n1',
         attempts: 5,
       }),
     );

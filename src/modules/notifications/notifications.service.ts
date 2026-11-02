@@ -121,7 +121,9 @@ export class NotificationsService {
 
     try {
       await this.queue.add(JOB_NAMES.notificationDispatch, { notificationId: row.id }, {
-        jobId: `notification:${row.id}`,
+        // BullMQ rejects a custom id containing one colon and not exactly three
+        // segments; use a dashed prefix so the id is queue-safe.
+        jobId: `notification-${row.id}`,
         attempts: 5,
         backoff: { type: 'exponential', delay: 2_000 },
         removeOnComplete: 1_000,

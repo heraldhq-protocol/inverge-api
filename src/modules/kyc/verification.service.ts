@@ -502,7 +502,10 @@ export class VerificationService {
           {
             attempts: 3,
             backoff: { delay: 5_000, type: 'exponential' },
-            jobId: event.eventId ? `wh:${event.eventId}` : undefined,
+            // BullMQ rejects a custom id containing one colon and not exactly three
+            // segments. A UUID already keeps this unique; the prefix avoids an
+            // integer-looking id and any collision with another job family.
+            jobId: event.eventId ? `verification-webhook-${event.eventId}` : undefined,
             removeOnComplete: true,
             removeOnFail: 100,
           },
