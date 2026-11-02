@@ -71,7 +71,7 @@ export class CampaignDraftsController {
   @Post(':id/publish')
   @HttpCode(HttpStatus.OK)
   @RateLimit('financial')
-  @ApiOperation({ summary: 'Publish after review approval and verified deployment (FR-304, FR-305)' })
+  @ApiOperation({ summary: 'Publish after review approval and verified deployment' })
   publish(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.drafts.publish(user.id, id);
   }

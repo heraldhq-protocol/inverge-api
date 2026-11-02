@@ -114,7 +114,7 @@ export function evaluateDeploymentReadiness(input: {
     'lifecycle',
     'Campaign is still a draft',
     campaign.status === 'DRAFT' || campaign.status === 'IN_REVIEW',
-    'Only a draft or in-review campaign can be deployed. A published campaign is immutable (FR-303).',
+    'Only a draft or in-review campaign can be deployed. A published campaign is immutable.',
   );
 
   check(
@@ -218,7 +218,7 @@ export function evaluateDeploymentReadiness(input: {
     'milestone-detail',
     'Milestone evidence',
     countOk && detailsOk,
-    'Every milestone needs a title, a deliverable and an evidence definition (FR-302).',
+    'Every milestone needs a title, a deliverable and an evidence definition.',
   );
 
   const datesOk = milestones.every(
@@ -238,7 +238,7 @@ export function evaluateDeploymentReadiness(input: {
     workingCapitalBps === WORKING_CAPITAL_BPS,
     // FR-503a now fixes the initial tranche at 20% of the original target; it is
     // not a creator-tunable 20–25% band and it does not grow with the raise.
-    `The working-capital tranche is fixed at 20% of the target (FR-503a); this campaign sets ${
+    `The working-capital tranche is fixed at 20% of the target; this campaign sets ${
       workingCapitalBps / 100
     }%.`,
   );
@@ -250,7 +250,7 @@ export function evaluateDeploymentReadiness(input: {
     'objection-window',
     'Objection window',
     campaign.objectionWindowDays === DEPLOYMENT_OBJECTION_WINDOW_DAYS,
-    `The escrow programme fixes the objection window at ${DEPLOYMENT_OBJECTION_WINDOW_DAYS} days (FR-602).`,
+    `The escrow programme fixes the objection window at ${DEPLOYMENT_OBJECTION_WINDOW_DAYS} days.`,
   );
 
   return {
@@ -356,7 +356,7 @@ export function evaluateSubmissionReadiness(input: {
     'milestone-detail',
     'Milestone evidence',
     countOk && detailsOk,
-    'Every milestone needs a title, a deliverable and an evidence definition (FR-302).',
+    'Every milestone needs a title, a deliverable and an evidence definition.',
   );
 
   const workingCapitalBps = percentToBps(campaign.workingCapitalPct) ?? 0;
@@ -364,7 +364,7 @@ export function evaluateSubmissionReadiness(input: {
     'working-capital',
     'Working capital',
     workingCapitalBps === WORKING_CAPITAL_BPS,
-    `The working-capital tranche is fixed at 20% of the target (FR-503a); this campaign sets ${
+    `The working-capital tranche is fixed at 20% of the target; this campaign sets ${
       workingCapitalBps / 100
     }%.`,
   );
@@ -373,7 +373,7 @@ export function evaluateSubmissionReadiness(input: {
     'objection-window',
     'Objection window',
     campaign.objectionWindowDays === DEPLOYMENT_OBJECTION_WINDOW_DAYS,
-    `The escrow programme fixes the objection window at ${DEPLOYMENT_OBJECTION_WINDOW_DAYS} days (FR-602).`,
+    `The escrow programme fixes the objection window at ${DEPLOYMENT_OBJECTION_WINDOW_DAYS} days.`,
   );
 
   return { blockers, checks, ready: blockers.length === 0 };

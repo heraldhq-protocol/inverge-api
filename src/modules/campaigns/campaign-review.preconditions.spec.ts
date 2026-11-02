@@ -74,7 +74,7 @@ describe('campaign review preconditions (FR-103 + FR-311)', () => {
     );
     expect(gates.eligible).toBe(false);
     expect(gates.blockers).toContain(
-      'Application fee (FR-311) has not been paid',
+      'Application fee has not been paid',
     );
   });
 
@@ -121,7 +121,7 @@ describe('campaign review preconditions (FR-103 + FR-311)', () => {
     );
     expect(gates.eligible).toBe(false);
     expect(gates.blockers).toContain(
-      'Linked charge is not an application fee (FR-311)',
+      'Linked charge is not an application fee',
     );
   });
 
@@ -170,7 +170,7 @@ describe('campaign review preconditions (FR-103 + FR-311)', () => {
     );
     expect(gates.eligible).toBe(false);
     expect(gates.blockers).toContain(
-      'Application fee (FR-311) is not bound to this campaign',
+      'Application fee is not bound to this campaign',
     );
   });
 });

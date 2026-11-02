@@ -142,18 +142,16 @@ export function publicationBlockers(facts: PublicationFacts): string[] {
     blockers.push('The campaign must be in review before it can be published.');
   }
   if (facts.reviewStatus !== 'APPROVED') {
-    blockers.push('Curation review has not approved this campaign (FR-304).');
+    blockers.push('Curation review has not approved this campaign.');
   }
   if (facts.deploymentStatus !== 'CONFIRMED') {
-    blockers.push(
-      'The escrow deployment has not been verified on-chain (FR-303, FR-305).',
-    );
+    blockers.push('The escrow deployment has not been verified on-chain.');
   }
   if (!facts.termsHash) {
-    blockers.push('The campaign terms have no content hash (FR-303).');
+    blockers.push('The campaign terms have no content hash.');
   }
   if (facts.milestoneCount < 2) {
-    blockers.push('The campaign needs at least two milestones (FR-301).');
+    blockers.push('The campaign needs at least two milestones.');
   }
   if (facts.feeStatus !== null && !feeSatisfied(facts.feeStatus)) {
     blockers.push('The deployment fee has not been confirmed.');

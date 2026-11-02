@@ -112,7 +112,7 @@ export class KycController {
 
   @Get('admin/aml/:userId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'AML screening history for a user (NFR-19 retained)' })
+  @ApiOperation({ summary: 'AML screening history for a user' })
   @UseGuards(PrivyAuthGuard, AdminGuard)
   adminListScreenings(@Param('userId') userId: string) {
     return this.kyc.listScreenings(userId);
