@@ -168,15 +168,23 @@ describe('DiditKycAdapter.getDecision / screenAml', () => {
 });
 
 describe('verifyDiditSignature', () => {
-  const body = '{"session_id":"s1","status":"Approved","webhook_type":"status.updated"}';
   const secret = 'shhh';
   const now = () => Math.floor(Date.now() / 1000);
+  const bodyFor = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      session_id: 's1',
+      status: 'Approved',
+      timestamp: now(),
+      webhook_type: 'status.updated',
+      ...overrides,
+    });
 
   it('accepts a correct raw-body HMAC (x-signature)', () => {
+    const body = bodyFor();
     const sig = createHmac('sha256', secret).update(body).digest('hex');
     expect(
       verifyDiditSignature({
-        headers: { 'x-signature': sig, 'x-timestamp': String(now()) },
+        headers: { 'x-signature': sig },
         rawBody: body,
         secret,
       }).ok,
@@ -185,8 +193,8 @@ describe('verifyDiditSignature', () => {
 
   it('rejects a wrong signature', () => {
     const verdict = verifyDiditSignature({
-      headers: { 'x-signature': 'deadbeef', 'x-timestamp': String(now()) },
-      rawBody: body,
+      headers: { 'x-signature': 'deadbeef' },
+      rawBody: bodyFor(),
       secret,
     });
     expect(verdict).toEqual({ ok: false, reason: 'signature_mismatch' });
@@ -195,16 +203,17 @@ describe('verifyDiditSignature', () => {
   it('rejects when no signature header is present', () => {
     const verdict = verifyDiditSignature({
       headers: { 'x-timestamp': String(now()) },
-      rawBody: body,
+      rawBody: bodyFor(),
       secret,
     });
     expect(verdict).toEqual({ ok: false, reason: 'signature_mismatch' });
   });
 
-  it('rejects a stale timestamp', () => {
+  it('rejects a stale signed body timestamp', () => {
+    const body = bodyFor({ timestamp: now() - 10_000 });
     const sig = createHmac('sha256', secret).update(body).digest('hex');
     const verdict = verifyDiditSignature({
-      headers: { 'x-signature': sig, 'x-timestamp': String(now() - 10_000) },
+      headers: { 'x-signature': sig, 'x-timestamp': String(now()) },
       rawBody: body,
       secret,
     });
@@ -214,7 +223,7 @@ describe('verifyDiditSignature', () => {
   it('rejects when no secret is configured', () => {
     const verdict = verifyDiditSignature({
       headers: { 'x-timestamp': String(now()) },
-      rawBody: body,
+      rawBody: bodyFor(),
       secret: undefined,
     });
     expect(verdict).toEqual({ ok: false, reason: 'secret_missing' });
@@ -222,11 +231,12 @@ describe('verifyDiditSignature', () => {
 
   it('accepts the canonical V2 signature', () => {
     const ts = now();
+    const body = bodyFor({ timestamp: ts });
     const canonical = canonicalJson(JSON.parse(body));
     const v2 = createHmac('sha256', secret).update(canonical).digest('hex');
     expect(
       verifyDiditSignature({
-        headers: { 'x-signature-v2': v2, 'x-timestamp': String(ts) },
+        headers: { 'x-signature-v2': v2 },
         nowSeconds: ts,
         rawBody: body,
         secret,
@@ -236,16 +246,26 @@ describe('verifyDiditSignature', () => {
 
   it('flags the deprecated Simple signature as not payload-authenticating', () => {
     const ts = now();
+    const body = bodyFor({ timestamp: ts });
     const parsed = JSON.parse(body);
-    const message = [parsed.timestamp ?? '', parsed.session_id, parsed.status, parsed.webhook_type].join(':');
+    const message = [
+      parsed.timestamp ?? '',
+      parsed.session_id,
+      parsed.status,
+      parsed.webhook_type,
+    ].join(':');
     const simple = createHmac('sha256', secret).update(message).digest('hex');
     expect(
       verifyDiditSignature({
-        headers: { 'x-signature-simple': simple, 'x-timestamp': String(ts) },
+        headers: { 'x-signature-simple': simple },
         nowSeconds: ts,
         rawBody: body,
         secret,
       }),
-    ).toMatchObject({ authenticatesPayload: false, ok: true, scheme: 'simple' });
+    ).toMatchObject({
+      authenticatesPayload: false,
+      ok: true,
+      scheme: 'simple',
+    });
   });
 });

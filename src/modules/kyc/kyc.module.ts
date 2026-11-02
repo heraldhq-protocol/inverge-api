@@ -5,6 +5,7 @@ import { JOBS_QUEUE } from '../../common/queue/job-names';
 import { WebhookInboxModule } from '../../common/webhooks/webhook-inbox.module';
 import { AuthModule } from '../auth/auth.module';
 import { ComplianceReviewerGuard } from '../auth/guards/compliance-reviewer.guard';
+import { DiditWebhookController } from './didit-webhook.controller';
 import { KycController } from './kyc.controller';
 import { KybController } from './kyb.controller';
 import { KycService } from './kyc.service';
@@ -24,7 +25,12 @@ const queueEnabled = envFlag('QUEUE_ENABLED');
     WebhookInboxModule,
     ...(queueEnabled ? [BullModule.registerQueue({ name: JOBS_QUEUE })] : []),
   ],
-  controllers: [KycController, KybController, VerificationController],
+  controllers: [
+    DiditWebhookController,
+    KycController,
+    KybController,
+    VerificationController,
+  ],
   providers: [
     VerificationRepository,
     VerificationService,

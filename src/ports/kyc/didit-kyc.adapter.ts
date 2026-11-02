@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
 import { Env } from '../../config/env.validation';
 import {
   AmlOutcome,
@@ -150,7 +151,9 @@ export class DiditKycAdapter implements KycProviderPort {
       previousSecret: this.config.get('DIDIT_WEBHOOK_SECRET_PREVIOUS', { infer: true }),
     });
     if (!verdict.ok) {
-      this.logger.warn(`Didit webhook rejected: ${verdict.reason}`);
+      this.logger.warn(
+        `Didit webhook rejected: ${verdict.reason} (${describeBody(rawBody)})`,
+      );
       return null;
     }
 
@@ -159,23 +162,37 @@ export class DiditKycAdapter implements KycProviderPort {
       rawBody,
     });
     if (!parsed.ok) {
-      this.logger.warn(`Didit webhook envelope rejected: ${parsed.reason}`);
+      this.logger.warn(
+        `Didit webhook envelope rejected: ${parsed.reason} (${describeBody(rawBody)})`,
+      );
       return null;
     }
 
     const event = parsed.event;
-    const mapped = mapDiditStatus(event.status);
+    const isSession = event.resourceType === 'SESSION';
+    const mapped = isSession
+      ? mapDiditStatus(event.status)
+      : { providerStatus: null, state: 'AWAITING_USER' as const };
     const aml = event.decision ? extractAml(event.decision) : null;
 
     return {
       aml: aml?.outcome ?? null,
       businessEntityRef: event.vendorBusinessId,
+      businessSessionId: event.businessSessionId,
+      changedFields: event.changedFields,
       eventId: event.eventId,
       occurredAt: event.occurredAt,
       payloadAuthenticated: verdict.authenticatesPayload,
+      previousStatus: event.previousStatus,
       providerRef: event.sessionId,
       providerStatus: event.status,
-      status: legacyOutcomeForState(mapped.state),
+      rawStatus: event.rawStatus,
+      resourceId: event.resourceId,
+      resourceType: event.resourceType,
+      sessionKind: event.sessionKind,
+      status: isSession ? legacyOutcomeForState(mapped.state) : null,
+      transaction: event.transaction,
+      trigger: event.trigger,
       vendorData: event.vendorData,
       webhookType: event.webhookType,
     };
@@ -403,4 +420,14 @@ export function extractDiditDecision(
 
 function isPresent<T>(value: T | null): value is T {
   return value !== null;
+}
+
+/**
+ * A failed delivery is correlated by byte length and hash, never by the body itself:
+ * a decision payload can contain names, document numbers and biometric results, and
+ * this service must not write those to logs (NFR-12).
+ */
+function describeBody(rawBody: string): string {
+  const digest = createHash('sha256').update(rawBody).digest('hex').slice(0, 16);
+  return `bytes=${Buffer.byteLength(rawBody)} sha256=${digest}`;
 }

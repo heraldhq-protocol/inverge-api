@@ -1655,3 +1655,34 @@ model WebhookReceipt {
   @@index([provider, receivedAt])
   @@index([status, lockedAt])
 }
+
+// Append-only ledger for every verified Didit webhook. Session events also update
+// VerificationCase; entity, activity and transaction events have no case, so this is
+// their durable state and the audit trail for building a projection later. The raw
+// body is never stored: only its SHA-256 and non-identifying routing metadata.
+enum DiditWebhookResource {
+  SESSION
+  USER
+  BUSINESS
+  ACTIVITY
+  TRANSACTION
+}
+
+model DiditWebhookEvent {
+  id             String               @id @default(cuid())
+  eventId        String               @unique // provider event_id; stable across retries
+  webhookType    String
+  resourceType   DiditWebhookResource
+  resourceId     String?
+  status         String?
+  previousStatus String?
+  vendorData     String?
+  occurredAt     DateTime
+  payloadHash    String
+  metadata       Json?
+  receivedAt     DateTime             @default(now())
+
+  @@index([resourceType, resourceId, occurredAt(sort: Desc)])
+  @@index([webhookType, occurredAt(sort: Desc)])
+  @@index([occurredAt(sort: Desc)])
+}
