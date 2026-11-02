@@ -243,6 +243,77 @@ export class VerificationRepository {
     });
   }
 
+  /**
+   * Reopens an existing case when Didit returns its unfinished session for the same
+   * workflow and vendor_data. This is not a new attempt: the case id, attempt number
+   * and audit history are preserved. A reviewer-requested resubmission may legitimately
+   * move an approved or declined case back to ACTION_REQUIRED.
+   */
+  async reactivateCase(input: {
+    caseId: string;
+    state: VerificationState;
+    providerStatus: string | null;
+    occurredAt: Date;
+    nextReconcileAt: Date | null;
+  }): Promise<VerificationCase> {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.verificationCase.findUnique({
+        where: { id: input.caseId },
+        include: {
+          business: { select: { amlStatus: true, id: true, kybStatus: true } },
+          user: { select: { amlStatus: true, id: true, kycStatus: true } },
+        },
+      });
+      if (!current) {
+        throw new Error(`Verification case ${input.caseId} not found`);
+      }
+
+      const nextStatus = input.state as VerificationStatus;
+      const updated = await tx.verificationCase.update({
+        where: { id: current.id },
+        data: {
+          decidedAt: isTerminal(nextStatus) ? current.decidedAt : null,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          lastProviderSyncAt: input.occurredAt,
+          nextReconcileAt: isTerminal(nextStatus) ? null : input.nextReconcileAt,
+          providerStatus: input.providerStatus,
+          reconcileAttempts: 0,
+          requiresHumanReview:
+            nextStatus === 'IN_REVIEW' ? true : current.requiresHumanReview,
+          status: nextStatus,
+        },
+      });
+
+      await tx.verificationEvent.create({
+        data: {
+          caseId: current.id,
+          eventType: 'case.resumed',
+          metadata: {
+            providerStatus: input.providerStatus,
+            reason: 'PROVIDER_REUSED_SESSION',
+          },
+          newStatus: nextStatus,
+          occurredAt: input.occurredAt,
+          previousStatus: current.status,
+          source: 'SYSTEM',
+        },
+      });
+
+      await this.projectLegacy(tx, {
+        amlRisk: current.riskOutcome as RiskState,
+        business: current.business,
+        businessId: current.businessId,
+        status: nextStatus,
+        type: current.type,
+        user: current.user,
+        userId: current.userId,
+      });
+
+      return updated;
+    });
+  }
+
   async cancelActiveCases(input: {
     userId: string;
     type: VerificationType;

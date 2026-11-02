@@ -124,6 +124,10 @@ export class DiditKycAdapter implements KycProviderPort {
 
     return {
       providerRef,
+      providerStatus:
+        typeof (res as { status?: unknown }).status === 'string'
+          ? (res as { status: string }).status
+          : null,
       sessionKind,
       verificationUrl,
       workflowId:

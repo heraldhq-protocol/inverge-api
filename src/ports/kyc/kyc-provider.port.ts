@@ -67,6 +67,12 @@ export interface StartVerificationResult {
   verificationUrl: string; // hosted flow the user opens
   sessionKind: 'user' | 'business' | null;
   workflowId?: string | null;
+  /**
+   * Exact provider status returned by the create call. Didit returns the existing
+   * unfinished session for the same workflow and vendor_data, so this tells the
+   * domain whether it is resuming rather than creating a new attempt.
+   */
+  providerStatus?: string | null;
 }
 
 export interface AmlSummary {

@@ -46,8 +46,10 @@ import {
   riskFromDecision,
 } from './verification-facts';
 import {
+  isActiveState,
   isTerminalState,
   mapDiditStatus,
+  resumeState,
   riskFromAml,
   type RiskState,
   type VerificationState,
@@ -303,21 +305,27 @@ export class VerificationService {
       type: subject,
       userId,
     });
-    if (attempts >= this.maxAttemptsPerDay()) {
+    const activeCase =
+      subject === 'BUSINESS' ? snapshot.businessCase : snapshot.individualCase;
+    const localState = activeCase?.status as VerificationState | undefined;
+    const canResumeExisting =
+      localState !== undefined &&
+      (isActiveState(localState) ||
+        // A previous interrupted start may have cancelled the local case while
+        // Didit still holds the unfinished session. Allow the provider's
+        // idempotent create to return it instead of blocking on the retry cap.
+        localState === 'CANCELLED' ||
+        localState === 'ERROR');
+
+    // Resuming the provider's unfinished session is not a new attempt. Enforce the
+    // daily cap only when this could create a genuinely new session.
+    if (!canResumeExisting && attempts >= this.maxAttemptsPerDay()) {
       throw new ConflictException({
         blockers: ['Too many verification attempts today. Contact support if you are stuck.'],
         code: 'VERIFICATION_ATTEMPTS_EXCEEDED' satisfies VerificationErrorCode,
         message: 'Verification attempt limit reached',
       });
     }
-
-    // A repeated click replaces an unfinished session rather than stacking cases. The
-    // replaced case stays auditable and is never treated as an approval.
-    await this.repo.cancelActiveCases({
-      reason: 'REPLACED_BY_NEW_SESSION',
-      type: subject,
-      userId,
-    });
 
     const business = subject === 'BUSINESS' ? snapshot.business : null;
     let started;
@@ -348,17 +356,69 @@ export class VerificationService {
       });
     }
 
-    const created = await this.repo.createCase({
-      attempt: attempts + 1,
-      businessId: business?.id ?? null,
-      provider: this.providerName(),
-      providerSessionId: started.providerRef,
-      providerStatus: 'Not Started',
-      providerWorkflowId: started.workflowId ?? null,
-      purpose,
+    // Didit is idempotent for an unfinished (workflow_id, vendor_data) pair: it
+    // returns the existing session, including a reviewer-requested resubmission.
+    // Reuse that case instead of colliding with the unique providerSessionId.
+    const existing = await this.repo.findCaseByProviderSession(
+      started.providerRef,
+    );
+    if (existing) {
+      return this.resumeExistingCase({
+        accountType: snapshot.user.accountType,
+        existing,
+        purpose,
+        started,
+        subject,
+        userId,
+      });
+    }
+
+    // A genuinely new provider session replaces any other unfinished case for this
+    // subject. The replaced case stays auditable and is never treated as an approval.
+    await this.repo.cancelActiveCases({
+      reason: 'REPLACED_BY_NEW_SESSION',
       type: subject,
       userId,
     });
+
+    let created;
+    try {
+      created = await this.repo.createCase({
+        attempt: attempts + 1,
+        businessId: business?.id ?? null,
+        provider: this.providerName(),
+        providerSessionId: started.providerRef,
+        providerStatus: started.providerStatus ?? 'Not Started',
+        providerWorkflowId: started.workflowId ?? null,
+        purpose,
+        type: subject,
+        userId,
+      });
+    } catch (error) {
+      // Two concurrent clicks can both reach the create call. The unique session id
+      // makes one lose; resolve that loser to the same case rather than surfacing a
+      // generic "value already in use" conflict.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raced = await this.repo.findCaseByProviderSession(
+          started.providerRef,
+        );
+        if (raced) {
+          return this.resumeExistingCase({
+            accountType: snapshot.user.accountType,
+            existing: raced,
+            purpose,
+            started,
+            subject,
+            userId,
+          });
+        }
+      }
+      throw error;
+    }
+
     await this.repo.appendCaseEvent({
       caseId: created.id,
       eventReference: null,
@@ -377,6 +437,61 @@ export class VerificationService {
       purpose,
       subject,
       verificationUrl: started.verificationUrl,
+    };
+  }
+
+  private async resumeExistingCase(input: {
+    accountType: 'INDIVIDUAL' | 'BUSINESS';
+    existing: VerificationCase;
+    purpose: KycPurpose;
+    started: {
+      providerRef: string;
+      providerStatus?: string | null;
+      verificationUrl: string;
+    };
+    subject: VerificationType;
+    userId: string;
+  }) {
+    if (
+      input.existing.userId !== input.userId ||
+      input.existing.type !== input.subject
+    ) {
+      throw new ConflictException({
+        code: 'VERIFICATION_SESSION_CONFLICT',
+        message:
+          'The provider returned a session that belongs to another verification. Contact support.',
+      });
+    }
+
+    const mapped = input.started.providerStatus
+      ? mapDiditStatus(input.started.providerStatus)
+      : null;
+    const providerState = mapped?.providerStatus ? mapped.state : null;
+    const currentState = input.existing.status as VerificationState;
+    const nextState = providerState
+      ? resumeState(currentState, providerState)
+      : currentState;
+
+    const resumed = await this.repo.reactivateCase({
+      caseId: input.existing.id,
+      nextReconcileAt: isTerminalState(nextState)
+        ? null
+        : this.nextReconcileAt(),
+      occurredAt: new Date(),
+      providerStatus:
+        input.started.providerStatus ?? input.existing.providerStatus,
+      state: nextState,
+    });
+
+    return {
+      accountType: input.accountType,
+      attempt: resumed.attempt,
+      caseId: resumed.id,
+      providerRef: input.started.providerRef,
+      purpose: resumed.purpose ?? input.purpose,
+      resumed: true,
+      subject: input.subject,
+      verificationUrl: input.started.verificationUrl,
     };
   }
 

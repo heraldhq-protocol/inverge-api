@@ -116,6 +116,24 @@ export function isOutOfOrder(
   return false;
 }
 
+/**
+ * The state a resumed provider session may project onto an existing case.
+ *
+ * Didit reuses an unfinished session for the same workflow and vendor_data. A
+ * reviewer may also request a resubmission of a previously approved or declined
+ * session, which is a legitimate provider-driven downgrade. Other terminal states
+ * are not reopened by a simple resume; a fresh decision must arrive through the
+ * normal webhook/reconciliation path.
+ */
+export function resumeState(
+  current: VerificationState,
+  provider: VerificationState,
+): VerificationState {
+  if (provider === 'ACTION_REQUIRED' || provider === 'EXPIRED') return provider;
+  if (current === 'APPROVED' || current === 'DECLINED') return current;
+  return provider;
+}
+
 export type TransitionVerdict = 'apply' | 'stale' | 'regression';
 
 /**
