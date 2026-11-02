@@ -3,8 +3,11 @@ import { AuthModule } from '../auth/auth.module';
 import { FlatFeeModule } from '../flat-fee/flat-fee.module';
 import { KycModule } from '../kyc/kyc.module';
 import { MediaModule } from '../media/media.module';
+import { ModerationModule } from '../moderation/moderation.module';
 import { AdminCampaignsController } from './admin-campaigns.controller';
 import { ApplicationFeeService } from './application-fee.service';
+import { CampaignCommentsController } from './campaign-comments.controller';
+import { CampaignCommentsService } from './campaign-comments.service';
 import { CampaignReviewService } from './campaign-review.service';
 import { CampaignsController, PlatformController } from './campaigns.controller';
 import { CampaignsService } from './campaigns.service';
@@ -23,11 +26,13 @@ import {
     FlatFeeModule,
     KycModule,
     MediaModule,
+    ModerationModule,
   ],
   controllers: [
     CampaignsController,
     PlatformController,
     AdminCampaignsController,
+    CampaignCommentsController,
     CampaignDraftsController,
     CampaignDeploymentController,
   ],
@@ -35,6 +40,7 @@ import {
     ApplicationFeeService,
     CampaignsService,
     CampaignReviewService,
+    CampaignCommentsService,
     CampaignDraftsService,
     CampaignDeploymentService,
   ],

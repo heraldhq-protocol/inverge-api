@@ -973,6 +973,17 @@
         ],
         "type": "object"
       },
+      "CreateCampaignCommentDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "type": "object"
+      },
       "CreateCampaignDraftDto": {
         "properties": {
           "beneficiaries": {
@@ -5064,6 +5075,155 @@
         "summary": "Start or resume the FR-311 application-fee charge for a draft",
         "tags": [
           "campaigns"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/comments": {
+      "get": {
+        "description": "Readable for a publicly accessible campaign only. Draft, in-review and rejected campaigns return 404.",
+        "operationId": "CampaignCommentsController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page. Omitting it starts at page one.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "List the public discussion thread for a campaign",
+        "tags": [
+          "comments"
+        ]
+      },
+      "post": {
+        "operationId": "CampaignCommentsController_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCampaignCommentDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Post a comment on a public campaign",
+        "tags": [
+          "comments"
+        ]
+      }
+    },
+    "/api/v1/campaigns/{id}/comments/{commentId}": {
+      "delete": {
+        "operationId": "CampaignCommentsController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete your own comment (or one on your campaign)",
+        "tags": [
+          "comments"
         ]
       }
     },

@@ -17,6 +17,7 @@ same surface as the committed document.
 | [errors.md](./errors.md) | Error envelope, stable codes, status mapping | Implemented |
 | [campaign-deployment.md](../campaign-deployment.md) | Draft persistence, escrow deployment, on-chain verification, reconciliation, fee policy, blockers | Implemented against programme source; not yet verified against a deployed binary |
 | [pagination-filtering.md](./pagination-filtering.md) | Cursors, filters, sort, limits | Implemented for ideas, campaigns, comments |
+| [discussions.md](./discussions.md) | Idea and campaign comment threads, permissions, pagination, moderation | Implemented |
 | [taxonomy.md](./taxonomy.md) | Canonical categories/subcategories, assignments, browse counts | Implemented |
 | [caching.md](./caching.md) | Keys, TTLs, invalidation, failure behaviour | Implemented |
 | [rate-limiting.md](./rate-limiting.md) | Policies, headers, proxy trust | Implemented |

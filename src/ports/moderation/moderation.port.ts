@@ -42,9 +42,9 @@ export interface ModerationResult {
 }
 
 export interface ModeratableContent {
-  kind: 'idea' | 'campaign';
+  kind: 'idea' | 'campaign' | 'comment';
   title?: string;
-  text: string; // concatenated pitch/campaign text to screen
+  text: string; // concatenated pitch/campaign/comment text to screen
 }
 
 export interface ModerationClassifierPort {
