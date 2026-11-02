@@ -157,6 +157,65 @@ export interface UserInterests {
   regions: string[]; // lowercased
 }
 
+/**
+ * Cities used by the settings "Nigeria & West Africa" choice. Idea locations are
+ * free-text cities, so a broad preference is expanded into the markets we can
+ * recognise rather than pretending "west-africa" equals "Lagos".
+ */
+const WEST_AFRICA_MARKETS = new Set([
+  'lagos',
+  'abuja',
+  'ibadan',
+  'port harcourt',
+  'kano',
+  'accra',
+  'kumasi',
+  'tamale',
+  'dakar',
+  'abidjan',
+  'bamako',
+  'niamey',
+  'ouagadougou',
+  'cotonou',
+  'lome',
+  'freetown',
+  'monrovia',
+  'conakry',
+  'banjul',
+  'bissau',
+  'praia',
+  'nigeria',
+  'ghana',
+  'senegal',
+  'ivory coast',
+  'côte d’ivoire',
+  'cote d’ivoire',
+  'mali',
+  'niger',
+  'burkina faso',
+  'benin',
+  'togo',
+  'sierra leone',
+  'liberia',
+  'guinea',
+  'gambia',
+  'guinea-bissau',
+  'cape verde',
+]);
+
+/** True when a saved broad region covers an idea's free-text location. */
+export function regionMatches(preferred: string, actual: string): boolean {
+  const pref = preferred.trim().toLowerCase();
+  const place = actual.trim().toLowerCase();
+  if (!pref || !place) return false;
+  if (pref === place) return true;
+  // The catalogue is Africa-focused; "All Africa" is a deliberate broad tilt,
+  // not a hard filter, so every listed market remains eligible.
+  if (pref === 'africa') return true;
+  if (pref === 'west-africa') return WEST_AFRICA_MARKETS.has(place);
+  return false;
+}
+
 // Bounded personalization multiplier. A tilt, never a filter: even a strong idea outside a
 // backer's region/category still surfaces because the multiplier is clamped to [min,max].
 export function personalizationMultiplier(
@@ -169,7 +228,10 @@ export function personalizationMultiplier(
   let reason: 'region' | 'category' | null = null;
 
   const reg = item.region?.toLowerCase();
-  if (reg && interests.regions.includes(reg)) {
+  if (
+    reg &&
+    interests.regions.some((preferred) => regionMatches(preferred, reg))
+  ) {
     mult *= 1 + p.regionBonus;
     reason = 'region'; // region is the stronger "from X" chip signal — takes precedence
   }

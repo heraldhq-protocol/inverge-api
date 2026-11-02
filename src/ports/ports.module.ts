@@ -17,6 +17,7 @@ import { DiditKycAdapter } from './kyc/didit-kyc.adapter';
 
 import { NOTIFICATION_PORT } from './notification/notification.port';
 import { StubNotificationAdapter } from './notification/stub-notification.adapter';
+import { ResendNotificationAdapter } from './notification/resend-notification.adapter';
 
 import { EMAIL_PORT } from './email/email.port';
 import { ResendEmailAdapter } from './email/resend-email.adapter';
@@ -57,6 +58,7 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
     StubKycAdapter,
     DiditKycAdapter,
     StubNotificationAdapter,
+    ResendNotificationAdapter,
     StubEmailAdapter,
     ResendEmailAdapter,
     StubQualityScorerAdapter,
@@ -110,18 +112,27 @@ import { DisabledMediaAdapter } from './media/disabled-media.adapter';
       ) => (config.get('KYC_PROVIDER', { infer: true }) === 'didit' ? didit : stub),
     },
     {
-      // In-app rows are persisted before dispatch. With no external notification
-      // gateway configured, the stub logs a dispatch and records success.
-      provide: NOTIFICATION_PORT,
-      useExisting: StubNotificationAdapter,
-    },
-    {
       provide: EMAIL_PORT,
       inject: [ConfigService, StubEmailAdapter, ResendEmailAdapter],
       useFactory: (
         config: ConfigService<Env, true>,
         stub: StubEmailAdapter,
         resend: ResendEmailAdapter,
+      ) =>
+        config.get('EMAIL_PROVIDER', { infer: true }) === 'resend'
+          ? resend
+          : stub,
+    },
+    {
+      // Outbound notifications share the transactional-email transport. With
+      // Resend configured they are delivered; otherwise the stub records a
+      // dispatch so local work stays offline.
+      provide: NOTIFICATION_PORT,
+      inject: [ConfigService, StubNotificationAdapter, ResendNotificationAdapter],
+      useFactory: (
+        config: ConfigService<Env, true>,
+        stub: StubNotificationAdapter,
+        resend: ResendNotificationAdapter,
       ) =>
         config.get('EMAIL_PROVIDER', { infer: true }) === 'resend'
           ? resend

@@ -49,6 +49,9 @@ export class PublicCreatorDto {
   @ApiProperty({ type: String, nullable: true })
   bio!: string | null;
 
+  @ApiProperty({ type: String, nullable: true })
+  location!: string | null;
+
   @ApiProperty({ type: [PublicCreatorLinkDto] })
   links!: PublicCreatorLinkDto[];
 

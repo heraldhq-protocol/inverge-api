@@ -62,6 +62,12 @@ export class UpdateCreatorProfileDto {
   @Length(0, 280)
   bio?: string;
 
+  @ApiPropertyOptional({ description: 'Public location shown on the creator profile.' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  location?: string;
+
   @ApiPropertyOptional({ type: [CreatorLinkDto] })
   @IsOptional()
   @IsArray()

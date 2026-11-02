@@ -294,6 +294,12 @@ model User {
   // when these are empty. Bounded multiplier only — never a hard filter (no filter bubble).
   preferredCategories String[] @default([])
   preferredRegions    String[] @default([])
+  feedRegion          String   @default("global") // broad settings scope: global | africa | west-africa
+  feedShowPromoted    Boolean  @default(true) // false removes paid placements for this account
+  notifyEmailUpdates      Boolean @default(true)
+  notifyMilestoneReviews  Boolean @default(true)
+  notifyCreatorUpdates    Boolean @default(true)
+  notifyDiscoveryDigest   Boolean @default(false)
   // Launch trust proxy (e.g. SuperteamNG cohort membership) while delivery history is thin.
   // Admin-settable; feeds the feed TrustScore, never any validation metric.
   institutionalCosign Boolean  @default(false)
@@ -310,6 +316,7 @@ model User {
   kycEvents              KycStatusEvent[]
   amlScreenings          AmlScreening[]
   verificationCases      VerificationCase[]
+  accountRequests        AccountRequest[]
   ContributionAuthorizations ContributionAuthorization[]
   flatFeeCharges         FlatFeeCharge[]
   campaigns              Campaign[]              @relation("CampaignCreator")
@@ -355,6 +362,33 @@ model EmailVerificationChallenge {
 
   @@index([userId, purpose, createdAt(sort: Desc)])
   @@index([email, createdAt(sort: Desc)])
+}
+
+enum AccountRequestType {
+  DATA_EXPORT
+  ACCOUNT_DELETION
+}
+
+enum AccountRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+model AccountRequest {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      AccountRequestType
+  status    AccountRequestStatus @default(PENDING)
+  note      String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
 }
 
 model WalletAccount {
@@ -539,6 +573,7 @@ model CreatorProfile {
   displayName        String?
   avatarUrl          String?
   bio                String?
+  location           String?
   links              Json?       @default("[]")
   activeStrikes      Int         @default(0)
   completedCampaigns Int         @default(0)
@@ -1578,6 +1613,7 @@ model Notification {
   dedupeKey         String?   @unique
   readAt            DateTime?
   dispatchedAt      DateTime?
+  suppressedAt      DateTime?
   dispatchAttempts  Int       @default(0)
   lastDispatchError String?
   createdAt         DateTime  @default(now())

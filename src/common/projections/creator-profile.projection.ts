@@ -9,6 +9,7 @@ export type PublicCreator = {
   displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  location: string | null;
   links: PublicCreatorLink[];
   tier: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
   completedCampaigns: number;
@@ -26,6 +27,7 @@ export type UserWithProfileForProjection = {
     displayName?: string | null;
     avatarUrl?: string | null;
     bio?: string | null;
+    location?: string | null;
     links?: unknown;
     tier?: 'STARTER' | 'TRUSTED' | 'ESTABLISHED';
     completedCampaigns?: number;
@@ -55,6 +57,7 @@ export function toPublicCreator(
   const username = storedUsername || derivedUsername || user.id;
   const avatarUrl = profile?.avatarUrl?.trim() || null;
   const bio = profile?.bio?.trim() || null;
+  const location = profile?.location?.trim() || null;
 
   let links: PublicCreatorLink[] = [];
   if (Array.isArray(profile?.links)) {
@@ -72,6 +75,7 @@ export function toPublicCreator(
     displayName,
     avatarUrl,
     bio,
+    location,
     links,
     tier: profile?.tier ?? 'STARTER',
     completedCampaigns: profile?.completedCampaigns ?? 0,
