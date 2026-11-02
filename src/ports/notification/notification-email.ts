@@ -41,6 +41,20 @@ export function notificationEmailTemplate(
         templateId: 'WAITLIST_IDEA_LIVE',
         variables: variables(message.data, ['ideaId', 'ideaTitle', 'campaignId']),
       };
+    case 'IDEA_CONVERTED_TO_CAMPAIGN':
+      return {
+        templateId: 'IDEA_CONVERTED_TO_CAMPAIGN',
+        variables: variables(message.data, [
+          'campaignId',
+          'campaignTitle',
+          'campaignSummary',
+          'coverImageUrl',
+          'firstName',
+          'fundingDeadline',
+          'fundingGoal',
+          'ideaTitle',
+        ]),
+      };
     case 'CAMPAIGN_FUNDED':
       return {
         templateId: 'CAMPAIGN_FUNDED',

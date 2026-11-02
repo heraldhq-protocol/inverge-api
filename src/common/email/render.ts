@@ -53,10 +53,14 @@ function requireAbsoluteUrl(value: string, name: string): string {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error();
-    return url.origin;
+    return url.toString();
   } catch {
     throw new EmailTemplateError('*', [name], `${name} must be an absolute http(s) URL`);
   }
+}
+
+function requireOrigin(value: string, name: string): string {
+  return new URL(requireAbsoluteUrl(value, name)).origin;
 }
 
 function optionalUrl(value: string | null | undefined, name: string): string | null {
@@ -86,7 +90,7 @@ export function renderEmailTemplate(
     throw new EmailTemplateError(definition.id, uniqueInvalid, 'missing or invalid variables');
   }
 
-  const appUrl = requireAbsoluteUrl(options.appUrl, 'appUrl');
+  const appUrl = requireOrigin(options.appUrl, 'appUrl');
   const locale: EmailLocale = resolveEmailLocale(options.locale);
 
   const context: EmailRenderContext = {

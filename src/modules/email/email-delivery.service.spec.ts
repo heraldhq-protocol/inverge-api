@@ -120,6 +120,34 @@ const transactional = {
 };
 
 describe('EmailDeliveryService', () => {
+  it('delivers the converted-idea campaign notification through the provider port', async () => {
+    const prisma = fakePrisma({});
+    const { port, service } = make(prisma);
+
+    const result = await service.sendNotification({
+      data: {
+        campaignId: 'cmp1',
+        campaignSummary: 'A shared solar cold room.',
+        campaignTitle: 'Solar cold storage',
+        firstName: 'Amara',
+        ideaTitle: 'Solar cold storage',
+      },
+      dedupeKey: 'IDEA_CONVERTED_TO_CAMPAIGN:cmp1:user-1',
+      notificationId: 'n1',
+      template: 'IDEA_CONVERTED_TO_CAMPAIGN',
+      toEmail: EMAIL,
+      toUserId: USER_ID,
+    });
+
+    expect(result.status).toBe('sent');
+    const sent = port.send.mock.calls[0][0];
+    expect(sent.subject).toBe('An idea you supported is now a campaign');
+    expect(sent.html).toContain('https://inverge.test/campaigns/cmp1');
+    expect(sent.html).toContain('did not charge you');
+    expect(sent.text).toContain('Review the campaign');
+    expect(sent.idempotencyKey).toBe('notification/n1');
+  });
+
   it('claims the row, renders, sends and records the provider id', async () => {
     const prisma = fakePrisma({});
     const { service, port } = make(prisma);

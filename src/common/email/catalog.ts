@@ -1,3 +1,4 @@
+import { safeEmailUrl } from './brand';
 import type { EmailCategory, EmailContent, EmailItem, EmailRenderContext } from './layout';
 
 /**
@@ -13,6 +14,7 @@ export type EmailTemplateId =
   | 'IDEA_FEEDBACK'
   | 'IDEA_COMMENT'
   | 'WAITLIST_IDEA_LIVE'
+  | 'IDEA_CONVERTED_TO_CAMPAIGN'
   | 'ACCOUNT_UPDATE'
   | 'CAMPAIGN_SUBMITTED'
   | 'CAMPAIGN_APPROVED'
@@ -87,6 +89,37 @@ function campaignCreatorLink(ctx: EmailRenderContext, vars: TemplateVariables): 
   return id
     ? appLink(ctx, `/d/creator/campaigns/${encodeURIComponent(id)}`)
     : appLink(ctx, '/d/creator/campaigns');
+}
+
+function campaignPublicLink(ctx: EmailRenderContext, vars: TemplateVariables): string {
+  const id = text(vars, 'campaignId');
+  return id
+    ? appLink(ctx, `/campaigns/${encodeURIComponent(id)}`)
+    : appLink(ctx, '/campaigns');
+}
+
+/**
+ * Resolves a campaign asset against the canonical app origin, then keeps it only
+ * if it is a real http(s) URL. A missing or relative-only asset is omitted rather
+ * than rendered as a broken image.
+ */
+function emailImage(
+  ctx: EmailRenderContext,
+  value: unknown,
+  alt: string,
+): { alt: string; url: string } | undefined {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return undefined;
+  let absolute = raw;
+  if (raw.startsWith('/')) {
+    try {
+      absolute = new URL(raw, ctx.appUrl).toString();
+    } catch {
+      return undefined;
+    }
+  }
+  const url = safeEmailUrl(absolute);
+  return url ? { alt, url } : undefined;
 }
 
 const TRANSACTIONAL_REASON =
@@ -258,6 +291,55 @@ const waitlistIdeaLive: EmailTemplateDefinition = {
       ],
       cta: { label: 'View the campaign', url: ideaLink(ctx, vars) },
       footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
+const ideaConvertedToCampaign: EmailTemplateDefinition = {
+  id: 'IDEA_CONVERTED_TO_CAMPAIGN',
+  category: 'transactional',
+  label: 'Supported idea became a campaign',
+  requiredVariables: ['campaignId', 'campaignTitle'],
+  optionalVariables: [
+    'campaignSummary',
+    'coverImageUrl',
+    'firstName',
+    'fundingDeadline',
+    'fundingGoal',
+    'ideaTitle',
+  ],
+  build(vars, ctx) {
+    const firstName = text(vars, 'firstName') || 'there';
+    const ideaTitle = text(vars, 'ideaTitle');
+    const campaignTitle = text(vars, 'campaignTitle');
+    const details = [
+      text(vars, 'fundingGoal')
+        ? { label: 'Funding goal', value: text(vars, 'fundingGoal') }
+        : null,
+      text(vars, 'fundingDeadline')
+        ? { label: 'Funding deadline', value: text(vars, 'fundingDeadline') }
+        : null,
+    ].filter((detail): detail is { label: string; value: string } => detail !== null);
+
+    return {
+      subject: 'An idea you supported is now a campaign',
+      previewText: campaignTitle
+        ? `${campaignTitle} is now a campaign on Inverge.`
+        : 'An idea you supported is now a campaign on Inverge.',
+      heading: campaignTitle ? `${campaignTitle} is now a campaign` : 'An idea you supported is now a campaign',
+      paragraphs: [
+        ideaTitle
+          ? `Hi ${firstName}, you showed interest in ${ideaTitle} when it was still an idea. It is now a campaign on Inverge, and you can take a closer look at the plan.`
+          : `Hi ${firstName}, you showed interest in an idea when it was still an idea. It is now a campaign on Inverge, and you can take a closer look at the plan.`,
+        text(vars, 'campaignSummary'),
+        "Review the campaign, its milestones, rewards and terms, then decide whether you'd like to contribute. There is no obligation to back it.",
+      ].filter((paragraph) => paragraph.trim().length > 0),
+      image: emailImage(ctx, vars.coverImageUrl, campaignTitle || 'Campaign cover'),
+      details: details.length > 0 ? details : undefined,
+      cta: { label: 'Review the campaign', url: campaignPublicLink(ctx, vars) },
+      note: 'Showing interest did not charge you, create a contribution, or reserve a reward. A pre-pledge is not a payment.',
+      footerReason:
+        'You received this because you showed interest in this idea on Inverge. It is a one-off update about that idea.',
     };
   },
 };
@@ -540,6 +622,7 @@ export const EMAIL_TEMPLATES: Record<EmailTemplateId, EmailTemplateDefinition> =
   IDEA_FEEDBACK: ideaFeedback,
   IDEA_COMMENT: ideaComment,
   WAITLIST_IDEA_LIVE: waitlistIdeaLive,
+  IDEA_CONVERTED_TO_CAMPAIGN: ideaConvertedToCampaign,
   ACCOUNT_UPDATE: accountUpdate,
   CAMPAIGN_SUBMITTED: campaignSubmitted,
   CAMPAIGN_APPROVED: campaignApproved,
