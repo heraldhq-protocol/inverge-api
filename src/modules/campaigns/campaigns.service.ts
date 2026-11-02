@@ -200,7 +200,7 @@ export class CampaignsService {
       return buildPage(result, limit, (campaign) => {
         const sortValue =
           sort === 'closing-soon'
-            ? campaign.deadline.toISOString()
+            ? (campaign.deadline?.toISOString() ?? campaign.createdAt.toISOString())
             : sort === 'most-backed'
               ? campaign.totalRaised.toString()
               : campaign.createdAt.toISOString();
