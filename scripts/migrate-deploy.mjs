@@ -43,6 +43,50 @@ if (target !== url) {
   );
 }
 
+/**
+ * One obsolete migration shipped briefly alongside a duplicate of the same
+ * settings schema. A deployment that attempted it left a failed
+ * `_prisma_migrations` row, and Prisma refuses every later deploy until that
+ * row is cleared. The migration file is gone; delete only its failed row. A
+ * successfully applied row (or no row) is left untouched.
+ */
+const OBSOLETE_FAILED_MIGRATION = '20261031120000_settings_persistence';
+
+async function clearObsoleteFailedMigration() {
+  const { Client } = await import('pg');
+  const needsSsl = !/localhost|127\.0\.0\.1/i.test(target);
+  const client = new Client({
+    connectionString: target,
+    ...(needsSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `DELETE FROM "_prisma_migrations" WHERE migration_name = $1 AND finished_at IS NULL`,
+      [OBSOLETE_FAILED_MIGRATION],
+    );
+    if (result.rowCount) {
+      console.log(
+        `[migrate] cleared ${result.rowCount} failed duplicate migration row(s).`,
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+try {
+  await clearObsoleteFailedMigration();
+} catch (error) {
+  // A missing row, an unreachable cleanup connection or an absent migration
+  // table is not fatal: the deploy below reports the real problem.
+  console.warn(
+    `[migrate] could not inspect the obsolete migration row: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  );
+}
+
 const result = spawnSync('prisma', ['migrate', 'deploy'], {
   stdio: 'inherit',
   env: { ...process.env, DATABASE_URL: target, DIRECT_URL: target },

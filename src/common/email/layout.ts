@@ -26,6 +26,8 @@ export interface EmailContent {
   previewText: string;
   heading: string;
   paragraphs: string[];
+  /** Optional hero image. Rendered only when the URL is an absolute http(s) URL. */
+  image?: { alt: string; url: string };
   details?: EmailDetail[];
   items?: EmailItem[];
   /** A one-time code panel (verification mail). Rendered monospace. */
