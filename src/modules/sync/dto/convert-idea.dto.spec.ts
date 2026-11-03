@@ -32,4 +32,21 @@ describe('ConvertIdeaDto', () => {
 
     expect(errors.some((error) => error.property === 'targetAmount')).toBe(true);
   });
+
+  it.each(['0', '0.00'])('rejects the non-positive target %s', async (targetAmount) => {
+    const dto = plainToInstance(ConvertIdeaDto, { ...base(), targetAmount });
+
+    const errors = await validate(dto);
+
+    expect(errors.some((error) => error.property === 'targetAmount')).toBe(true);
+  });
+
+  it('accepts the smallest positive target', async () => {
+    const dto = plainToInstance(ConvertIdeaDto, {
+      ...base(),
+      targetAmount: '0.01',
+    });
+
+    await expect(validate(dto)).resolves.toHaveLength(0);
+  });
 });

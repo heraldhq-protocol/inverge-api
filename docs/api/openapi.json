@@ -924,7 +924,9 @@
             "type": "array"
           },
           "targetAmount": {
-            "type": "number"
+            "description": "USDC target as an exact decimal string.",
+            "example": "5000.00",
+            "type": "string"
           },
           "tokenType": {
             "enum": [

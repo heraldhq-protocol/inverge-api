@@ -20,7 +20,9 @@ import {
 export const CAMPAIGN_TYPES = ['ALL_OR_NOTHING', 'FLEXIBLE_FUNDING'] as const;
 export const TOKEN_TYPES = ['USDC', 'CNGN'] as const;
 
-const DECIMAL_2DP = /^\d+(\.\d{1,2})?$/;
+// At least one non-zero digit keeps a zero target out, matching the old
+// `@IsPositive()` guard while still refusing binary floating point for money.
+const POSITIVE_DECIMAL_2DP = /^(?=.*[1-9])\d+(\.\d{1,2})?$/;
 
 export class MilestoneInputDto {
   @ApiProperty() @IsString() @IsNotEmpty() title!: string;
@@ -51,8 +53,8 @@ export class ConvertIdeaDto {
     example: '5000.00',
   })
   @IsString()
-  @Matches(DECIMAL_2DP, {
-    message: 'targetAmount must be a non-negative decimal with at most 2dp',
+  @Matches(POSITIVE_DECIMAL_2DP, {
+    message: 'targetAmount must be a positive decimal with at most 2dp',
   })
   targetAmount!: string;
 
