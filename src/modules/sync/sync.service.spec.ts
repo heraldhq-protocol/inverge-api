@@ -100,7 +100,7 @@ describe('convert — precondition guards', () => {
   const dto: any = {
     type: 'ALL_OR_NOTHING',
     tokenType: 'USDC',
-    targetAmount: 10000,
+    targetAmount: '10000.00',
     deadline: '2026-12-31T00:00:00Z',
     milestones: [
       { title: 'a', deliverable: 'x', tranchePct: 50, evidenceDefinition: {} },
