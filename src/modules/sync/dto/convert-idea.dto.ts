@@ -10,8 +10,8 @@ import {
   IsNumber,
   IsObject,
   IsOptional,
-  IsPositive,
   IsString,
+  Matches,
   Max,
   Min,
   ValidateNested,
@@ -19,6 +19,8 @@ import {
 
 export const CAMPAIGN_TYPES = ['ALL_OR_NOTHING', 'FLEXIBLE_FUNDING'] as const;
 export const TOKEN_TYPES = ['USDC', 'CNGN'] as const;
+
+const DECIMAL_2DP = /^\d+(\.\d{1,2})?$/;
 
 export class MilestoneInputDto {
   @ApiProperty() @IsString() @IsNotEmpty() title!: string;
@@ -44,7 +46,15 @@ export class ConvertIdeaDto {
   @IsIn(TOKEN_TYPES)
   tokenType!: (typeof TOKEN_TYPES)[number];
 
-  @ApiProperty() @IsNumber() @IsPositive() targetAmount!: number;
+  @ApiProperty({
+    description: 'USDC target as an exact decimal string.',
+    example: '5000.00',
+  })
+  @IsString()
+  @Matches(DECIMAL_2DP, {
+    message: 'targetAmount must be a non-negative decimal with at most 2dp',
+  })
+  targetAmount!: string;
 
   @ApiProperty({ description: 'ISO 8601 deadline' })
   @IsDateString()
