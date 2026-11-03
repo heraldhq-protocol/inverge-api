@@ -119,7 +119,7 @@ export function buildFeeBreakdown(input: {
           amount: '0.00',
           asset: 'USD',
           detail:
-            'No separate deployment fee is being collected. The campaign application fee is charged separately at review submission (FR-311).',
+            'No separate deployment fee is being collected. The campaign application fee is charged separately at review submission.',
           id: 'platform_fee',
           label: 'Inverge deployment fee',
           recipient: 'Inverge',

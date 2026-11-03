@@ -769,7 +769,7 @@ export class CampaignDeploymentService {
       throw new ConflictException({
         code: 'DEPLOYMENT_FEE_REQUIRED',
         message:
-          'This deployment requires a successful application-fee payment (FR-311). Pay the fee, then prepare again. No transaction has been signed.',
+          'This deployment requires a successful application-fee payment. Pay the fee, then prepare again. No transaction has been signed.',
       });
     }
 

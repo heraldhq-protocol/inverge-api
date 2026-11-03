@@ -66,7 +66,7 @@ export class CampaignsController {
   @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @RateLimit('financial')
   @ApiOperation({
-    summary: 'Start or resume the FR-311 application-fee charge for a draft',
+    summary: 'Start or resume the application-fee charge for a draft',
   })
   applicationFeeCharge(
     @CurrentUser() user: AuthenticatedUser,
@@ -106,7 +106,7 @@ export class PlatformController {
   }
 
   @Get('escrow')
-  @ApiOperation({ summary: 'Get aggregate platform escrow figures (FR-801)' })
+  @ApiOperation({ summary: 'Get aggregate platform escrow figures' })
   getEscrowStats() {
     return this.campaigns.getPlatformEscrowStats();
   }

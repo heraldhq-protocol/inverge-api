@@ -141,7 +141,7 @@ export class VerificationController {
   @ApiBearerAuth()
   @UseGuards(PrivyAuthGuard, EmailVerifiedGuard)
   @ApiOperation({
-    summary: 'Authorise a contribution against the FR-104 cumulative threshold',
+    summary: 'Authorise a contribution against the cumulative funding threshold',
   })
   authorizeContribution(
     @CurrentUser() user: AuthenticatedUser,

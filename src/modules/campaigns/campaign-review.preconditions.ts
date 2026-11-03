@@ -145,35 +145,35 @@ function evaluateApplicationFee(input: CampaignReviewGateInput): {
     return {
       satisfied: false,
       detail: 'No application-fee payment is linked to this campaign',
-      blocker: 'Application fee (FR-311) has not been paid',
+      blocker: 'Application fee has not been paid',
     };
   }
   if (!charge) {
     return {
       satisfied: false,
       detail: 'The linked application-fee record was not found',
-      blocker: 'Application fee (FR-311) payment record was not found',
+      blocker: 'Application fee payment record was not found',
     };
   }
   if (charge.userId !== input.creatorId) {
     return {
       satisfied: false,
       detail: 'The application fee was paid by a different account',
-      blocker: 'Application fee (FR-311) was not paid by the campaign creator',
+      blocker: 'Application fee was not paid by the campaign creator',
     };
   }
   if (charge.purpose !== 'APPLICATION_FEE') {
     return {
       satisfied: false,
       detail: 'The linked charge is not an application fee',
-      blocker: 'Linked charge is not an application fee (FR-311)',
+      blocker: 'Linked charge is not an application fee',
     };
   }
   if (charge.status !== 'SUCCEEDED') {
     return {
       satisfied: false,
       detail: `The application fee is ${charge.status.toLowerCase()}`,
-      blocker: `Application fee (FR-311) is ${charge.status.toLowerCase()}`,
+      blocker: `Application fee is ${charge.status.toLowerCase()}`,
     };
   }
 
@@ -188,8 +188,8 @@ function evaluateApplicationFee(input: CampaignReviewGateInput): {
         ? 'The application fee belongs to a different campaign'
         : 'The application fee is not bound to this campaign',
       blocker: boundCampaign
-        ? 'Application fee (FR-311) belongs to another campaign'
-        : 'Application fee (FR-311) is not bound to this campaign',
+        ? 'Application fee belongs to another campaign'
+        : 'Application fee is not bound to this campaign',
     };
   }
 
@@ -209,13 +209,13 @@ export function evaluateCampaignReviewGates(
   const checks: CampaignReviewGateCheck[] = [
     {
       key: 'identity',
-      label: 'Identity and AML (FR-103)',
+      label: 'Identity and AML',
       satisfied: identity.satisfied,
       detail: identity.detail,
     },
     {
       key: 'application_fee',
-      label: 'Application fee (FR-311)',
+      label: 'Application fee',
       satisfied: fee.satisfied,
       detail: fee.detail,
     },

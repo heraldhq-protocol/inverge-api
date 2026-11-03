@@ -88,7 +88,7 @@ export class ListCampaignsQueryDto {
 export class SubmitCampaignDto {
   @ApiPropertyOptional({
     description:
-      'SUCCEEDED APPLICATION_FEE charge id (FR-311). Required when the campaign has not already linked one; re-submission after a change request reuses it.',
+      'SUCCEEDED APPLICATION_FEE charge id. Required when the campaign has not already linked one; re-submission after a change request reuses it.',
   })
   @IsOptional()
   @IsString()
