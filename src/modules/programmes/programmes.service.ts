@@ -222,9 +222,14 @@ export class ProgrammesService {
       });
     }
 
-    const statuses: ProgrammeEntryStatus[] = record.resultsVisibility === 'PUBLIC'
-      ? ['SHORTLISTED', 'ACCEPTED']
-      : ['SHORTLISTED'];
+    // Published results already expose every ranked entry through the
+    // standings. Once results are public, a plain submitted entry is public
+    // too; only drafts, withdrawn entries and entries removed by a decision
+    // stay private.
+    const statuses: ProgrammeEntryStatus[] =
+      record.resultsVisibility === 'PUBLIC'
+        ? ['SUBMITTED', 'SHORTLISTED', 'ACCEPTED']
+        : ['SHORTLISTED'];
 
     const entries = await this.prisma.programmeEntry.findMany({
       where: { programmeId: record.id, status: { in: statuses } },
