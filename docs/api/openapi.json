@@ -208,6 +208,29 @@
         ],
         "type": "object"
       },
+      "AdminEntryDecisionDto": {
+        "properties": {
+          "note": {
+            "description": "Moderator note; never shown publicly",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "UNDER_REVIEW",
+              "CHANGES_REQUESTED",
+              "SHORTLISTED",
+              "ACCEPTED",
+              "REJECTED",
+              "DISQUALIFIED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "AiAccessDto": {
         "properties": {
           "canRequest": {
@@ -595,6 +618,22 @@
         ],
         "type": "object"
       },
+      "AssignJudgeDto": {
+        "properties": {
+          "conflictDeclaration": {
+            "type": "string"
+          },
+          "email": {
+            "description": "Email of an existing verified account",
+            "type": "string"
+          },
+          "judgeId": {
+            "description": "Existing user id",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "BoostPricesDto": {
         "properties": {
           "basicDurationDays": {
@@ -801,7 +840,7 @@
             "type": "string"
           },
           "evidence": {
-            "description": "The immutable evidence definition (FR-302).",
+            "description": "The immutable evidence definition.",
             "type": "string"
           },
           "expectedAt": {
@@ -917,7 +956,7 @@
             "type": "string"
           },
           "milestones": {
-            "description": "2–6 milestones (FR-301)",
+            "description": "2-6 milestones",
             "items": {
               "$ref": "#/components/schemas/MilestoneInputDto"
             },
@@ -943,7 +982,7 @@
             "type": "string"
           },
           "workingCapitalPct": {
-            "description": "Working-capital tranche %, fixed at 20 (FR-503a)",
+            "description": "Working-capital tranche %, fixed at 20",
             "type": "number"
           }
         },
@@ -1171,7 +1210,7 @@
             "type": "string"
           },
           "creatorPrePledgeTarget": {
-            "description": "Creator-declared expected pre-pledge minimum in USD (FR-204). The gate requires the weighted figure to clear max(platform floor, this).",
+            "description": "Creator-declared expected pre-pledge minimum in USD. The gate requires the weighted figure to clear max(platform floor, this).",
             "type": "number"
           },
           "currentAlternative": {
@@ -1285,6 +1324,283 @@
         ],
         "type": "object"
       },
+      "CreateProgrammeDto": {
+        "properties": {
+          "acceptedLinkHosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowDraftEditing": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowEvaluationRevision": {
+            "default": false,
+            "description": "Allow a judge to revise an already-submitted evaluation. Every revision is retained.",
+            "type": "boolean"
+          },
+          "allowMultipleEntries": {
+            "default": false,
+            "type": "boolean"
+          },
+          "allowTeams": {
+            "default": false,
+            "type": "boolean"
+          },
+          "allowWithdrawal": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowedCategories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeAssetDto"
+            },
+            "type": "array"
+          },
+          "category": {
+            "type": "string"
+          },
+          "communityWeight": {
+            "default": 0,
+            "type": "number"
+          },
+          "customQuestions": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeCustomQuestionDto"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entryMode": {
+            "default": "NEW_OR_EXISTING",
+            "enum": [
+              "NEW_IDEAS_ONLY",
+              "EXISTING_IDEAS_ONLY",
+              "NEW_OR_EXISTING"
+            ],
+            "type": "string"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeFaqDto"
+            },
+            "type": "array"
+          },
+          "heroCopy": {
+            "type": "string"
+          },
+          "judgeWeight": {
+            "default": 100,
+            "type": "number"
+          },
+          "judgingEndsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "judgingMethod": {
+            "default": "JUDGES",
+            "enum": [
+              "COMMUNITY",
+              "JUDGES",
+              "HYBRID",
+              "CURATED"
+            ],
+            "type": "string"
+          },
+          "judgingStartsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lateEntriesAllowed": {
+            "default": false,
+            "type": "boolean"
+          },
+          "maxAttachments": {
+            "default": 0,
+            "type": "number"
+          },
+          "maxEntriesPerParticipant": {
+            "default": 1,
+            "type": "number"
+          },
+          "minQualityScore": {
+            "description": "0..1 quality threshold, or null for none",
+            "type": "object"
+          },
+          "minimumEvaluations": {
+            "default": 1,
+            "type": "number"
+          },
+          "missingEvaluationPolicy": {
+            "default": "EXCLUDE",
+            "enum": [
+              "EXCLUDE",
+              "ZERO"
+            ],
+            "type": "string"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeModuleDto"
+            },
+            "type": "array"
+          },
+          "organiser": {
+            "type": "string"
+          },
+          "registrationClosesAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "registrationOpensAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "registrationRequired": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requireConflictDeclaration": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requireEmailVerified": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requiredFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resultsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/RubricCriterionDto"
+            },
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "submissionClosesAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submissionOpensAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "teamMaxSize": {
+            "default": 4,
+            "type": "number"
+          },
+          "teamMinSize": {
+            "default": 1,
+            "type": "number"
+          },
+          "tieBreak": {
+            "items": {
+              "$ref": "#/components/schemas/TieBreakRuleDto"
+            },
+            "type": "array"
+          },
+          "timezone": {
+            "default": "UTC",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "MONTHLY_IDEATHON",
+              "SPONSORED_CHALLENGE",
+              "SHOWCASE",
+              "WORKSHOP",
+              "EXPERT_SESSION",
+              "OTHER"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "registrationOpensAt",
+          "registrationClosesAt",
+          "submissionOpensAt",
+          "submissionClosesAt",
+          "judgingStartsAt",
+          "judgingEndsAt",
+          "resultsAt",
+          "slug",
+          "type",
+          "title",
+          "tagline",
+          "description",
+          "category",
+          "organiser"
+        ],
+        "type": "object"
+      },
+      "CreateProgrammeEntryDto": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "description": "Draft answers keyed by field id",
+            "type": "object"
+          },
+          "ideaId": {
+            "description": "Idea id owned by the caller",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "NEW_IDEA",
+              "EXISTING_IDEA"
+            ],
+            "type": "string"
+          },
+          "teamMembers": {
+            "items": {
+              "$ref": "#/components/schemas/EntryTeamMemberDto"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ideaId",
+          "source"
+        ],
+        "type": "object"
+      },
       "CreateSessionDto": {
         "properties": {
           "accessToken": {
@@ -1303,6 +1619,18 @@
       },
       "CreatorLinkDto": {
         "properties": {},
+        "type": "object"
+      },
+      "CuratedRankDto": {
+        "properties": {
+          "curatedRank": {
+            "description": "1-based rank, or null to clear",
+            "type": "object"
+          }
+        },
+        "required": [
+          "curatedRank"
+        ],
         "type": "object"
       },
       "DecideAiAccessDto": {
@@ -1361,6 +1689,34 @@
         },
         "required": [
           "action"
+        ],
+        "type": "object"
+      },
+      "DeclareJudgeConflictDto": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "EntryTeamMemberDto": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -2130,12 +2486,12 @@
       "PrePledgeDto": {
         "properties": {
           "amount": {
-            "description": "Intent amount — NO funds move (FR-202)",
+            "description": "Intent amount - NO funds move",
             "type": "number"
           },
           "currency": {
             "default": "USD",
-            "description": "FR-210: USD default; NGN normalized to USD at the current fx rate.",
+            "description": "USD default; NGN normalized to USD at the current fx rate.",
             "enum": [
               "USD",
               "NGN"
@@ -2171,6 +2527,7 @@
               "IDEA_FEEDBACK",
               "IDEA_COMMENT",
               "WAITLIST_IDEA_LIVE",
+              "IDEA_CONVERTED_TO_CAMPAIGN",
               "ACCOUNT_UPDATE",
               "CAMPAIGN_SUBMITTED",
               "CAMPAIGN_APPROVED",
@@ -2189,7 +2546,12 @@
               "CREATOR_OF_THE_WEEK",
               "UPCOMING_COMPETITIONS",
               "CAMPAIGN_HIGHLIGHTS",
-              "PLATFORM_ANNOUNCEMENT"
+              "PLATFORM_ANNOUNCEMENT",
+              "PROGRAMME_REGISTERED",
+              "PROGRAMME_ENTRY_SUBMITTED",
+              "PROGRAMME_ENTRY_DECISION",
+              "PROGRAMME_RESULTS_PUBLISHED",
+              "PROGRAMME_WINNER"
             ],
             "type": "string"
           },
@@ -2202,6 +2564,247 @@
         "required": [
           "templateId",
           "variables"
+        ],
+        "type": "object"
+      },
+      "ProgrammeAnnouncementDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "description": "Omit to keep the announcement as a draft",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
+      "ProgrammeAssetDto": {
+        "properties": {
+          "alt": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "banner",
+              "thumbnail",
+              "partner_logo"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url",
+          "alt"
+        ],
+        "type": "object"
+      },
+      "ProgrammeCustomQuestionDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "long_text",
+              "url",
+              "select",
+              "boolean"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ProgrammeFaqDto": {
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "answer"
+        ],
+        "type": "object"
+      },
+      "ProgrammeModuleDto": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "available",
+              "preview",
+              "coming_soon",
+              "plan"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "ProgrammePrizeDto": {
+        "properties": {
+          "amountAtomic": {
+            "description": "Integer atomic amount string",
+            "type": "string"
+          },
+          "awardCriteria": {
+            "type": "string"
+          },
+          "currency": {
+            "default": "USD",
+            "type": "string"
+          },
+          "decimals": {
+            "default": 2,
+            "type": "number"
+          },
+          "description": {
+            "type": "string"
+          },
+          "eligibility": {
+            "type": "string"
+          },
+          "fulfilmentOwner": {
+            "type": "string"
+          },
+          "fulfilmentStatus": {
+            "enum": [
+              "UNCONFIRMED",
+              "COMMITTED",
+              "FUNDED",
+              "PROCESSING",
+              "DELIVERED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "fundingStatus": {
+            "enum": [
+              "UNCONFIRMED",
+              "COMMITTED",
+              "FUNDED",
+              "PROCESSING",
+              "DELIVERED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "CASH",
+              "NON_CASH",
+              "MIXED"
+            ],
+            "type": "string"
+          },
+          "placement": {
+            "default": 1,
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "placement",
+          "title",
+          "description",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ProgrammeSponsorDto": {
+        "properties": {
+          "commitmentAtomic": {
+            "description": "Integer atomic cash commitment",
+            "type": "string"
+          },
+          "confirmedByProvider": {
+            "default": false,
+            "type": "boolean"
+          },
+          "currency": {
+            "default": "USD",
+            "type": "string"
+          },
+          "deliverables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "invoiceStatus": {
+            "enum": [
+              "DRAFT",
+              "ISSUED",
+              "PENDING",
+              "PAID",
+              "OVERDUE",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tier": {
+            "default": "partner",
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -2288,6 +2891,23 @@
         ],
         "type": "object"
       },
+      "PublishResultsDto": {
+        "properties": {
+          "notes": {
+            "type": "string"
+          },
+          "visibility": {
+            "default": "PUBLIC",
+            "description": "PROVISIONAL is visible to participants only; PUBLIC activates the public leaderboard.",
+            "enum": [
+              "PROVISIONAL",
+              "PUBLIC"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "PurchaseBoostDto": {
         "properties": {
           "tier": {
@@ -2301,6 +2921,15 @@
         "required": [
           "tier"
         ],
+        "type": "object"
+      },
+      "RegisterForProgrammeDto": {
+        "properties": {
+          "note": {
+            "description": "Optional note for the organiser",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "RejectedAnalyticsEventDto": {
@@ -2371,6 +3000,63 @@
         ],
         "type": "object"
       },
+      "RubricCriterionDto": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "maxScore": {
+            "default": 10,
+            "type": "number"
+          },
+          "minScore": {
+            "default": 0,
+            "type": "number"
+          },
+          "required": {
+            "default": true,
+            "type": "boolean"
+          },
+          "weight": {
+            "description": "Whole percentage. All criteria must total 100.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "weight",
+          "minScore",
+          "maxScore"
+        ],
+        "type": "object"
+      },
+      "SaveEvaluationDto": {
+        "properties": {
+          "participantFeedback": {
+            "description": "Published to the participant if results allow",
+            "type": "string"
+          },
+          "privateComment": {
+            "description": "Private to the judging panel; never public",
+            "type": "string"
+          },
+          "scores": {
+            "description": "Raw score per rubric criterion id",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scores"
+        ],
+        "type": "object"
+      },
       "ScreenContentDto": {
         "properties": {
           "kind": {
@@ -2409,6 +3095,7 @@
               "IDEA_FEEDBACK",
               "IDEA_COMMENT",
               "WAITLIST_IDEA_LIVE",
+              "IDEA_CONVERTED_TO_CAMPAIGN",
               "ACCOUNT_UPDATE",
               "CAMPAIGN_SUBMITTED",
               "CAMPAIGN_APPROVED",
@@ -2427,7 +3114,12 @@
               "CREATOR_OF_THE_WEEK",
               "UPCOMING_COMPETITIONS",
               "CAMPAIGN_HIGHLIGHTS",
-              "PLATFORM_ANNOUNCEMENT"
+              "PLATFORM_ANNOUNCEMENT",
+              "PROGRAMME_REGISTERED",
+              "PROGRAMME_ENTRY_SUBMITTED",
+              "PROGRAMME_ENTRY_DECISION",
+              "PROGRAMME_RESULTS_PUBLISHED",
+              "PROGRAMME_WINNER"
             ],
             "type": "string"
           },
@@ -2593,7 +3285,7 @@
       "SubmitCampaignDto": {
         "properties": {
           "applicationFeeChargeId": {
-            "description": "SUCCEEDED APPLICATION_FEE charge id (FR-311). Required when the campaign has not already linked one; re-submission after a change request reuses it.",
+            "description": "SUCCEEDED APPLICATION_FEE charge id. Required when the campaign has not already linked one; re-submission after a change request reuses it.",
             "type": "string"
           }
         },
@@ -2613,6 +3305,41 @@
         "required": [
           "signature"
         ],
+        "type": "object"
+      },
+      "SubmitEvaluationDto": {
+        "properties": {
+          "declareNoConflict": {
+            "default": true,
+            "description": "Judge declares no undisclosed conflict with this entry",
+            "type": "boolean"
+          },
+          "participantFeedback": {
+            "description": "Published to the participant if results allow",
+            "type": "string"
+          },
+          "privateComment": {
+            "description": "Private to the judging panel; never public",
+            "type": "string"
+          },
+          "scores": {
+            "description": "Raw score per rubric criterion id",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scores"
+        ],
+        "type": "object"
+      },
+      "SubmitProgrammeEntryDto": {
+        "properties": {
+          "confirmOriginalWork": {
+            "default": true,
+            "description": "The participant confirms the work is theirs and the snapshot is final for this submission.",
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "SubmitResponseDto": {
@@ -2729,6 +3456,32 @@
           "slug",
           "label",
           "publicIdeaCount"
+        ],
+        "type": "object"
+      },
+      "TieBreakRuleDto": {
+        "properties": {
+          "criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CRITERION",
+              "CRITERIA_AVERAGE",
+              "SUBMITTED_AT",
+              "JUDGE_DECISION"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },
@@ -3005,7 +3758,7 @@
             "type": "string"
           },
           "creatorPrePledgeTarget": {
-            "description": "Creator-declared expected pre-pledge minimum in USD (FR-204). The gate requires the weighted figure to clear max(platform floor, this).",
+            "description": "Creator-declared expected pre-pledge minimum in USD. The gate requires the weighted figure to clear max(platform floor, this).",
             "type": "number"
           },
           "currentAlternative": {
@@ -3163,6 +3916,395 @@
         },
         "required": [
           "params"
+        ],
+        "type": "object"
+      },
+      "UpdateProgrammeDto": {
+        "properties": {
+          "acceptedLinkHosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowDraftEditing": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowEvaluationRevision": {
+            "default": false,
+            "description": "Allow a judge to revise an already-submitted evaluation. Every revision is retained.",
+            "type": "boolean"
+          },
+          "allowMultipleEntries": {
+            "default": false,
+            "type": "boolean"
+          },
+          "allowTeams": {
+            "default": false,
+            "type": "boolean"
+          },
+          "allowWithdrawal": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowedCategories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeAssetDto"
+            },
+            "type": "array"
+          },
+          "category": {
+            "type": "string"
+          },
+          "communityWeight": {
+            "default": 0,
+            "type": "number"
+          },
+          "customQuestions": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeCustomQuestionDto"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entryMode": {
+            "default": "NEW_OR_EXISTING",
+            "enum": [
+              "NEW_IDEAS_ONLY",
+              "EXISTING_IDEAS_ONLY",
+              "NEW_OR_EXISTING"
+            ],
+            "type": "string"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeFaqDto"
+            },
+            "type": "array"
+          },
+          "heroCopy": {
+            "type": "string"
+          },
+          "judgeWeight": {
+            "default": 100,
+            "type": "number"
+          },
+          "judgingEndsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "judgingMethod": {
+            "default": "JUDGES",
+            "enum": [
+              "COMMUNITY",
+              "JUDGES",
+              "HYBRID",
+              "CURATED"
+            ],
+            "type": "string"
+          },
+          "judgingStartsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lateEntriesAllowed": {
+            "default": false,
+            "type": "boolean"
+          },
+          "maxAttachments": {
+            "default": 0,
+            "type": "number"
+          },
+          "maxEntriesPerParticipant": {
+            "default": 1,
+            "type": "number"
+          },
+          "minQualityScore": {
+            "description": "0..1 quality threshold, or null for none",
+            "type": "object"
+          },
+          "minimumEvaluations": {
+            "default": 1,
+            "type": "number"
+          },
+          "missingEvaluationPolicy": {
+            "default": "EXCLUDE",
+            "enum": [
+              "EXCLUDE",
+              "ZERO"
+            ],
+            "type": "string"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammeModuleDto"
+            },
+            "type": "array"
+          },
+          "organiser": {
+            "type": "string"
+          },
+          "registrationClosesAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "registrationOpensAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "registrationRequired": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requireConflictDeclaration": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requireEmailVerified": {
+            "default": true,
+            "type": "boolean"
+          },
+          "requiredFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resultsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/RubricCriterionDto"
+            },
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "submissionClosesAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submissionOpensAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "teamMaxSize": {
+            "default": 4,
+            "type": "number"
+          },
+          "teamMinSize": {
+            "default": 1,
+            "type": "number"
+          },
+          "tieBreak": {
+            "items": {
+              "$ref": "#/components/schemas/TieBreakRuleDto"
+            },
+            "type": "array"
+          },
+          "timezone": {
+            "default": "UTC",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "MONTHLY_IDEATHON",
+              "SPONSORED_CHALLENGE",
+              "SHOWCASE",
+              "WORKSHOP",
+              "EXPERT_SESSION",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "Current version for optimistic concurrency (FR-1201)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "UpdateProgrammeEntryDto": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "type": "object"
+          },
+          "teamMembers": {
+            "items": {
+              "$ref": "#/components/schemas/EntryTeamMemberDto"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateProgrammePrizeDto": {
+        "properties": {
+          "amountAtomic": {
+            "description": "Integer atomic amount string",
+            "type": "string"
+          },
+          "awardCriteria": {
+            "type": "string"
+          },
+          "currency": {
+            "default": "USD",
+            "type": "string"
+          },
+          "decimals": {
+            "default": 2,
+            "type": "number"
+          },
+          "description": {
+            "type": "string"
+          },
+          "eligibility": {
+            "type": "string"
+          },
+          "fulfilmentOwner": {
+            "type": "string"
+          },
+          "fulfilmentStatus": {
+            "enum": [
+              "UNCONFIRMED",
+              "COMMITTED",
+              "FUNDED",
+              "PROCESSING",
+              "DELIVERED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "fundingStatus": {
+            "enum": [
+              "UNCONFIRMED",
+              "COMMITTED",
+              "FUNDED",
+              "PROCESSING",
+              "DELIVERED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "CASH",
+              "NON_CASH",
+              "MIXED"
+            ],
+            "type": "string"
+          },
+          "placement": {
+            "default": 1,
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateProgrammeSponsorDto": {
+        "properties": {
+          "commitmentAtomic": {
+            "description": "Integer atomic cash commitment",
+            "type": "string"
+          },
+          "confirmedByProvider": {
+            "default": false,
+            "type": "boolean"
+          },
+          "currency": {
+            "default": "USD",
+            "type": "string"
+          },
+          "deliverables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "invoiceStatus": {
+            "enum": [
+              "DRAFT",
+              "ISSUED",
+              "PENDING",
+              "PAID",
+              "OVERDUE",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tier": {
+            "default": "partner",
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateProgrammeStatusDto": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "SCHEDULED",
+              "REGISTRATION_OPEN",
+              "SUBMISSION_OPEN",
+              "JUDGING",
+              "RESULTS_REVIEW",
+              "COMPLETED",
+              "ARCHIVED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
         ],
         "type": "object"
       },
@@ -3372,6 +4514,14 @@
           "name",
           "occurredAt"
         ],
+        "type": "object"
+      },
+      "WithdrawProgrammeEntryDto": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
         "type": "object"
       }
     },
@@ -3820,7 +4970,7 @@
             "bearer": []
           }
         ],
-        "summary": "List campaigns by curation state (FR-304)",
+        "summary": "List campaigns by curation state",
         "tags": [
           "admin"
         ]
@@ -3859,7 +5009,7 @@
             "bearer": []
           }
         ],
-        "summary": "Campaign review detail with FR-103/FR-311 facts and review history",
+        "summary": "Campaign review detail with verification and fee facts and review history",
         "tags": [
           "admin"
         ]
@@ -3908,7 +5058,7 @@
             "bearer": []
           }
         ],
-        "summary": "Approve, request changes or reject a campaign (FR-304)",
+        "summary": "Approve, request changes or reject a campaign",
         "tags": [
           "admin"
         ]
@@ -4186,6 +5336,1211 @@
           }
         ],
         "summary": "Audit log of platform-param changes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes": {
+      "get": {
+        "operationId": "AdminProgrammesController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque nextCursor from the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "MONTHLY_IDEATHON",
+                "SPONSORED_CHALLENGE",
+                "SHOWCASE",
+                "WORKSHOP",
+                "EXPERT_SESSION",
+                "OTHER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "DRAFT",
+                "SCHEDULED",
+                "REGISTRATION_OPEN",
+                "SUBMISSION_OPEN",
+                "JUDGING",
+                "RESULTS_REVIEW",
+                "COMPLETED",
+                "ARCHIVED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by programme category",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include drafts and archived programmes",
+            "in": "query",
+            "name": "includeUnpublished",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List programmes for administration",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "AdminProgrammesController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProgrammeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a draft programme (FR-1201)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}": {
+      "get": {
+        "operationId": "AdminProgrammesController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a programme with its internal configuration",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "The rubric and weighting lock once judging starts. Send the version you loaded; a stale version fails rather than overwriting a colleague.",
+        "operationId": "AdminProgrammesController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProgrammeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a programme with optimistic concurrency",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/analytics": {
+      "get": {
+        "operationId": "AdminProgrammesController_analytics",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Programme metrics view (FR-1216)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/announcements": {
+      "post": {
+        "operationId": "AdminProgrammesController_addAnnouncement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgrammeAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an announcement; omit publishedAt to draft",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/announcements/{announcementId}": {
+      "patch": {
+        "operationId": "AdminProgrammesController_updateAnnouncement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "announcementId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgrammeAnnouncementDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update or publish an announcement",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/audit": {
+      "get": {
+        "operationId": "AdminProgrammesController_audit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Programme audit trail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/entries": {
+      "get": {
+        "operationId": "AdminProgrammesController_entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List every entry, including drafts and notes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/entries/{entryId}/curated-rank": {
+      "post": {
+        "operationId": "AdminProgrammesController_curatedRank",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CuratedRankDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the authorised order for a CURATED programme",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/entries/{entryId}/decision": {
+      "post": {
+        "operationId": "AdminProgrammesController_decideEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminEntryDecisionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Shortlist, request changes, accept, reject or disqualify an entry",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/judges": {
+      "post": {
+        "operationId": "AdminProgrammesController_assignJudge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignJudgeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Assign a judge to the panel (FR-1205)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/judges/{assignmentId}": {
+      "delete": {
+        "operationId": "AdminProgrammesController_removeJudge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exclude a judge without deleting the audit trail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/prizes": {
+      "post": {
+        "operationId": "AdminProgrammesController_addPrize",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgrammePrizeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Add a prize or benefit (FR-1206)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/prizes/{prizeId}": {
+      "delete": {
+        "operationId": "AdminProgrammesController_removePrize",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prizeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a prize before judging starts",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminProgrammesController_updatePrize",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prizeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProgrammePrizeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a prize or its funding status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/report": {
+      "get": {
+        "operationId": "AdminProgrammesController_report",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aggregate-only sponsor report (FR-1212/FR-1213)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/results/preview": {
+      "get": {
+        "description": "Missing evaluations are listed with a reason; they are not scored as zero unless the programme explicitly chose ZERO.",
+        "operationId": "AdminProgrammesController_previewResults",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recompute standings without publishing them",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/results/publish": {
+      "post": {
+        "operationId": "AdminProgrammesController_publishResults",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishResultsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish an immutable, checksummed result revision",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/results/unpublish": {
+      "post": {
+        "operationId": "AdminProgrammesController_unpublishResults",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Hide published results without deleting them",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/sponsors": {
+      "post": {
+        "operationId": "AdminProgrammesController_addSponsor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgrammeSponsorDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a sponsor and its commitment (FR-1211)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/sponsors/{sponsorId}": {
+      "delete": {
+        "operationId": "AdminProgrammesController_removeSponsor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sponsorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a sponsor record",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminProgrammesController_updateSponsor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sponsorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProgrammeSponsorDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a sponsor record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/programmes/{id}/status": {
+      "post": {
+        "description": "Opening registration validates the timeline, rubric and prize funding. Judging requires an assigned judge and a complete rubric.",
+        "operationId": "AdminProgrammesController_transition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProgrammeStatusDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Move a programme through its lifecycle",
         "tags": [
           "admin"
         ]
@@ -5301,7 +7656,7 @@
             "bearer": []
           }
         ],
-        "summary": "Start or resume the FR-311 application-fee charge for a draft",
+        "summary": "Start or resume the application-fee charge for a draft",
         "tags": [
           "campaigns"
         ]
@@ -5704,7 +8059,7 @@
             "bearer": []
           }
         ],
-        "summary": "Publish after review approval and verified deployment (FR-304, FR-305)",
+        "summary": "Publish after review approval and verified deployment",
         "tags": [
           "campaigns"
         ]
@@ -7621,6 +9976,293 @@
         ]
       }
     },
+    "/api/v1/judge/programmes": {
+      "get": {
+        "operationId": "ProgrammeJudgeController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List programmes the caller is assigned to judge",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
+    "/api/v1/judge/programmes/{programmeId}": {
+      "get": {
+        "operationId": "ProgrammeJudgeController_workspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "programmeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the judging workspace and queue",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
+    "/api/v1/judge/programmes/{programmeId}/entries/{entryId}": {
+      "get": {
+        "operationId": "ProgrammeJudgeController_entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "programmeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read one judgeable entry and the caller’s own evaluation",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
+    "/api/v1/judge/programmes/{programmeId}/entries/{entryId}/conflict": {
+      "post": {
+        "operationId": "ProgrammeJudgeController_conflict",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "programmeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclareJudgeConflictDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare a conflict and be excluded from scoring that entry",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
+    "/api/v1/judge/programmes/{programmeId}/entries/{entryId}/evaluation": {
+      "put": {
+        "operationId": "ProgrammeJudgeController_save",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "programmeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveEvaluationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a draft evaluation",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
+    "/api/v1/judge/programmes/{programmeId}/entries/{entryId}/evaluation/submit": {
+      "post": {
+        "operationId": "ProgrammeJudgeController_submit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "programmeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitEvaluationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a completed evaluation against the published rubric",
+        "tags": [
+          "judging"
+        ]
+      }
+    },
     "/api/v1/kyb/admin/aml-screen": {
       "post": {
         "operationId": "KybController_adminScreenAml",
@@ -7694,7 +10336,7 @@
             "bearer": []
           }
         ],
-        "summary": "Business AML screening history (NFR-19 retained)",
+        "summary": "Business AML screening history",
         "tags": [
           "kyb"
         ]
@@ -7870,7 +10512,7 @@
             "bearer": []
           }
         ],
-        "summary": "AML screening history for a user (NFR-19 retained)",
+        "summary": "AML screening history for a user",
         "tags": [
           "kyc"
         ]
@@ -8832,7 +11474,7 @@
             "description": "Error envelope. Every non-2xx response uses this shape."
           }
         },
-        "summary": "Get aggregate platform escrow figures (FR-801)",
+        "summary": "Get aggregate platform escrow figures",
         "tags": [
           "platform"
         ]
@@ -8868,6 +11510,583 @@
         "summary": "Get public platform counters",
         "tags": [
           "platform"
+        ]
+      }
+    },
+    "/api/v1/programmes": {
+      "get": {
+        "description": "Only published, non-archived programmes appear. Drafts and internal review data never enter this response.",
+        "operationId": "ProgrammesController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque nextCursor from the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "MONTHLY_IDEATHON",
+                "SPONSORED_CHALLENGE",
+                "SHOWCASE",
+                "WORKSHOP",
+                "EXPERT_SESSION",
+                "OTHER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "DRAFT",
+                "SCHEDULED",
+                "REGISTRATION_OPEN",
+                "SUBMISSION_OPEN",
+                "JUDGING",
+                "RESULTS_REVIEW",
+                "COMPLETED",
+                "ARCHIVED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by programme category",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "List public programmes",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/mine": {
+      "get": {
+        "operationId": "ProgrammesController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List programmes the caller has registered for",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}": {
+      "get": {
+        "description": "Results are returned only when the organiser published them. Prizes are returned only after their funding is confirmed (FR-1207).",
+        "operationId": "ProgrammesController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Get a public programme by id or slug",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/entries": {
+      "get": {
+        "operationId": "ProgrammesController_entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "List publicly visible entries (shortlist or published results)",
+        "tags": [
+          "programmes"
+        ]
+      },
+      "post": {
+        "description": "A new-idea entry is created by publishing the idea first, then referencing it here. This keeps one editable idea record rather than a second content system.",
+        "operationId": "ProgrammesController_createEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProgrammeEntryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a draft entry from an idea the caller owns",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/entries/{entryId}": {
+      "get": {
+        "operationId": "ProgrammesController_getEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one of the caller’s own entries",
+        "tags": [
+          "programmes"
+        ]
+      },
+      "patch": {
+        "description": "A submitted entry is immutable. The only path to a new version is a requested change followed by a new submission.",
+        "operationId": "ProgrammesController_updateEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProgrammeEntryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Edit a draft entry",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/entries/{entryId}/submit": {
+      "post": {
+        "description": "Repeating the call returns the existing snapshot. Editing the underlying idea afterwards cannot change what judges see.",
+        "operationId": "ProgrammesController_submitEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitProgrammeEntryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit an entry and freeze its judging snapshot",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/entries/{entryId}/withdraw": {
+      "post": {
+        "operationId": "ProgrammesController_withdrawEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawProgrammeEntryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Withdraw an entry before judging starts",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/me": {
+      "get": {
+        "operationId": "ProgrammesController_mineForProgramme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the caller’s registration, drafts and entries for a programme",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/register": {
+      "post": {
+        "description": "Repeating the call is idempotent. Every refusal returns a machine-readable issue list.",
+        "operationId": "ProgrammesController_register",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterForProgrammeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register for a programme (free, FR-1210)",
+        "tags": [
+          "programmes"
+        ]
+      }
+    },
+    "/api/v1/programmes/{idOrSlug}/standings": {
+      "get": {
+        "operationId": "ProgrammesController_standings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idOrSlug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error envelope. Every non-2xx response uses this shape."
+          }
+        },
+        "summary": "Get the published official standings",
+        "tags": [
+          "programmes"
         ]
       }
     },
@@ -9267,7 +12486,7 @@
             "bearer": []
           }
         ],
-        "summary": "Authorise a contribution against the FR-104 cumulative threshold",
+        "summary": "Authorise a contribution against the cumulative funding threshold",
         "tags": [
           "verification"
         ]

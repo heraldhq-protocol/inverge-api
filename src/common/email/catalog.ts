@@ -33,7 +33,12 @@ export type EmailTemplateId =
   | 'CREATOR_OF_THE_WEEK'
   | 'UPCOMING_COMPETITIONS'
   | 'CAMPAIGN_HIGHLIGHTS'
-  | 'PLATFORM_ANNOUNCEMENT';
+  | 'PLATFORM_ANNOUNCEMENT'
+  | 'PROGRAMME_REGISTERED'
+  | 'PROGRAMME_ENTRY_SUBMITTED'
+  | 'PROGRAMME_ENTRY_DECISION'
+  | 'PROGRAMME_RESULTS_PUBLISHED'
+  | 'PROGRAMME_WINNER';
 
 export type TemplateVariables = Record<string, unknown>;
 
@@ -89,6 +94,13 @@ function campaignCreatorLink(ctx: EmailRenderContext, vars: TemplateVariables): 
   return id
     ? appLink(ctx, `/d/creator/campaigns/${encodeURIComponent(id)}`)
     : appLink(ctx, '/d/creator/campaigns');
+}
+
+function programmeLink(ctx: EmailRenderContext, vars: TemplateVariables): string {
+  const slug = text(vars, 'programmeSlug');
+  return slug
+    ? appLink(ctx, `/ideathon/${encodeURIComponent(slug)}`)
+    : appLink(ctx, '/ideathon');
 }
 
 function campaignPublicLink(ctx: EmailRenderContext, vars: TemplateVariables): string {
@@ -614,6 +626,141 @@ function editorial(
   };
 }
 
+const programmeRegistered: EmailTemplateDefinition = {
+  id: 'PROGRAMME_REGISTERED',
+  category: 'transactional',
+  label: 'Programme registration confirmed',
+  requiredVariables: ['programmeTitle'],
+  optionalVariables: ['programmeSlug', 'submissionClosesAt'],
+  build(vars, ctx) {
+    const deadline = text(vars, 'submissionClosesAt');
+    return {
+      subject: `You are registered for ${text(vars, 'programmeTitle')}`,
+      previewText: 'Registration is free. Your next step is preparing a submission.',
+      heading: 'Registration confirmed',
+      paragraphs: [
+        `You are registered for ${text(vars, 'programmeTitle')}. Taking part is free.`,
+        deadline
+          ? `Submissions close at ${deadline}. You can save a draft and submit before then.`
+          : 'You can save a draft and submit before the published deadline.',
+      ],
+      cta: { label: 'Open the programme', url: programmeLink(ctx, vars) },
+      footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
+const programmeEntrySubmitted: EmailTemplateDefinition = {
+  id: 'PROGRAMME_ENTRY_SUBMITTED',
+  category: 'transactional',
+  label: 'Programme entry submitted',
+  requiredVariables: ['programmeTitle', 'entryTitle'],
+  optionalVariables: ['programmeSlug', 'version', 'judgingEndsAt'],
+  build(vars, ctx) {
+    return {
+      subject: `${text(vars, 'entryTitle')} is submitted`,
+      previewText: 'Your judging snapshot is frozen.',
+      heading: 'Entry submitted',
+      paragraphs: [
+        `${text(vars, 'entryTitle')} was submitted to ${text(vars, 'programmeTitle')}.`,
+        'The submitted version is frozen for judging. Editing the underlying idea will not change what judges see.',
+      ],
+      cta: { label: 'Track your entry', url: programmeLink(ctx, vars) },
+      footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
+const programmeEntryDecision: EmailTemplateDefinition = {
+  id: 'PROGRAMME_ENTRY_DECISION',
+  category: 'transactional',
+  label: 'Programme entry decision',
+  requiredVariables: ['programmeTitle', 'entryTitle', 'status'],
+  optionalVariables: ['programmeSlug'],
+  build(vars, ctx) {
+    const status = text(vars, 'status');
+    const label =
+      status === 'SHORTLISTED'
+        ? 'shortlisted'
+        : status === 'ACCEPTED'
+          ? 'accepted'
+          : status === 'CHANGES_REQUESTED'
+            ? 'returned for changes'
+            : status === 'REJECTED'
+              ? 'not selected'
+              : status === 'DISQUALIFIED'
+                ? 'disqualified'
+                : 'updated';
+    return {
+      subject: `${text(vars, 'entryTitle')} is ${label}`,
+      previewText: `An organiser updated your entry in ${text(vars, 'programmeTitle')}.`,
+      heading: 'Entry update',
+      paragraphs: [
+        `${text(vars, 'entryTitle')} in ${text(vars, 'programmeTitle')} is ${label}.`,
+        status === 'CHANGES_REQUESTED'
+          ? 'Open the programme workspace to update the draft and submit a new version.'
+          : 'The programme workspace has the current status.',
+      ],
+      cta: { label: 'Open the programme', url: programmeLink(ctx, vars) },
+      footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
+const programmeResultsPublished: EmailTemplateDefinition = {
+  id: 'PROGRAMME_RESULTS_PUBLISHED',
+  category: 'transactional',
+  label: 'Programme results published',
+  requiredVariables: ['programmeTitle'],
+  optionalVariables: ['programmeSlug', 'rank', 'officialScore', 'feedback'],
+  build(vars, ctx) {
+    const rank = text(vars, 'rank');
+    const score = text(vars, 'officialScore');
+    const feedback = text(vars, 'feedback');
+    return {
+      subject: `Results for ${text(vars, 'programmeTitle')}`,
+      previewText: rank
+        ? `Your entry placed ${rank}.`
+        : 'The official results are published.',
+      heading: 'Official results',
+      paragraphs: [
+        `The official results for ${text(vars, 'programmeTitle')} are published.`,
+        rank
+          ? `Your entry placed ${rank}${score ? ` with a score of ${score}` : ''}.`
+          : 'Your entry did not receive a ranking under the published rules; the reason is in your workspace.',
+        ...(feedback ? [`Judging feedback: ${feedback}`] : []),
+      ],
+      cta: { label: 'See the results', url: programmeLink(ctx, vars) },
+      footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
+const programmeWinner: EmailTemplateDefinition = {
+  id: 'PROGRAMME_WINNER',
+  category: 'transactional',
+  label: 'Programme winner',
+  requiredVariables: ['programmeTitle'],
+  optionalVariables: ['programmeSlug', 'rank', 'prize'],
+  build(vars, ctx) {
+    const rank = text(vars, 'rank');
+    const prize = text(vars, 'prize');
+    return {
+      subject: `You placed ${rank || 'in the top three'} in ${text(vars, 'programmeTitle')}`,
+      previewText: 'The official result is published.',
+      heading: 'Congratulations',
+      paragraphs: [
+        `Your entry placed ${rank || 'in the top three'} in ${text(vars, 'programmeTitle')}.`,
+        prize
+          ? `The published prize for this placement is ${prize}. Prize delivery is handled separately and may require identity verification.`
+          : 'The published programme page lists the available prizes and how they are delivered.',
+      ],
+      cta: { label: 'See the official result', url: programmeLink(ctx, vars) },
+      footerReason: TRANSACTIONAL_REASON,
+    };
+  },
+};
+
 export const EMAIL_TEMPLATES: Record<EmailTemplateId, EmailTemplateDefinition> = {
   VERIFICATION_CODE: verificationCode,
   EMAIL_VERIFIED: verifiedEmail,
@@ -695,6 +842,11 @@ export const EMAIL_TEMPLATES: Record<EmailTemplateId, EmailTemplateDefinition> =
     ['title', 'summary'],
     'Open Inverge',
   ),
+  PROGRAMME_REGISTERED: programmeRegistered,
+  PROGRAMME_ENTRY_SUBMITTED: programmeEntrySubmitted,
+  PROGRAMME_ENTRY_DECISION: programmeEntryDecision,
+  PROGRAMME_RESULTS_PUBLISHED: programmeResultsPublished,
+  PROGRAMME_WINNER: programmeWinner,
 };
 
 export const EMAIL_TEMPLATE_IDS = Object.keys(EMAIL_TEMPLATES) as EmailTemplateId[];

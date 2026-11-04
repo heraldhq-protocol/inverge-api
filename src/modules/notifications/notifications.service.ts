@@ -52,6 +52,11 @@ export function notificationPreferenceFor(
   if (template.startsWith('KYC_') || template.startsWith('AML_')) {
     return null;
   }
+  if (template.startsWith('PROGRAMME_')) {
+    // Programme registration, submission and results are account activity, not
+    // marketing. They are subject to email verification, not a marketing opt-out.
+    return null;
+  }
   // A pre-pledger's one-off update about an idea they supported is part of
   // "Email updates" (important idea/campaign activity), not the creator-update
   // feed they may have opted out of.

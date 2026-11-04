@@ -26,6 +26,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { SurveyModule } from './modules/survey/survey.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { ProgrammesModule } from './modules/programmes/programmes.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -62,6 +63,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
     ModerationModule,
     SurveyModule,
     CampaignsModule,
+    ProgrammesModule,
     AnalyticsModule,
     TaxonomyModule,
     AiModule,
