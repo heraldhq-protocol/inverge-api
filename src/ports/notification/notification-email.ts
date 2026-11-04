@@ -93,6 +93,27 @@ export function notificationEmailTemplate(
     case 'AML_REVIEW':
     case 'AML_CLEAR':
       return { templateId: message.template, variables: {} };
+    case 'PROGRAMME_REGISTERED':
+    case 'PROGRAMME_ENTRY_SUBMITTED':
+    case 'PROGRAMME_ENTRY_DECISION':
+    case 'PROGRAMME_RESULTS_PUBLISHED':
+    case 'PROGRAMME_WINNER':
+      return {
+        templateId: message.template,
+        variables: variables(message.data, [
+          'programmeTitle',
+          'programmeSlug',
+          'entryTitle',
+          'status',
+          'rank',
+          'officialScore',
+          'feedback',
+          'prize',
+          'submissionClosesAt',
+          'judgingEndsAt',
+          'version',
+        ]),
+      };
     default:
       // No template name and no data: a safe generic message, never a leak.
       return { templateId: 'ACCOUNT_UPDATE', variables: {} };

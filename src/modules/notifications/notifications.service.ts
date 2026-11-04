@@ -52,6 +52,11 @@ export function notificationPreferenceFor(
   if (template.startsWith('KYC_') || template.startsWith('AML_')) {
     return null;
   }
+  if (template.startsWith('PROGRAMME_')) {
+    // Programme registration, submission and results are account activity, not
+    // marketing. They are subject to email verification, not a marketing opt-out.
+    return null;
+  }
   if (template.startsWith('IDEA_') || template.startsWith('CAMPAIGN_')) {
     return 'notifyCreatorUpdates';
   }

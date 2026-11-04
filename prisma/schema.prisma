@@ -270,70 +270,77 @@ enum OnChainEventType {
 // ─────────────────────────── Identity ───────────────────────────
 
 model User {
-  id             String    @id @default(cuid())
-  providerUserId String    @unique // provider-neutral: Web3Auth sub / Privy DID / stub id
+  id                      String      @id @default(cuid())
+  providerUserId          String      @unique // provider-neutral: Web3Auth sub / Privy DID / stub id
   // Stored lower-case/trimmed (also enforced by a CHECK constraint in the
   // migration), so the existing unique index is case-insensitive without a
   // duplicate normalised column. Email verification is not KYC/AML.
-  email                  String?   @unique
-  emailVerified          Boolean   @default(false) // mirror for FR-208; emailVerifiedAt is authoritative
-  emailVerifiedAt        DateTime? // ownership proven, or accepted from a trusted provider claim
-  pendingEmail           String? // proposed replacement; never replaces email until verified
+  email                   String?     @unique
+  emailVerified           Boolean     @default(false) // mirror for FR-208; emailVerifiedAt is authoritative
+  emailVerifiedAt         DateTime? // ownership proven, or accepted from a trusted provider claim
+  pendingEmail            String? // proposed replacement; never replaces email until verified
   pendingEmailRequestedAt DateTime?
-  oauthSubject   String?   @unique // FR-212: one social identity ↔ one account (anti-sybil)
-  kycStatus      KycStatus @default(NOT_REQUIRED) // FR-103 / FR-104
-  kycProviderRef String? // NFR-12: reference only, never raw documents
-  amlStatus      AmlStatus @default(NOT_SCREENED) // sanctions/PEP outcome, separate from KYC
-  amlScreenedAt  DateTime? // when amlStatus was last set from a screening
-  accountType    AccountType @default(INDIVIDUAL) // personal vs business creator (onboarding)
-  bannedAt       DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
-  role           UserRole  @default(USER) // FR-901: gates the /admin surface
+  oauthSubject            String?     @unique // FR-212: one social identity ↔ one account (anti-sybil)
+  kycStatus               KycStatus   @default(NOT_REQUIRED) // FR-103 / FR-104
+  kycProviderRef          String? // NFR-12: reference only, never raw documents
+  amlStatus               AmlStatus   @default(NOT_SCREENED) // sanctions/PEP outcome, separate from KYC
+  amlScreenedAt           DateTime? // when amlStatus was last set from a screening
+  accountType             AccountType @default(INDIVIDUAL) // personal vs business creator (onboarding)
+  bannedAt                DateTime? // FR-216: banned users' pre-pledges drop out of the weighted figure
+  role                    UserRole    @default(USER) // FR-901: gates the /admin surface
 
   // Discovery-feed personalization (onboarding interests). Explicit preferences take
   // precedence; the feed falls back to behaviour (categories/regions of engaged ideas)
   // when these are empty. Bounded multiplier only — never a hard filter (no filter bubble).
-  preferredCategories String[] @default([])
-  preferredRegions    String[] @default([])
-  feedRegion          String   @default("global") // broad settings scope: global | africa | west-africa
-  feedShowPromoted    Boolean  @default(true) // false removes paid placements for this account
-  notifyEmailUpdates      Boolean @default(true)
-  notifyMilestoneReviews  Boolean @default(true)
-  notifyCreatorUpdates    Boolean @default(true)
-  notifyDiscoveryDigest   Boolean @default(false)
+  preferredCategories    String[] @default([])
+  preferredRegions       String[] @default([])
+  feedRegion             String   @default("global") // broad settings scope: global | africa | west-africa
+  feedShowPromoted       Boolean  @default(true) // false removes paid placements for this account
+  notifyEmailUpdates     Boolean  @default(true)
+  notifyMilestoneReviews Boolean  @default(true)
+  notifyCreatorUpdates   Boolean  @default(true)
+  notifyDiscoveryDigest  Boolean  @default(false)
   // Launch trust proxy (e.g. SuperteamNG cohort membership) while delivery history is thin.
   // Admin-settable; feeds the feed TrustScore, never any validation metric.
-  institutionalCosign Boolean  @default(false)
+  institutionalCosign    Boolean  @default(false)
 
-  wallets                WalletAccount[]
-  creatorProfile         CreatorProfile?
-  business               BusinessProfile?
-  ideas                  Idea[]                  @relation("IdeaCreator")
-  signals                IdeaSignal[]
-  surveyResponses        SurveyResponse[]
-  comments               IdeaComment[]
-  commentLikes           CommentLike[]
-  campaignComments        CampaignComment[]
-  boostsPurchased        IdeaBoost[]
-  kycEvents              KycStatusEvent[]
-  amlScreenings          AmlScreening[]
-  verificationCases      VerificationCase[]
-  accountRequests        AccountRequest[]
-  ContributionAuthorizations ContributionAuthorization[]
-  flatFeeCharges         FlatFeeCharge[]
-  campaigns              Campaign[]              @relation("CampaignCreator")
-  reviewedCampaigns      Campaign[]              @relation("CampaignReviewer")
-  campaignReviews        CampaignReviewEvent[]   @relation("CampaignReviewActor")
-  contributions          Contribution[]
-  objections             MilestoneObjection[]
-  productAnalyticsEvents ProductAnalyticsEvent[]
-  analyticsAccessGrants  AnalyticsAccessGrant[]
-  aiAccessGrant          AiAccessGrant?
-  aiUsageEvents          AiUsageEvent[]
-  mediaAssets            MediaAsset[]            @relation("MediaAssetOwner")
-  notifications          Notification[]
+  wallets                     WalletAccount[]
+  creatorProfile              CreatorProfile?
+  business                    BusinessProfile?
+  ideas                       Idea[]                       @relation("IdeaCreator")
+  signals                     IdeaSignal[]
+  surveyResponses             SurveyResponse[]
+  comments                    IdeaComment[]
+  commentLikes                CommentLike[]
+  campaignComments            CampaignComment[]
+  boostsPurchased             IdeaBoost[]
+  kycEvents                   KycStatusEvent[]
+  amlScreenings               AmlScreening[]
+  verificationCases           VerificationCase[]
+  accountRequests             AccountRequest[]
+  ContributionAuthorizations  ContributionAuthorization[]
+  flatFeeCharges              FlatFeeCharge[]
+  campaigns                   Campaign[]                   @relation("CampaignCreator")
+  reviewedCampaigns           Campaign[]                   @relation("CampaignReviewer")
+  campaignReviews             CampaignReviewEvent[]        @relation("CampaignReviewActor")
+  contributions               Contribution[]
+  objections                  MilestoneObjection[]
+  productAnalyticsEvents      ProductAnalyticsEvent[]
+  analyticsAccessGrants       AnalyticsAccessGrant[]
+  aiAccessGrant               AiAccessGrant?
+  aiUsageEvents               AiUsageEvent[]
+  mediaAssets                 MediaAsset[]                 @relation("MediaAssetOwner")
+  notifications               Notification[]
   emailVerificationChallenges EmailVerificationChallenge[]
-  emailDeliveries        EmailDelivery[]
-  emailSubscription      EmailSubscription?
+  emailDeliveries             EmailDelivery[]
+  emailSubscription           EmailSubscription?
+  createdProgrammes           Programme[]                  @relation("ProgrammeCreator")
+  programmeRegistrations      ProgrammeRegistration[]
+  programmeEntries            ProgrammeEntry[]
+  programmeJudgements         ProgrammeJudge[]
+  programmeEvaluations        ProgrammeEvaluation[]
+  programmeResultPublishes    ProgrammeResultPublication[]
+  programmeAuditEvents        ProgrammeAuditEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -348,20 +355,20 @@ enum EmailVerificationPurpose {
 }
 
 model EmailVerificationChallenge {
-  id           String                  @id @default(cuid())
-  userId       String
-  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose      EmailVerificationPurpose
-  email        String // lower-case/trimmed; the address being proven
-  codeHash     String // HMAC-SHA256(secret, challengeId + code); never plaintext
-  expiresAt    DateTime
-  attempts     Int                     @default(0)
-  maxAttempts  Int
-  consumedAt   DateTime?
-  supersededAt DateTime?
+  id               String                   @id @default(cuid())
+  userId           String
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose          EmailVerificationPurpose
+  email            String // lower-case/trimmed; the address being proven
+  codeHash         String // HMAC-SHA256(secret, challengeId + code); never plaintext
+  expiresAt        DateTime
+  attempts         Int                      @default(0)
+  maxAttempts      Int
+  consumedAt       DateTime?
+  supersededAt     DateTime?
   deliveryFailedAt DateTime?
-  lastSentAt   DateTime                @default(now())
-  createdAt    DateTime                @default(now())
+  lastSentAt       DateTime                 @default(now())
+  createdAt        DateTime                 @default(now())
 
   @@index([userId, purpose, createdAt(sort: Desc)])
   @@index([email, createdAt(sort: Desc)])
@@ -381,14 +388,14 @@ enum AccountRequestStatus {
 }
 
 model AccountRequest {
-  id        String              @id @default(cuid())
+  id        String               @id @default(cuid())
   userId    String
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      AccountRequestType
   status    AccountRequestStatus @default(PENDING)
   note      String?
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt])
@@ -478,34 +485,34 @@ model BusinessProfile {
 // plus the compliance decisions Inverge itself made (risk outcome, human review).
 // Raw documents, selfies and full provider reports are never stored here.
 model VerificationCase {
-  id                   String               @id @default(cuid())
-  userId               String
-  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  businessId           String? // set only for a BUSINESS case
-  business             BusinessProfile?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
-  type                 VerificationType
-  provider             VerificationProvider
-  providerSessionId    String               @unique // Didit session_id; never reused across cases
-  providerWorkflowId   String?
-  providerStatus       String? // exact provider label, retained for support/audit only
-  status               VerificationStatus   @default(SESSION_CREATED)
-  purpose              String? // KycPurpose that selected the workflow (for resume/retry)
-  decisionCode         String? // provider warning/decision code, not free text
-  features             String[]             @default([]) // provider feature codes the decision reported
-  riskOutcome          RiskOutcome          @default(NOT_ASSESSED)
-  riskReasonCodes      String[]             @default([]) // warning codes / dataset names, no personal data
-  requiresHumanReview  Boolean              @default(false)
-  attempt              Int                  @default(1)
-  submittedAt          DateTime?
-  decidedAt            DateTime?
-  expiresAt            DateTime?
-  lastProviderSyncAt   DateTime?
-  lastErrorCode        String?
-  lastErrorMessage     String?
-  reconcileAttempts    Int                  @default(0)
-  nextReconcileAt      DateTime?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  id                  String               @id @default(cuid())
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId          String? // set only for a BUSINESS case
+  business            BusinessProfile?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  type                VerificationType
+  provider            VerificationProvider
+  providerSessionId   String               @unique // Didit session_id; never reused across cases
+  providerWorkflowId  String?
+  providerStatus      String? // exact provider label, retained for support/audit only
+  status              VerificationStatus   @default(SESSION_CREATED)
+  purpose             String? // KycPurpose that selected the workflow (for resume/retry)
+  decisionCode        String? // provider warning/decision code, not free text
+  features            String[]             @default([]) // provider feature codes the decision reported
+  riskOutcome         RiskOutcome          @default(NOT_ASSESSED)
+  riskReasonCodes     String[]             @default([]) // warning codes / dataset names, no personal data
+  requiresHumanReview Boolean              @default(false)
+  attempt             Int                  @default(1)
+  submittedAt         DateTime?
+  decidedAt           DateTime?
+  expiresAt           DateTime?
+  lastProviderSyncAt  DateTime?
+  lastErrorCode       String?
+  lastErrorMessage    String?
+  reconcileAttempts   Int                  @default(0)
+  nextReconcileAt     DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   events VerificationEvent[]
 
@@ -519,20 +526,20 @@ model VerificationCase {
 // providerEventReference is the provider's event_id, so duplicate deliveries cannot
 // append a second event. Safe metadata is whitelisted; full payloads are never kept.
 model VerificationEvent {
-  id                     String                 @id @default(cuid())
+  id                     String                  @id @default(cuid())
   caseId                 String
-  case                   VerificationCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case                   VerificationCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
   eventType              String // e.g. status.updated, reconciled, risk_resolved
   previousStatus         VerificationStatus?
   newStatus              VerificationStatus?
   source                 VerificationEventSource
-  providerEventReference String?                @unique
+  providerEventReference String?                 @unique
   actorId                String? // reviewer for ADMIN_ACTION
   reasonCode             String?
   metadata               Json?
   occurredAt             DateTime
-  processedAt            DateTime               @default(now())
-  createdAt              DateTime               @default(now())
+  processedAt            DateTime                @default(now())
+  createdAt              DateTime                @default(now())
 
   @@index([caseId, createdAt(sort: Desc)])
   @@index([source, createdAt(sort: Desc)])
@@ -569,20 +576,20 @@ model ContributionAuthorization {
 
 // FR-306 family — Phase 3 logic, schema present now.
 model CreatorProfile {
-  userId             String      @id
-  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tier               CreatorTier @default(STARTER)
-  username           String?     @unique
+  userId             String       @id
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier               CreatorTier  @default(STARTER)
+  username           String?      @unique
   displayName        String?
   avatarUrl          String?
   bio                String?
   location           String?
-  links              Json?       @default("[]")
-  activeStrikes      Int         @default(0)
-  completedCampaigns Int         @default(0)
-  lifetimeRaised     Decimal     @default(0) @db.Decimal(14, 2)
-  tenureStartedAt    DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  links              Json?        @default("[]")
+  activeStrikes      Int          @default(0)
+  completedCampaigns Int          @default(0)
+  lifetimeRaised     Decimal      @default(0) @db.Decimal(14, 2)
+  tenureStartedAt    DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
   mediaAssets        MediaAsset[]
 }
 
@@ -670,16 +677,17 @@ model Idea {
   validatingSince        DateTime? // set when DRAFT → VALIDATING
   windowRenewedAt        DateTime? // window is renewable once
 
-  signals         IdeaSignal[]
-  surveyQuestions SurveyQuestion[]
-  surveyResponses SurveyResponse[]
-  comments        IdeaComment[]
-  boosts          IdeaBoost[]
-  campaign        Campaign?
-  metricSnapshots IdeaMetricSnapshot[]
-  qualityReports  IdeaQualityReport[]
-  moderationCases ModerationCase[]
-  mediaAssets     MediaAsset[]
+  signals          IdeaSignal[]
+  surveyQuestions  SurveyQuestion[]
+  surveyResponses  SurveyResponse[]
+  comments         IdeaComment[]
+  boosts           IdeaBoost[]
+  campaign         Campaign?
+  metricSnapshots  IdeaMetricSnapshot[]
+  qualityReports   IdeaQualityReport[]
+  moderationCases  ModerationCase[]
+  mediaAssets      MediaAsset[]
+  programmeEntries ProgrammeEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -920,13 +928,13 @@ model Campaign {
   deployment       CampaignDeployment?
   termsAcceptances CampaignTermsAcceptance[]
 
-  milestones    Milestone[]
-  contributions Contribution[]
+  milestones                 Milestone[]
+  contributions              Contribution[]
   ContributionAuthorizations ContributionAuthorization[]
-  onChainEvents OnChainEvent[]
-  mediaAssets   MediaAsset[]
-  comments      CampaignComment[]
-  moderationCases ModerationCase[]
+  onChainEvents              OnChainEvent[]
+  mediaAssets                MediaAsset[]
+  comments                   CampaignComment[]
+  moderationCases            ModerationCase[]
 
   createdAt  DateTime  @default(now())
   launchedAt DateTime?
@@ -1232,12 +1240,12 @@ model ProductAnalyticsEvent {
   durationMs    Int?
   queryLength   Int?
   resultCount   Int?
-  filterKeys    String[] @default([])
+  filterKeys    String[]                  @default([])
   amountMinor   BigInt?
   currency      String?
-  countryCode   String?  @db.Char(2) // coarse, from a trusted edge header only
+  countryCode   String?                   @db.Char(2) // coarse, from a trusted edge header only
   occurredAt    DateTime
-  receivedAt    DateTime @default(now())
+  receivedAt    DateTime                  @default(now())
 
   @@index([name, occurredAt])
   @@index([ideaId, name, occurredAt])
@@ -1587,11 +1595,11 @@ enum MediaAssetCategory {
 }
 
 model MediaAsset {
-  id        String             @id @default(cuid())
-  ownerId   String
-  owner     User               @relation("MediaAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  category  MediaAssetCategory @default(OTHER)
-  status    MediaAssetStatus   @default(PENDING)
+  id       String             @id @default(cuid())
+  ownerId  String
+  owner    User               @relation("MediaAssetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  category MediaAssetCategory @default(OTHER)
+  status   MediaAssetStatus   @default(PENDING)
 
   // Storage coordinates. The provider name is stored per row so a future
   // migration can run both providers side by side instead of an all-or-nothing
@@ -1602,10 +1610,10 @@ model MediaAsset {
 
   // Verified facts, written at completion. `mimeType` is the detected type, not
   // the browser-supplied one.
-  mimeType String  @db.VarChar(64)
-  byteSize Int     @default(0)
-  width    Int?
-  height   Int?
+  mimeType        String   @db.VarChar(64)
+  byteSize        Int      @default(0)
+  width           Int?
+  height          Int?
   // Reserved for a later video milestone; nothing writes it in this build.
   durationSeconds Decimal? @db.Decimal(8, 3)
 
@@ -1615,12 +1623,12 @@ model MediaAsset {
   altText     String? @db.VarChar(280)
   caption     String? @db.VarChar(280)
 
-  ideaId    String?
-  idea      Idea?    @relation(fields: [ideaId], references: [id], onDelete: SetNull)
-  campaignId String?
-  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  ideaId               String?
+  idea                 Idea?           @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  campaignId           String?
+  campaign             Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   creatorProfileUserId String?
-  creatorProfile CreatorProfile? @relation(fields: [creatorProfileUserId], references: [userId], onDelete: SetNull)
+  creatorProfile       CreatorProfile? @relation(fields: [creatorProfileUserId], references: [userId], onDelete: SetNull)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1707,12 +1715,12 @@ enum EmailSuppressionReason {
 }
 
 model EmailSuppression {
-  id        String                  @id @default(cuid())
-  email     String                  @unique // lower-case/trimmed; the only address copy
+  id        String                 @id @default(cuid())
+  email     String                 @unique // lower-case/trimmed; the only address copy
   reason    EmailSuppressionReason
   source    String?
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
 }
 
 // Explicit editorial opt-in. Registration never creates a row, so a missing row
@@ -1805,3 +1813,417 @@ model DiditWebhookEvent {
   @@index([occurredAt(sort: Desc)])
 }
 
+// ---------------------------------------------------------------------------
+// Programme / ideathon domain
+//
+// A Programme is one public competition edition (monthly ideathon, sponsored
+// challenge, showcase, workshop). Participation is separate from the creator
+// idea record: an entry references an owned Idea and stores the exact snapshot
+// that was submitted, so later edits cannot change an entry under judging.
+// ---------------------------------------------------------------------------
+
+enum ProgrammeType {
+  MONTHLY_IDEATHON
+  SPONSORED_CHALLENGE
+  SHOWCASE
+  WORKSHOP
+  EXPERT_SESSION
+  OTHER
+}
+
+enum ProgrammeStatus {
+  DRAFT
+  SCHEDULED
+  REGISTRATION_OPEN
+  SUBMISSION_OPEN
+  JUDGING
+  RESULTS_REVIEW
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProgrammeEntryMode {
+  NEW_IDEAS_ONLY
+  EXISTING_IDEAS_ONLY
+  NEW_OR_EXISTING
+}
+
+enum ProgrammeEntrySource {
+  NEW_IDEA
+  EXISTING_IDEA
+}
+
+enum ProgrammeRegistrationStatus {
+  PENDING
+  ELIGIBLE
+  REJECTED
+  WITHDRAWN
+}
+
+enum ProgrammeEntryStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  CHANGES_REQUESTED
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+  DISQUALIFIED
+  WITHDRAWN
+}
+
+enum ProgrammeJudgingMethod {
+  COMMUNITY
+  JUDGES
+  HYBRID
+  CURATED
+}
+
+enum ProgrammeResultsVisibility {
+  HIDDEN
+  PROVISIONAL
+  PUBLIC
+}
+
+enum ProgrammeEvaluationStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum ProgrammeJudgeStatus {
+  INVITED
+  ACTIVE
+  EXCLUDED
+}
+
+enum ProgrammePrizeKind {
+  CASH
+  NON_CASH
+  MIXED
+}
+
+enum ProgrammePrizeFulfilment {
+  UNCONFIRMED
+  COMMITTED
+  FUNDED
+  PROCESSING
+  DELIVERED
+  FAILED
+}
+
+enum ProgrammeSponsorInvoiceStatus {
+  DRAFT
+  ISSUED
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Programme {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  type        ProgrammeType   @default(MONTHLY_IDEATHON)
+  status      ProgrammeStatus @default(DRAFT)
+  title       String
+  tagline     String
+  description String
+  category    String
+  organiser   String
+  heroCopy    String          @default("")
+
+  // Public editorial content. JSON arrays keep the shape flexible without a
+  // second table for every optional module.
+  rules   String[] @default([])
+  faqs    Json     @default("[]")
+  assets  Json     @default("[]")
+  modules Json     @default("[]")
+
+  // Timeline. Every boundary is explicit so eligibility is evaluated against
+  // stored times, never a derived browser clock.
+  registrationOpensAt  DateTime
+  registrationClosesAt DateTime
+  submissionOpensAt    DateTime
+  submissionClosesAt   DateTime
+  judgingStartsAt      DateTime
+  judgingEndsAt        DateTime
+  resultsAt            DateTime
+  timezone             String   @default("UTC")
+
+  // Entry policy.
+  entryMode                ProgrammeEntryMode @default(NEW_OR_EXISTING)
+  registrationRequired     Boolean            @default(true)
+  requireEmailVerified     Boolean            @default(true)
+  allowedCategories        String[]           @default([])
+  minQualityScore          Decimal?           @db.Decimal(5, 4)
+  allowMultipleEntries     Boolean            @default(false)
+  maxEntriesPerParticipant Int                @default(1)
+  allowTeams               Boolean            @default(false)
+  teamMinSize              Int                @default(1)
+  teamMaxSize              Int                @default(4)
+  requiredFields           String[]           @default([])
+  customQuestions          Json               @default("[]")
+  acceptedLinkHosts        String[]           @default([])
+  maxAttachments           Int                @default(0)
+  allowDraftEditing        Boolean            @default(true)
+  allowWithdrawal          Boolean            @default(true)
+  lateEntriesAllowed       Boolean            @default(false)
+
+  // Judging and results.
+  judgingMethod              ProgrammeJudgingMethod     @default(JUDGES)
+  communityWeight            Int                        @default(0)
+  judgeWeight                Int                        @default(100)
+  rubric                     Json                       @default("[]")
+  minimumEvaluations         Int                        @default(1)
+  // EXCLUDE (declared default): an entry without the minimum completed
+  // evaluations is marked incomplete and left out of the official ranking.
+  // ZERO is an explicit, published opt-in that scores missing evaluations as 0.
+  missingEvaluationPolicy    String                     @default("EXCLUDE")
+  tieBreak                   Json                       @default("[]")
+  resultsVisibility          ProgrammeResultsVisibility @default(HIDDEN)
+  allowEvaluationRevision    Boolean                    @default(false)
+  requireConflictDeclaration Boolean                    @default(true)
+
+  version     Int       @default(1)
+  publishedAt DateTime?
+  createdBy   String
+  creator     User      @relation("ProgrammeCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  registrations      ProgrammeRegistration[]
+  entries            ProgrammeEntry[]
+  judges             ProgrammeJudge[]
+  evaluations        ProgrammeEvaluation[]
+  prizes             ProgrammePrize[]
+  sponsors           ProgrammeSponsor[]
+  announcements      ProgrammeAnnouncement[]
+  resultPublications ProgrammeResultPublication[]
+  auditEvents        ProgrammeAuditEvent[]
+
+  @@index([status, type, submissionClosesAt])
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([createdBy, createdAt(sort: Desc)])
+}
+
+model ProgrammeRegistration {
+  id              String                      @id @default(cuid())
+  programmeId     String
+  programme       Programme                   @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          ProgrammeRegistrationStatus @default(ELIGIBLE)
+  eligibilityNote String?
+  registeredAt    DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  @@unique([programmeId, userId])
+  @@index([programmeId, status, registeredAt])
+  @@index([userId, registeredAt(sort: Desc)])
+}
+
+// The submitted record is a versioned snapshot. `content` is the editable draft;
+// `submittedSnapshot` is immutable once submissionVersion increments.
+model ProgrammeEntry {
+  id                String               @id @default(cuid())
+  programmeId       String
+  programme         Programme            @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  participantId     String
+  participant       User                 @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  ideaId            String
+  idea              Idea                 @relation(fields: [ideaId], references: [id], onDelete: Restrict)
+  source            ProgrammeEntrySource
+  status            ProgrammeEntryStatus @default(DRAFT)
+  title             String
+  category          String
+  content           Json                 @default("{}")
+  submittedSnapshot Json?
+  submissionVersion Int                  @default(0)
+  submittedAt       DateTime?
+  withdrawnAt       DateTime?
+  curatedRank       Int?
+  moderatorNote     String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  teamMembers    ProgrammeEntryTeamMember[]
+  evaluations    ProgrammeEvaluation[]
+  judgeConflicts ProgrammeJudgeConflict[]
+
+  @@unique([programmeId, participantId, ideaId])
+  @@index([programmeId, status, submittedAt])
+  @@index([participantId, updatedAt(sort: Desc)])
+  @@index([ideaId])
+}
+
+model ProgrammeEntryTeamMember {
+  id        String         @id @default(cuid())
+  entryId   String
+  entry     ProgrammeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  role      String?
+  userId    String?
+  createdAt DateTime       @default(now())
+
+  @@index([entryId])
+}
+
+model ProgrammeJudge {
+  id                  String               @id @default(cuid())
+  programmeId         String
+  programme           Programme            @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  judgeId             String
+  judge               User                 @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  status              ProgrammeJudgeStatus @default(ACTIVE)
+  conflictDeclaration String?
+  assignedBy          String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  conflicts ProgrammeJudgeConflict[]
+
+  @@unique([programmeId, judgeId])
+  @@index([judgeId, status])
+}
+
+model ProgrammeJudgeConflict {
+  id         String         @id @default(cuid())
+  judgeId    String
+  judge      ProgrammeJudge @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  entryId    String
+  entry      ProgrammeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  reason     String
+  declaredAt DateTime       @default(now())
+
+  @@unique([judgeId, entryId])
+  @@index([entryId])
+}
+
+model ProgrammeEvaluation {
+  id                  String                    @id @default(cuid())
+  programmeId         String
+  programme           Programme                 @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  entryId             String
+  entry               ProgrammeEntry            @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  judgeId             String
+  judge               User                      @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  status              ProgrammeEvaluationStatus @default(DRAFT)
+  scores              Json                      @default("{}")
+  weightedScore       Decimal?                  @db.Decimal(7, 2)
+  privateComment      String?
+  participantFeedback String?
+  revision            Int                       @default(1)
+  submittedAt         DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  revisions ProgrammeEvaluationRevision[]
+
+  @@unique([entryId, judgeId])
+  @@index([programmeId, status])
+  @@index([judgeId, status])
+}
+
+model ProgrammeEvaluationRevision {
+  id                  String              @id @default(cuid())
+  evaluationId        String
+  evaluation          ProgrammeEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  revision            Int
+  scores              Json
+  weightedScore       Decimal?            @db.Decimal(7, 2)
+  privateComment      String?
+  participantFeedback String?
+  submittedAt         DateTime?
+  recordedAt          DateTime            @default(now())
+
+  @@unique([evaluationId, revision])
+}
+
+model ProgrammeResultPublication {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  revision    Int
+  standings   Json
+  methodology Json
+  checksum    String
+  publishedBy String
+  publisher   User      @relation(fields: [publishedBy], references: [id], onDelete: Restrict)
+  notes       String?
+  publishedAt DateTime  @default(now())
+
+  @@unique([programmeId, revision])
+  @@index([programmeId, publishedAt(sort: Desc)])
+}
+
+model ProgrammePrize {
+  id               String                   @id @default(cuid())
+  programmeId      String
+  programme        Programme                @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  placement        Int                      @default(1)
+  title            String
+  description      String
+  kind             ProgrammePrizeKind       @default(NON_CASH)
+  amountAtomic     String?
+  currency         String                   @default("USD")
+  decimals         Int                      @default(2)
+  awardCriteria    String?
+  eligibility      String?
+  fundingStatus    ProgrammePrizeFulfilment @default(UNCONFIRMED)
+  fulfilmentStatus ProgrammePrizeFulfilment @default(UNCONFIRMED)
+  fulfilmentOwner  String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([programmeId, placement])
+}
+
+model ProgrammeSponsor {
+  id                  String                        @id @default(cuid())
+  programmeId         String
+  programme           Programme                     @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  name                String
+  tier                String                        @default("partner")
+  website             String?
+  logoUrl             String?
+  deliverables        String[]                      @default([])
+  commitmentAtomic    String                        @default("0")
+  currency            String                        @default("USD")
+  invoiceStatus       ProgrammeSponsorInvoiceStatus @default(DRAFT)
+  confirmedByProvider Boolean                       @default(false)
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  @@index([programmeId])
+}
+
+model ProgrammeAnnouncement {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  publishedAt DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([programmeId, publishedAt(sort: Desc)])
+}
+
+model ProgrammeAuditEvent {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action      String
+  target      String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([programmeId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+}
