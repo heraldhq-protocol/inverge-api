@@ -57,6 +57,12 @@ export function notificationPreferenceFor(
     // marketing. They are subject to email verification, not a marketing opt-out.
     return null;
   }
+  // A pre-pledger's one-off update about an idea they supported is part of
+  // "Email updates" (important idea/campaign activity), not the creator-update
+  // feed they may have opted out of.
+  if (template === 'IDEA_CONVERTED_TO_CAMPAIGN') {
+    return 'notifyEmailUpdates';
+  }
   if (template.startsWith('IDEA_') || template.startsWith('CAMPAIGN_')) {
     return 'notifyCreatorUpdates';
   }
@@ -116,10 +122,65 @@ export class NotificationsService {
       return;
     }
 
+    await this.schedule(row.id, message.template);
+  }
+
+  /**
+   * Creates notification rows inside a domain transaction. The caller gets the
+   * ids back and schedules them after commit, so a campaign transition and its
+   * recipient rows cannot silently diverge. `skipDuplicates` makes a repeated
+   * event a no-op.
+   */
+  async createManyInTransaction(
+    tx: Prisma.TransactionClient,
+    messages: readonly NotificationMessage[],
+  ): Promise<string[]> {
+    if (messages.length === 0) return [];
+    const rows = await tx.notification.createManyAndReturn({
+      data: messages.map((message) => ({
+        data: message.data as Prisma.InputJsonValue,
+        dedupeKey: message.dedupeKey ?? null,
+        template: message.template,
+        userId: message.toUserId,
+      })),
+      select: { id: true },
+      skipDuplicates: true,
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /** Schedules already-persisted rows. Safe to call after a crash/restart. */
+  async dispatchPersisted(ids: readonly string[]): Promise<void> {
+    await Promise.allSettled(ids.map((id) => this.schedule(id)));
+  }
+
+  /**
+   * Re-schedules rows whose dispatch was lost between commit and enqueue. Only
+   * rows with attempts left are considered; a suppressed or delivered row is
+   * never retried.
+   */
+  async sweepUndispatched(limit = 50): Promise<number> {
+    const before = new Date(Date.now() - 5 * 60_000);
+    const rows = await this.prisma.notification.findMany({
+      where: {
+        createdAt: { lt: before },
+        dispatchAttempts: { lt: 5 },
+        dispatchedAt: null,
+        suppressedAt: null,
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+      take: Math.min(Math.max(limit, 1), 200),
+    });
+    await this.dispatchPersisted(rows.map((row) => row.id));
+    return rows.length;
+  }
+
+  private async schedule(notificationId: string, template = 'notification'): Promise<void> {
     if (!this.queue) {
-      await this.dispatch(row.id).catch((error: unknown) => {
+      await this.dispatch(notificationId).catch((error: unknown) => {
         this.logger.warn(
-          `Inline ${message.template} dispatch failed: ${
+          `Inline ${template} dispatch failed: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -128,24 +189,28 @@ export class NotificationsService {
     }
 
     try {
-      await this.queue.add(JOB_NAMES.notificationDispatch, { notificationId: row.id }, {
-        jobId: `notification:${row.id}`,
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 2_000 },
-        removeOnComplete: 1_000,
-        removeOnFail: 1_000,
-      });
+      await this.queue.add(
+        JOB_NAMES.notificationDispatch,
+        { notificationId },
+        {
+          jobId: `notification:${notificationId}`,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2_000 },
+          removeOnComplete: 1_000,
+          removeOnFail: 1_000,
+        },
+      );
     } catch (error) {
       // Queue enqueue failed (Redis down). The row is durable; try once inline
       // so a transient queue outage does not delay a time-critical alert.
       this.logger.warn(
-        `Could not enqueue ${message.template} notification; dispatching inline: ${
+        `Could not enqueue ${template} notification; dispatching inline: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      await this.dispatch(row.id).catch((inlineError: unknown) => {
+      await this.dispatch(notificationId).catch((inlineError: unknown) => {
         this.logger.warn(
-          `Inline ${message.template} dispatch failed: ${
+          `Inline ${template} dispatch failed: ${
             inlineError instanceof Error ? inlineError.message : String(inlineError)
           }`,
         );

@@ -60,7 +60,7 @@ export class KybController {
 
   @Get('admin/aml/:userId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Business AML screening history (NFR-19 retained)' })
+  @ApiOperation({ summary: 'Business AML screening history' })
   @UseGuards(PrivyAuthGuard, AdminGuard)
   adminListScreenings(@Param('userId') userId: string) {
     return this.kyc.listBusinessScreenings(userId);

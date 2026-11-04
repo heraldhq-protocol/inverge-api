@@ -159,6 +159,22 @@ function ctaHtml(cta: EmailContent['cta']): string {
   </table>`;
 }
 
+function footerAppLinks(ctx: EmailRenderContext): Array<{ label: string; url: string }> {
+  const links: Array<{ label: string; url: string }> = [];
+  for (const [label, path] of [
+    ['Help', '/help'],
+    ['Privacy', '/privacy'],
+    ['Terms', '/terms'],
+  ] as const) {
+    try {
+      links.push({ label, url: new URL(path, ctx.appUrl).toString() });
+    } catch {
+      // A malformed app origin must not break the rest of the footer.
+    }
+  }
+  return links;
+}
+
 function footerHtml(
   content: EmailContent,
   ctx: EmailRenderContext,
@@ -188,6 +204,13 @@ function footerHtml(
       )}" style="color:${EMAIL_BRAND.brandStrong};font-size:12px;line-height:1.8;text-decoration:underline;">Contact support</a>`,
     );
   }
+  for (const link of footerAppLinks(ctx)) {
+    links.push(
+      `<a href="${escapeHtml(
+        link.url,
+      )}" style="color:${EMAIL_BRAND.brandStrong};font-size:12px;line-height:1.8;text-decoration:underline;">${link.label}</a>`,
+    );
+  }
   const address = ctx.companyAddress?.trim()
     ? `<p style="margin:8px 0 0;color:${EMAIL_BRAND.muted};font-size:11px;line-height:1.6;">${escapeHtml(
         ctx.companyAddress.trim(),
@@ -206,6 +229,20 @@ function footerHtml(
       <p style="margin:10px 0 0;color:${EMAIL_BRAND.muted};font-size:11px;line-height:1.6;">Sent by Inverge, milestone-escrowed crowdfunding and idea validation.</p>
     </td>
   </tr>`;
+}
+
+function imageHtml(image: EmailContent['image']): string {
+  const url = safeEmailUrl(image?.url);
+  if (!image || !url) return '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">
+    <tr>
+      <td style="padding:0;">
+        <img src="${escapeHtml(
+          url,
+        )}" alt="${escapeHtml(image.alt)}" width="536" style="display:block;width:100%;max-width:536px;height:auto;border-radius:12px;border:1px solid ${EMAIL_BRAND.warmGrey};" />
+      </td>
+    </tr>
+  </table>`;
 }
 
 export function renderEmailHtml(
@@ -278,6 +315,7 @@ export function renderEmailHtml(
             </tr>
             <tr>
               <td class="iv-pad" style="padding:16px 32px 0;">
+                ${imageHtml(content.image)}
                 ${paragraphsHtml(content.paragraphs)}
                 ${codeHtml(content.code)}
                 ${detailsHtml(content.details)}
@@ -340,6 +378,7 @@ export function renderEmailText(
     if (unsubscribeUrl) lines.push(`Unsubscribe: ${unsubscribeUrl}`);
   }
   if (ctx.supportEmail) lines.push(`Contact support: ${ctx.supportEmail}`);
+  for (const link of footerAppLinks(ctx)) lines.push(`${link.label}: ${link.url}`);
   if (ctx.companyAddress?.trim()) lines.push(ctx.companyAddress.trim());
   lines.push('Sent by Inverge, milestone-escrowed crowdfunding and idea validation.');
 

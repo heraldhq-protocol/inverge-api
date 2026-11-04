@@ -143,7 +143,7 @@ export class CreateIdeaDto {
   askAmount?: number;
 
   @ApiPropertyOptional({
-    description: 'Creator-declared expected pre-pledge minimum in USD (FR-204). '
+    description: 'Creator-declared expected pre-pledge minimum in USD. '
       + 'The gate requires the weighted figure to clear max(platform floor, this).',
   })
   @IsOptional()
@@ -194,7 +194,7 @@ export class CreateIdeaDto {
 export class UpdateIdeaDto extends PartialType(CreateIdeaDto) {}
 
 export class PrePledgeDto {
-  @ApiProperty({ description: 'Intent amount — NO funds move (FR-202)' })
+  @ApiProperty({ description: 'Intent amount - NO funds move' })
   @IsNumber()
   @IsPositive()
   amount!: number;
@@ -202,7 +202,7 @@ export class PrePledgeDto {
   @ApiPropertyOptional({
     enum: PLEDGE_CURRENCIES,
     default: 'USD',
-    description: 'FR-210: USD default; NGN normalized to USD at the current fx rate.',
+    description: 'USD default; NGN normalized to USD at the current fx rate.',
   })
   @IsOptional()
   @IsIn(PLEDGE_CURRENCIES)

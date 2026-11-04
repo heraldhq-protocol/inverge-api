@@ -66,7 +66,8 @@ POST /api/v1/webhooks/resend  (Svix signature)
   enforcement.
 - `layout.ts` - table-based responsive shell, hidden preview text, 600px
   container, mobile media query, Outlook-safe button, footer with sender
-  identification and unsubscribe when the template is marketing.
+  identification, Help/Privacy/Terms links and unsubscribe when the template is
+  marketing.
 - `catalog.ts` - every template: category, required variables, copy builder.
 - `render.ts` - validation, locale negotiation (`en` today, fallback), and the
   marketing rule: an unsubscribe URL **and** a postal address are mandatory.
@@ -85,7 +86,8 @@ variable keys.
 | `IDEA_PUBLISHED` | transactional | `ideaTitle` | `IdeasService.publish` |
 | `IDEA_FEEDBACK` | transactional | `ideaTitle` | `SurveyService.submitResponse` |
 | `IDEA_COMMENT` | transactional | `ideaTitle` | `CommentsService.post` |
-| `WAITLIST_IDEA_LIVE` | transactional | - | Idea→campaign conversion |
+| `WAITLIST_IDEA_LIVE` | transactional | - | Legacy; publication now uses `IDEA_CONVERTED_TO_CAMPAIGN` |
+| `IDEA_CONVERTED_TO_CAMPAIGN` | transactional | `campaignId`, `campaignTitle` | Campaign publication, to eligible pre-pledgers and supporters |
 | `ACCOUNT_UPDATE` | transactional | - | Safe fallback for an unknown notification template |
 | `CAMPAIGN_SUBMITTED` | transactional | `campaignTitle` | `CampaignsService.submit` |
 | `CAMPAIGN_APPROVED` | transactional | `campaignTitle` | Campaign review decision |
@@ -150,6 +152,12 @@ web deployment change.
   uses `notification/<notificationId>`; verification uses
   `email-verification/<challengeId>`; a domain notification uses its event-aware
   `dedupeKey`; editorial uses `editorial:<issueId>:<template>:<userId>`.
+- **Journaled fan-out**: campaign-publication recipient rows are written with
+  `NotificationsService.createManyInTransaction` inside the publication
+  transaction, then scheduled after commit. `Notification.dedupeKey`
+  (`IDEA_CONVERTED_TO_CAMPAIGN:<campaignId>:<userId>`) is unique. A periodic
+  sweep re-schedules undelivered rows, closing the crash window between commit
+  and enqueue.
 - **Claim before send**: a row moves `PENDING → SENDING` with a conditional
   `updateMany`. A second worker cannot send the same row. A `SENDING` row older
   than `EMAIL_DELIVERY_STALE_SECONDS` may be reclaimed after a crash.

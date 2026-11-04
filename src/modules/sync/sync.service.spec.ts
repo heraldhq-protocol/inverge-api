@@ -35,7 +35,7 @@ function idea(overrides: Record<string, unknown> = {}) {
 
 function make(params = paramsMock(), sustained = true) {
   const metrics = { isSustained: jest.fn().mockResolvedValue(sustained) } as any;
-  const svc = new SyncService({} as any, params, {} as any, metrics);
+  const svc = new SyncService({} as any, params, metrics);
   return { svc, metrics };
 }
 
@@ -110,13 +110,13 @@ describe('convert — precondition guards', () => {
 
   it('rejects a non-owner before evaluating the gate', async () => {
     const prisma = { idea: { findUnique: jest.fn().mockResolvedValue(idea({ creatorId: 'someone-else' })) } } as any;
-    const svc = new SyncService(prisma, paramsMock(), {} as any, { isSustained: jest.fn() } as any);
+    const svc = new SyncService(prisma, paramsMock(), { isSustained: jest.fn() } as any);
     await expect(svc.convert('not-the-owner', 'idea1', dto)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects an already-converted idea', async () => {
     const prisma = { idea: { findUnique: jest.fn().mockResolvedValue(idea({ status: 'CONVERTED' })) } } as any;
-    const svc = new SyncService(prisma, paramsMock(), {} as any, { isSustained: jest.fn() } as any);
+    const svc = new SyncService(prisma, paramsMock(), { isSustained: jest.fn() } as any);
     await expect(svc.convert('creator1', 'idea1', dto)).rejects.toThrow(/already converted/i);
   });
 
@@ -124,7 +124,7 @@ describe('convert — precondition guards', () => {
     const prisma = {
       idea: { findUnique: jest.fn().mockResolvedValue(idea({ supporterCount: 1 })) },
     } as any;
-    const svc = new SyncService(prisma, paramsMock(), {} as any, { isSustained: jest.fn().mockResolvedValue(true) } as any);
+    const svc = new SyncService(prisma, paramsMock(), { isSustained: jest.fn().mockResolvedValue(true) } as any);
     await expect(svc.convert('creator1', 'idea1', dto)).rejects.toThrow(/validation threshold/i);
   });
 });

@@ -222,7 +222,7 @@ export function campaignEditBlockedReason(campaign: {
   deploymentStatus: string | null;
 }): string | null {
   if (campaign.deploymentStatus === 'CONFIRMED') {
-    return 'The escrow is deployed and the campaign terms are immutable (FR-303).';
+    return 'The escrow is deployed and the campaign terms are immutable.';
   }
   if (campaign.status === 'IN_REVIEW' && campaign.reviewStatus !== 'CHANGES_REQUESTED') {
     return 'The campaign is in review. Wait for a decision or a change request before editing.';

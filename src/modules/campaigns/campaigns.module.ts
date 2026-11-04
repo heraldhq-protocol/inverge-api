@@ -12,6 +12,7 @@ import { CampaignCommentsService } from './campaign-comments.service';
 import { CampaignReviewService } from './campaign-review.service';
 import { CampaignsController, PlatformController } from './campaigns.controller';
 import { CampaignsService } from './campaigns.service';
+import { PrePledgeCampaignNotifier } from './pre-pledge-campaign.notifier';
 import { CampaignDraftsService } from './deployment/campaign-drafts.service';
 import { CampaignDeploymentService } from './deployment/campaign-deployment.service';
 import {
@@ -45,6 +46,7 @@ import {
     CampaignCommentsService,
     CampaignDraftsService,
     CampaignDeploymentService,
+    PrePledgeCampaignNotifier,
   ],
   exports: [CampaignsService, CampaignDraftsService, CampaignDeploymentService],
 })

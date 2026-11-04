@@ -10,6 +10,7 @@ function harness(reconcileMinutes = 10) {
       .mockResolvedValue({ confirmed: 0, examined: 0, feesSettled: 0 }),
   };
   const snapshots = { snapshotAllValidating: jest.fn().mockResolvedValue(0) };
+  const notifications = { sweepUndispatched: jest.fn().mockResolvedValue(0) };
   const aggregation = {
     aggregateIdeaSignals: jest.fn().mockResolvedValue({ ideas: 0 }),
     aggregateReach: jest.fn().mockResolvedValue({ resources: 0 }),
@@ -31,12 +32,21 @@ function harness(reconcileMinutes = 10) {
     config,
     verification as never,
     deployments as never,
+    notifications as never,
     snapshots as never,
     aggregation as never,
     retention as never,
   );
 
-  return { service, verification, deployments, snapshots, aggregation, retention };
+  return {
+    service,
+    verification,
+    deployments,
+    notifications,
+    snapshots,
+    aggregation,
+    retention,
+  };
 }
 
 describe('PeriodicJobsService', () => {

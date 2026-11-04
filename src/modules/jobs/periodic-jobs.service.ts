@@ -5,12 +5,15 @@ import { AnalyticsAggregationService } from '../analytics/analytics-aggregation.
 import { AnalyticsRetentionService } from '../analytics/analytics-retention.service';
 import { previousUtcDay } from '../analytics/analytics-time';
 import { CampaignDeploymentService } from '../campaigns/deployment/campaign-deployment.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { VerificationService } from '../kyc/verification.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { msUntilNextUtc } from './daily-schedule';
 
 /** Was a BullMQ repeatable at 30 s; the cadence is unchanged, only its home. */
 const DEPLOYMENT_SWEEP_INTERVAL_MS = 30_000;
+/** Re-schedules notification rows whose commit survived but enqueue did not. */
+const NOTIFICATION_SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Was the repeatable cron `0 3 * * *` (UTC). */
 const SNAPSHOT_AT = { hour: 3, minute: 0 } as const;
 /** Was the repeatable cron `15 4 * * *` (UTC). */
@@ -47,6 +50,7 @@ export class PeriodicJobsService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService<Env, true>,
     private readonly verification: VerificationService,
     private readonly deployments: CampaignDeploymentService,
+    private readonly notifications: NotificationsService,
     private readonly snapshots: MetricsService,
     private readonly aggregation: AnalyticsAggregationService,
     private readonly retention: AnalyticsRetentionService,
@@ -65,6 +69,11 @@ export class PeriodicJobsService implements OnModuleInit, OnModuleDestroy {
     );
     this.every(DEPLOYMENT_SWEEP_INTERVAL_MS, 'campaign deployment sweep', () =>
       this.sweepDeployments(),
+    );
+    this.every(
+      NOTIFICATION_SWEEP_INTERVAL_MS,
+      'notification dispatch sweep',
+      () => this.sweepNotifications(),
     );
     this.daily(SNAPSHOT_AT, 'daily idea metric snapshot', () => this.snapshot());
     this.daily(ANALYTICS_AT, 'nightly analytics maintenance', () =>
@@ -138,6 +147,15 @@ export class PeriodicJobsService implements OnModuleInit, OnModuleDestroy {
     if (result.examined > 0 || result.feesSettled > 0) {
       this.logger.log(
         `Deployment sweep: examined=${result.examined} confirmed=${result.confirmed} feesSettled=${result.feesSettled}`,
+      );
+    }
+  }
+
+  private async sweepNotifications(): Promise<void> {
+    const rescheduled = await this.notifications.sweepUndispatched();
+    if (rescheduled > 0) {
+      this.logger.log(
+        `Notification sweep: rescheduled=${rescheduled} persisted row(s)`,
       );
     }
   }

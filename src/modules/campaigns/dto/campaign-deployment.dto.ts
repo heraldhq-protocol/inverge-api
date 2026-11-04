@@ -107,7 +107,7 @@ export class CampaignMilestoneDraftDto {
   @Matches(PERCENT_2DP)
   allocationPercent!: string;
 
-  @ApiProperty({ description: 'The immutable evidence definition (FR-302).' })
+  @ApiProperty({ description: 'The immutable evidence definition.' })
   @IsString()
   @MinLength(10)
   @MaxLength(2000)
@@ -206,7 +206,7 @@ export class CreateCampaignDraftDto {
   @IsString()
   @Matches(PERCENT_2DP)
   @Matches(WORKING_CAPITAL_PERCENT, {
-    message: 'workingCapitalPercent must be exactly 20 (FR-503a)',
+    message: 'workingCapitalPercent must be exactly 20',
   })
   workingCapitalPercent!: string;
 

@@ -43,8 +43,34 @@ The domain action never fails because a notification could not be written or
 delivered: the failure is logged, and the durable row (when it exists) can be
 retried.
 
-`WAITLIST_CONVERSION` uses `WAITLIST_CONVERSION:<campaignId>:<userId>` so a
-replayed campaign conversion does not alert a supporter twice.
+The legacy `WAITLIST_CONVERSION` key remains for rows already queued before this
+change; conversion no longer emits it.
+
+### Pre-pledge to campaign fan-out
+
+`CampaignDraftsService.publish` is the only trigger for
+`IDEA_CONVERTED_TO_CAMPAIGN`. A draft, submission or approval does not send it.
+Inside the publication transaction the service resolves the idea's positive
+`PRE_PLEDGE` signals plus `SUPPORT` signals (the FR-205 waitlist), excludes
+banned accounts and deduplicates by user, then calls
+`NotificationsService.createManyInTransaction()`. The notification rows commit
+with the campaign, so a published campaign always has its durable recipient
+rows. After commit the ids are scheduled; publication never waits for the
+provider.
+
+The stable key is `IDEA_CONVERTED_TO_CAMPAIGN:<campaignId>:<userId>`.
+`createManyAndReturn({ skipDuplicates: true })` and the unique key make repeated
+events and worker retries no-ops. A failed enqueue is retried by BullMQ; a crash
+between commit and enqueue is recovered by the five-minute
+`notification dispatch sweep`, which reschedules undelivered rows with attempts
+left. An unverified address still gets the in-app row; dispatch marks it
+`suppressedAt` rather than claiming a send.
+
+The template is `IDEA_CONVERTED_TO_CAMPAIGN` ("An idea you supported is now a
+campaign"). It is transactional, uses the `Email updates` preference, links to
+the public campaign, quotes a funding goal and deadline only when the published
+row has them, omits a missing/invalid cover image, and states that showing
+interest, including a pre-pledge, did not charge the user.
 
 ## Data
 

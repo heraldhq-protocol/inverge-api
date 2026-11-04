@@ -28,14 +28,14 @@ export class AdminCampaignsController {
   constructor(private readonly reviews: CampaignReviewService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List campaigns by curation state (FR-304)' })
+  @ApiOperation({ summary: 'List campaigns by curation state' })
   list(@Query() query: ListCampaignReviewQueueDto) {
     return this.reviews.listQueue(query);
   }
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Campaign review detail with FR-103/FR-311 facts and review history',
+    summary: 'Campaign review detail with verification and fee facts and review history',
   })
   detail(@Param('id') id: string) {
     return this.reviews.getForReview(id);
@@ -43,7 +43,7 @@ export class AdminCampaignsController {
 
   @Post(':id/review')
   @ApiOperation({
-    summary: 'Approve, request changes or reject a campaign (FR-304)',
+    summary: 'Approve, request changes or reject a campaign',
   })
   decide(
     @CurrentUser() admin: AuthenticatedUser,
