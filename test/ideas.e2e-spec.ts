@@ -202,6 +202,23 @@ describe('Ideas routes (e2e)', () => {
         .expect(200);
       expect(res.body.data.some((i: any) => i.id === ideaId)).toBe(true);
     });
+    it('searches title, pitch text, and creator name case-insensitively', async () => {
+      const byTitle = await http().get('/api/v1/ideas?q=e2e%20idea').expect(200);
+      expect(byTitle.body.data.some((i: any) => i.id === ideaId)).toBe(true);
+
+      const byPitch = await http()
+        .get('/api/v1/ideas?q=credit%20history')
+        .expect(200);
+      expect(byPitch.body.data.some((i: any) => i.id === ideaId)).toBe(true);
+
+      const none = await http()
+        .get('/api/v1/ideas?q=no-such-idea-or-creator')
+        .expect(200);
+      expect(none.body.data).toHaveLength(0);
+    });
+    it('rejects an over-long search term', async () => {
+      await http().get(`/api/v1/ideas?q=${'a'.repeat(121)}`).expect(400);
+    });
     it('404 for an unknown idea', async () => {
       await http().get('/api/v1/ideas/does-not-exist').expect(404);
     });
