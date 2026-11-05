@@ -328,11 +328,40 @@ export class IdeasService {
       whereClause = { AND: [whereClause, taxonomyWhere] };
     }
 
+    const search = query.q?.trim();
+    if (search) {
+      whereClause = {
+        AND: [
+          whereClause,
+          {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { problem: { contains: search, mode: 'insensitive' } },
+              { solution: { contains: search, mode: 'insensitive' } },
+              { targetUser: { contains: search, mode: 'insensitive' } },
+              { currentAlternative: { contains: search, mode: 'insensitive' } },
+              {
+                creator: {
+                  creatorProfile: {
+                    OR: [
+                      { displayName: { contains: search, mode: 'insensitive' } },
+                      { username: { contains: search, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
+
     const limit = clampPageSize(query.limit);
     const fingerprint = filterFingerprint({
       route: 'ideas.list',
       mine: Boolean(query.mine),
       viewer: query.mine ? (currentUserId ?? null) : null,
+      q: search ?? null,
       taxonomyCategory: taxonomy.pair?.category ?? null,
       taxonomySubcategory: taxonomy.pair?.subcategory ?? null,
     });

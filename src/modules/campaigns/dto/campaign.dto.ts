@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -42,6 +43,16 @@ export class ListCampaignsQueryDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text search over the campaign title and summary, its source idea\'s title, problem, and solution, ' +
+      'and the creator\'s public name or handle. Case-insensitive; combined with every other filter.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -90,6 +90,42 @@ export class CampaignsService {
       }
     }
 
+    const search = query.q?.trim();
+    if (search) {
+      whereClause = {
+        AND: [
+          whereClause,
+          {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { summary: { contains: search, mode: 'insensitive' } },
+              {
+                idea: {
+                  is: {
+                    OR: [
+                      { title: { contains: search, mode: 'insensitive' } },
+                      { problem: { contains: search, mode: 'insensitive' } },
+                      { solution: { contains: search, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+              {
+                creator: {
+                  creatorProfile: {
+                    OR: [
+                      { displayName: { contains: search, mode: 'insensitive' } },
+                      { username: { contains: search, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
+
     // Each sort is a total order: `id` breaks ties so a page boundary can never
     // repeat or drop a campaign with the same timestamp or raised amount.
     const sort = query.sort ?? 'newest';
@@ -127,6 +163,7 @@ export class CampaignsService {
       viewer: query.mine ? (currentUserId ?? null) : null,
       status: query.status ?? null,
       category: query.category ?? null,
+      q: search ?? null,
       taxonomyCategory: taxonomy.pair?.category ?? null,
       taxonomySubcategory: taxonomy.pair?.subcategory ?? null,
       region: query.region ?? null,

@@ -229,6 +229,16 @@ export class ListIdeasQueryDto {
   @IsString()
   cursor?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Free-text search over the idea title, problem, solution, target user, and the creator\'s public name or handle. ' +
+      'Case-insensitive; combined with every other filter.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+
   @ApiPropertyOptional({ description: 'If true, returns calling creator\'s own ideas (all statuses including DRAFT)' })
   @IsOptional()
   @Transform(parseBooleanQuery)

@@ -134,6 +134,35 @@ describe('Campaign detail (e2e)', () => {
     expect(res.body.creator.id).toBe(creatorId);
   });
 
+  it('searches the public list by campaign and source-idea text', async () => {
+    const byIdeaTitle = await http()
+      .get('/api/v1/campaigns?q=active%20campaign')
+      .expect(200);
+    expect(
+      byIdeaTitle.body.data.some(
+        (campaign: any) => campaign.id === activeCampaignId,
+      ),
+    ).toBe(true);
+
+    const byProblem = await http()
+      .get('/api/v1/campaigns?q=problem%20statement')
+      .expect(200);
+    expect(
+      byProblem.body.data.some(
+        (campaign: any) => campaign.id === activeCampaignId,
+      ),
+    ).toBe(true);
+
+    const none = await http()
+      .get('/api/v1/campaigns?q=no-such-campaign')
+      .expect(200);
+    expect(none.body.data).toHaveLength(0);
+  });
+
+  it('rejects an over-long campaign search term', async () => {
+    await http().get(`/api/v1/campaigns?q=${'a'.repeat(121)}`).expect(400);
+  });
+
   it('resolves the same campaign by its source idea slug', async () => {
     const bySlug = await http()
       .get(`/api/v1/campaigns/${activeIdeaSlug}`)
