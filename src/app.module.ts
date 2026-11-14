@@ -12,6 +12,7 @@ import { PortsModule } from './ports/ports.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { PlatformParamsModule } from './modules/platform-params/platform-params.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { IdeasModule } from './modules/ideas/ideas.module';
 import { FeedModule } from './modules/feed/feed.module';
@@ -49,6 +50,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
     QueueModule,
     // Phase 0 domain
     AuthModule,
+    AdminAuthModule,
     WalletsModule,
     IdeasModule,
     FeedModule,

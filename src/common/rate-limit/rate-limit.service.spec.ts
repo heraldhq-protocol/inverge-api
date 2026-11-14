@@ -146,6 +146,8 @@ describe('resolveRateLimitPolicy (§7.2)', () => {
     ['GET', '/campaigns', { mine: 'true' }, 'dashboard'],
     ['GET', '/ideas', { category: 'climate' }, 'search'],
     ['GET', '/ideas', {}, 'discovery'],
+    ['POST', '/admin-auth/login', {}, 'auth'],
+    ['POST', '/admin-auth/mfa', {}, 'auth'],
     ['PATCH', '/admin/users/:id/role', {}, 'admin'],
   ])('%s %s -> %s', (method, path, query, expected) => {
     expect(resolve(method, path, query as Record<string, unknown>)).toBe(expected);
