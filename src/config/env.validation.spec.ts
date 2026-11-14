@@ -273,6 +273,74 @@ describe('validateEnv - escrow/provider coupling', () => {
   });
 });
 
+describe('validateEnv - dedicated admin auth', () => {
+  const adminKey = Buffer.alloc(32, 7).toString('base64');
+  const adminPepper = 'p'.repeat(32);
+
+  it('ships disabled with no credential material', () => {
+    const env = validateEnv({ ...base });
+    expect(env.ADMIN_AUTH_ENFORCED).toBe(false);
+    expect(env.ADMIN_TOTP_ENCRYPTION_KEY).toBe('');
+    expect(env.ADMIN_HASH_PEPPER).toBe('');
+    expect(env.ADMIN_SESSION_TTL_MINUTES).toBe(20);
+    expect(env.ADMIN_SESSION_IDLE_MINUTES).toBe(10);
+  });
+
+  it('requires an encryption key when enforced', () => {
+    expect(() => validateEnv({ ...base, ADMIN_AUTH_ENFORCED: 'true' })).toThrow(
+      /ADMIN_TOTP_ENCRYPTION_KEY/,
+    );
+  });
+
+  it('requires the encryption key to decode to exactly 32 bytes', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        ADMIN_AUTH_ENFORCED: 'true',
+        ADMIN_TOTP_ENCRYPTION_KEY: Buffer.alloc(16, 7).toString('base64'),
+        ADMIN_HASH_PEPPER: adminPepper,
+      }),
+    ).toThrow(/base64 for exactly 32 bytes/);
+  });
+
+  it('requires a peppered identifier hash', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        ADMIN_AUTH_ENFORCED: 'true',
+        ADMIN_TOTP_ENCRYPTION_KEY: adminKey,
+        ADMIN_HASH_PEPPER: 'short',
+      }),
+    ).toThrow(/ADMIN_HASH_PEPPER/);
+  });
+
+  it('accepts enforced auth with real key material', () => {
+    const env = validateEnv({
+      ...base,
+      ADMIN_AUTH_ENFORCED: 'true',
+      ADMIN_TOTP_ENCRYPTION_KEY: adminKey,
+      ADMIN_HASH_PEPPER: adminPepper,
+    });
+    expect(env.ADMIN_AUTH_ENFORCED).toBe(true);
+  });
+
+  it('rejects an idle timeout that is not shorter than the absolute one', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        ADMIN_SESSION_TTL_MINUTES: '20',
+        ADMIN_SESSION_IDLE_MINUTES: '20',
+      }),
+    ).toThrow(/ADMIN_SESSION_IDLE_MINUTES/);
+  });
+
+  it('rejects an ambiguous boolean spelling', () => {
+    expect(() => validateEnv({ ...base, ADMIN_AUTH_ENFORCED: 'yes' })).toThrow(
+      /ADMIN_AUTH_ENFORCED/,
+    );
+  });
+});
+
 describe('validateEnv - AI assistant', () => {
   it('rejects the deterministic stub in production', () => {
     expect(() =>

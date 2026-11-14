@@ -359,6 +359,21 @@ export const envSchema = z
   // that always pass the AdminGuard regardless of their DB role — used to seed the first
   // admin, who then grants others via PATCH /admin/users/:id/role. Empty by default.
   ADMIN_ALLOWLIST: z.string().default(''),
+
+  // Dedicated admin authentication (docs/admin/admin-auth.md, Phase 1). These
+  // values are unused until ADMIN_AUTH_ENFORCED is on; the flag is deliberately
+  // default-off so the legacy product-session path keeps working during
+  // migration. Enforced mode requires real key material at boot, not at the
+  // first sign-in.
+  ADMIN_AUTH_ENFORCED: booleanFlag.default(false),
+  ADMIN_SESSION_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(20),
+  ADMIN_SESSION_IDLE_MINUTES: z.coerce.number().int().min(2).max(60).default(10),
+  ADMIN_LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
+  ADMIN_LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  // Base64 of exactly 32 bytes; AES-256-GCM key for TOTP secrets.
+  ADMIN_TOTP_ENCRYPTION_KEY: z.string().default(''),
+  // HMAC pepper for IP / user-agent hashes. At least 32 characters.
+  ADMIN_HASH_PEPPER: z.string().default(''),
   })
   .superRefine((env, ctx) => {
     // A production boot with the documented default would let anyone forge a
@@ -380,6 +395,45 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SESSION_JWT_SECRET'],
         message: 'SESSION_JWT_SECRET must be at least 32 characters in production',
+      });
+    }
+
+    if (env.ADMIN_AUTH_ENFORCED) {
+      if (!env.ADMIN_TOTP_ENCRYPTION_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_TOTP_ENCRYPTION_KEY'],
+          message:
+            'ADMIN_TOTP_ENCRYPTION_KEY is required when ADMIN_AUTH_ENFORCED is on',
+        });
+      } else if (
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(env.ADMIN_TOTP_ENCRYPTION_KEY) ||
+        Buffer.from(env.ADMIN_TOTP_ENCRYPTION_KEY, 'base64').length !== 32
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_TOTP_ENCRYPTION_KEY'],
+          message:
+            'ADMIN_TOTP_ENCRYPTION_KEY must be base64 for exactly 32 bytes',
+        });
+      }
+
+      if (env.ADMIN_HASH_PEPPER.trim().length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_HASH_PEPPER'],
+          message:
+            'ADMIN_HASH_PEPPER must be at least 32 characters when ADMIN_AUTH_ENFORCED is on',
+        });
+      }
+    }
+
+    if (env.ADMIN_SESSION_IDLE_MINUTES >= env.ADMIN_SESSION_TTL_MINUTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ADMIN_SESSION_IDLE_MINUTES'],
+        message:
+          'ADMIN_SESSION_IDLE_MINUTES must be shorter than ADMIN_SESSION_TTL_MINUTES',
       });
     }
 
