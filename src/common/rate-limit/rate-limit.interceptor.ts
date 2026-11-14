@@ -59,10 +59,14 @@ export class RateLimitInterceptor implements NestInterceptor {
     if (!policyName) return next.handle();
 
     const policy = RATE_LIMIT_POLICIES[policyName];
-    const user = (request as Request & { user?: { id?: string } }).user;
+    const principal = request as Request & {
+      user?: { id?: string };
+      adminSession?: { admin?: { id?: string } };
+    };
+    const userId = principal.user?.id ?? principal.adminSession?.admin?.id;
     const identifier =
-      policy.scope === 'user' && user?.id
-        ? `user:${user.id}`
+      policy.scope === 'user' && userId
+        ? `user:${userId}`
         : `ip:${request.ip ?? 'unknown'}`;
 
     const decision = await this.limiter.consume(

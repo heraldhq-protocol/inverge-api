@@ -11,7 +11,7 @@ Audit date: **2026-11-11**. Repository state: `inverge-web` (Next.js 16) and
 | [`admin-missing-features.md`](./admin-missing-features.md) | Proposed features grouped into six areas, each with an eleven-field brief. |
 | [`admin-api-integration-plan.md`](./admin-api-integration-plan.md) | Endpoint-by-endpoint plan, marked Existing or Proposed, with the shared data layer and migration sequence. |
 | [`admin-demo-mode.md`](./admin-demo-mode.md) | The `ADMIN_DEMO_MODE` contract, safety guarantees, fixture inventory, and the Playwright plan. |
-| [`admin-auth.md`](./admin-auth.md) | Dedicated admin authentication: identity, session contract, threat model, API shapes, cutover and extraction plan. **Phase 1 implemented** (schema, migration, pure modules); no HTTP surface or web slice yet. |
+| [`admin-auth.md`](./admin-auth.md) | Dedicated admin authentication: identity, session contract, threat model, API shapes, cutover and extraction plan. **Phase 2 implemented** (schema, migrations, pure modules, `/admin-auth` login/MFA/me/logout and `AdminSessionGuard`); `/admin/*` cutover and the web slice are still open. |
 
 ## Headline findings
 
@@ -34,10 +34,11 @@ Audit date: **2026-11-11**. Repository state: `inverge-web` (Next.js 16) and
 ### P0 — fix before calling the admin workspace operational
 
 - Explicit demo mode, default off, rejected in production, visible DEMO DATA banner. **Done.**
-- Dedicated admin authentication, separate from wallet/social product accounts. **Phase 1
-  implemented in [`admin-auth.md`](./admin-auth.md): schema, migration and pure credential modules.
-  The HTTP surface, web slice and cutover are still open.** Today a product sign-in is always
-  `role: USER`, so no normal account can open `/admin` without a DB promotion or the allowlist.
+- Dedicated admin authentication, separate from wallet/social product accounts. **Phase 2
+  implemented in [`admin-auth.md`](./admin-auth.md): schema, migrations, pure credential modules,
+  the `/admin-auth` login/MFA/me/logout routes and `AdminSessionGuard`. The `/admin/*` cutover and
+  web slice are still open.** Today a product sign-in is always `role: USER`, so no normal account
+  can open `/admin` without a DB promotion or the allowlist.
 - Do not call verification APIs or render compliance controls in demo mode. **Done for demo;
   actor-based hiding is still open.**
 - Campaign review decisions must reach `POST /admin/campaigns/:id/review`.
@@ -127,6 +128,19 @@ Implementation:
 - `inverge-web/src/lib/env/schema.test.ts` — schema coverage (written, unrun).
 - `inverge-web/.env.example` — documented flag.
 
+API Phase 2 (2026-11-14):
+
+- `inverge-api/prisma/schema.prisma` — `AdminChallenge` and the `AdminUser` relation.
+- `inverge-api/prisma/migrations/20261114090000_admin_challenges/migration.sql`.
+- `inverge-api/src/modules/admin-auth/admin-auth.{controller,service,module,types}.ts`.
+- `inverge-api/src/modules/admin-auth/admin-session.guard.ts`.
+- `inverge-api/src/modules/admin-auth/capabilities.ts`.
+- `inverge-api/src/modules/admin-auth/dto/{login,mfa}.dto.ts`.
+- `inverge-api/src/modules/admin-auth/*.spec.ts`.
+- `inverge-api/src/common/rate-limit/{rate-limit.policies.ts,rate-limit.interceptor.ts}` and the
+  rate-limit test.
+- `inverge-api/src/app.module.ts` — register `AdminAuthModule`.
+
 No production environment, payment, escrow, KYC provider, email provider or chain code was
 modified.
 
@@ -138,9 +152,9 @@ modified.
 | Format | `pnpm exec prettier --write <changed files>` | Applied; files formatted. |
 | Lint | `npx eslint "src/app/admin" "src/features/admin" "src/lib/env/schema.ts"` | **Passed**: no findings. |
 | Unit | `npx vitest run src/features/admin/lib/demo-mode.test.ts src/lib/env/schema.test.ts --pool=threads --no-file-parallelism` | **Partial**: `src/lib/env/schema.test.ts` ran and 5/5 tests passed; the second file's worker timed out (`Timeout waiting for worker to respond`) and the run exited 1. Vitest 5 is unreliable under the installed Node `v22.14.0`; the repo requires Node `>=24.21.0 <25`. |
-| API unit (admin auth) | `cd inverge-api && node ./node_modules/jest/bin/jest.js --runInBand src/modules/admin-auth src/config/env.validation.spec.ts` | **Passed**: 5 suites, 82 tests. Covers Argon2id, RFC 6238 vectors, replay, token hashing, AES-GCM, env validation. |
-| API typecheck (admin auth) | `cd inverge-api && node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json` | **Partial**: new files are clean; the only diagnostic is pre-existing `_programme-fixture.ts` (`criterionId` not in `TieBreakRule`). |
-| API migration | `prisma migrate status`; then the SQL piped to `docker exec -i inverge-postgres psql` inside `BEGIN … ROLLBACK` | **Not applied**: host port 5432 is held by a native PostgreSQL process, so the container is unreachable from the host. The SQL generated from Prisma's diff applies cleanly and rolls back, but `_prisma_migrations` is unchanged. |
+| API unit (admin auth) | `cd inverge-api && node ./node_modules/jest/bin/jest.js --runInBand --forceExit src/modules/admin-auth src/common/rate-limit` | **Passed** (2026-11-14): 8 suites, 93 tests. Covers Argon2id, RFC 6238 vectors, replay, challenge/session lifecycle, lockout, guard, capabilities, token hashing, AES-GCM and rate-limit classification. |
+| API typecheck (admin auth) | `cd inverge-api && node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json` | **Passed** (Phase 2 worktree): no diagnostics. |
+| API migration | Phase 1 and Phase 2 SQL piped to `docker exec -i inverge-postgres psql` inside `BEGIN … ROLLBACK` | **Validated, not applied** (2026-11-14): both migrations create and link the tables cleanly, then roll back. `_prisma_migrations` is unchanged. |
 | Build | `pnpm build` | Not run; Node version is outside the engine range and a production build would also require the configured env. |
 | Playwright | `pnpm exec playwright test` | **Not run**: `@playwright/test` install failed under a Windows file lock on `next`. No config/spec was committed. |
 | Browser smoke | scripted Edge run using cached `playwright-core@1.65.0`, `ADMIN_DEMO_MODE=true pnpm dev` | **Passed** (2026-11-13): seven admin routes, DEMO DATA banner, seven desktop nav links, verification demo notice, mobile 390×844, no horizontal overflow, no real console/page errors. Smoke only, not the full 13-scenario suite. |

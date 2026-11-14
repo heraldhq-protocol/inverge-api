@@ -1,24 +1,29 @@
 # Dedicated admin authentication — design and threat model
 
-- **Status:** Phase 1 implemented. Schema, migration and the pure credential modules exist; no HTTP
-  surface or web slice yet.
+- **Status:** Phase 2 implemented. Schema, migrations and the credential modules exist, plus the
+  `/admin-auth` login/MFA/session routes and `AdminSessionGuard`. The existing `/admin/*`
+  controllers are not cut over yet and the web slice is still open.
 - **Decision owner:** product/security.
 - **Related:** `admin-audit.md` (A-01, A-05), `admin-missing-features.md` (A-2), `admin-demo-mode.md`.
 - **Chosen direction:** email + password + mandatory TOTP, flag-gated coexistence with the current
   product-session path, then cut over before any repo split.
 
-### Implementation status (Phase 1)
+### Implementation status (Phases 1-2)
 
 | Piece | Location | State |
 | --- | --- | --- |
 | Prisma models + enums | `inverge-api/prisma/schema.prisma` | Valid; client generated |
-| Migration SQL | `prisma/migrations/20261113120000_admin_auth/migration.sql` | SQL applies cleanly in a rolled-back transaction; **not applied or recorded** — host port 5432 is held by a native PostgreSQL process |
+| Phase 1 migration SQL | `prisma/migrations/20261113120000_admin_auth/migration.sql` | Applies cleanly in a rolled-back transaction together with Phase 2; **not applied or recorded** |
+| Challenge model + migration | `prisma/migrations/20261114090000_admin_challenges/migration.sql` | Single-use, 5-minute, hashed, IP-bound challenge; SQL validated the same way |
 | Password hashing | `src/modules/admin-auth/password.ts` | Argon2id, 64 MiB / t=3 / p=1 via `@node-rs/argon2@2.2.2` |
 | TOTP | `src/modules/admin-auth/totp.ts` | RFC 6238 vectors, ±1 step, replay guard |
 | Tokens / recovery codes | `src/modules/admin-auth/tokens.ts` | Opaque session/challenge tokens, HMAC identifiers |
 | TOTP at-rest encryption | `src/modules/admin-auth/secret-box.ts` | AES-256-GCM, versioned payload |
 | Env contract | `src/config/env.validation.ts` | Enforced mode fails boot without key material |
-| Unit tests | `src/modules/admin-auth/*.spec.ts` | 82 tests pass (with `env.validation.spec.ts`) |
+| Login / MFA / me / logout | `src/modules/admin-auth/admin-auth.{controller,service}.ts` | Implemented; generic 401s, audit events, session issued only after both factors |
+| Session guard + capabilities | `src/modules/admin-auth/admin-session.guard.ts`, `capabilities.ts` | Resolves the admin row on every request; role-derived capability list |
+| Rate limiting | `rate-limit.policies.ts`, `rate-limit.interceptor.ts` | `auth` bucket for login/MFA; `admin` bucket for me/logout, keyed by admin id |
+| Unit tests | `src/modules/admin-auth/*.spec.ts`, `src/common/rate-limit/*.spec.ts` | 93 tests / 8 suites pass with `jest --runInBand --forceExit src/modules/admin-auth src/common/rate-limit` |
 
 The hashing dependency was accepted: `@node-rs/argon2` ships prebuilt binaries and needs no build
 toolchain. `Algorithm` is an ambient `const enum` in its typings, which `isolatedModules` forbids
@@ -207,10 +212,10 @@ too.
 **Return path:** `?next=` is accepted only when it starts with `/admin`, is not `//`, and contains
 no scheme. Anything else falls back to `/admin`.
 
-## 8. API surface (proposed)
+## 8. API surface (Phase 2)
 
-All routes are under a new `AdminAuthController` at `/admin-auth`. The product `AuthController`
-and `PrivyAuthGuard` are untouched.
+All routes are under `AdminAuthController` at `/admin-auth`. The product `AuthController` and
+`PrivyAuthGuard` are untouched.
 
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
@@ -218,21 +223,23 @@ and `PrivyAuthGuard` are untouched.
 | `POST` | `/admin-auth/mfa` | `{ challengeToken, code }` | `200 { sessionToken, expiresAt, admin: { id, email, displayName, role, capabilities } }` |
 | `GET` | `/admin-auth/me` | — | `200 { admin, expiresAt }` or `401` |
 | `POST` | `/admin-auth/logout` | — | `204`; revokes the presented session |
-| `POST` | `/admin-auth/password` | `{ currentPassword, totpCode, newPassword }` | `204`; revokes other sessions |
-| `POST` | `/admin-auth/sessions/revoke-all` | `{ password, totpCode }` | `204` |
-| `PATCH` | `/admin-auth/admins/:id/role` | `{ role, password, totpCode, reason }` | `200`; `SUPER_ADMIN` only, not self, audit event |
+
+The password change, revoke-all and admin-role routes remain Phase 3 work; they are deliberately
+not mounted yet.
 
 **Challenge token:** opaque, 5-minute TTL, single use, hashed at rest, bound to the admin id and
-the requesting IP hash. A failed MFA attempt consumes the challenge after five tries. It is never
-accepted as a session.
+the requesting IP hash. A failed MFA attempt counts toward the challenge limit, and the challenge
+is consumed after five tries. It is never accepted as a session. A second successful password
+step invalidates any challenge already outstanding for that admin.
 
-**Error shape:** `{ error: "invalid_credentials" | "mfa_invalid" | "locked" | "session_expired" }`
-with no field-level detail. The web maps these to generic copy.
+**Error shape:** the standard API envelope `{ error: { code, message, requestId } }`, with no
+field-level detail. The stable codes are `INVALID_CREDENTIALS`, `MFA_INVALID` and
+`SESSION_EXPIRED`; a locked or suspended account is reported as `INVALID_CREDENTIALS`.
 
-**Migration hooks:** `AdminSessionGuard` replaces `PrivyAuthGuard` + `AdminGuard` on `/admin/*`
-controllers. During coexistence both guards are registered; `ADMIN_AUTH_ENFORCED` decides whether
-a product session alone is still accepted. The guard resolves the admin row on every request and
-checks `status === "ACTIVE"`.
+**Migration hooks:** `AdminSessionGuard` is implemented and resolves the admin row on every
+request, checking `status === "ACTIVE"`. It is not yet attached to `/admin/*` controllers; during
+coexistence both guards stay registered and `ADMIN_AUTH_ENFORCED` decides whether a product
+session alone is still accepted.
 
 ## 9. Web slice and routing
 
@@ -323,11 +330,15 @@ No secret is exposed through `NEXT_PUBLIC_*`. The admin app talks only to the BF
 token hashing, lockout transitions, env validation, return-path sanitiser.
 
 Phase 1 covers TOTP, password hashing, token/recovery helpers, secret-box encryption and env
-validation. Challenge expiry, lockout transitions and the return-path sanitiser belong to Phase 2.
+validation. Phase 2 adds challenge expiry/single use, lockout transitions, session resolution and
+revocation, guard behaviour, capabilities and rate-limit classification. The return-path
+sanitiser remains part of the web slice.
 
-Result (2026-11-13): `jest --runInBand src/modules/admin-auth src/config/env.validation.spec.ts`
-→ 5 suites, 82 tests passed. `tsc --noEmit` is clean for the new code; the only error is the
-pre-existing `_programme-fixture.ts` `criterionId`/`TieBreakRule` mismatch.
+Result (2026-11-14): `jest --runInBand --forceExit src/modules/admin-auth src/common/rate-limit`
+→ 8 suites, 93 tests passed. `tsc --noEmit` is clean in the Phase 2 worktree. The Phase 1 and
+Phase 2 migration SQL applied cleanly together inside a `BEGIN ... ROLLBACK` transaction against
+Docker Postgres; `_prisma_migrations` was left unchanged. No integration test against a migrated
+database has been run yet.
 
 **Integration (API, real Postgres):** login → MFA → me → logout; wrong password and unknown email
 return identical bodies; lockout; challenge reuse; TOTP replay; suspended admin; revoked session;

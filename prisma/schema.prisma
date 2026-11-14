@@ -2281,6 +2281,7 @@ model AdminUser {
   updatedAt           DateTime    @updatedAt
 
   sessions      AdminSession[]
+  challenges    AdminChallenge[]
   recoveryCodes AdminRecoveryCode[]
   authEvents    AdminAuthEvent[]
 
@@ -2300,6 +2301,24 @@ model AdminSession {
   revokedReason String?
   ipHash        String?
   userAgentHash String?
+
+  @@index([adminUserId, expiresAt])
+  @@index([expiresAt])
+}
+
+// The short-lived token between the password step and a valid TOTP code. It is
+// never a session: it cannot call an admin route, is single-use, expires after
+// five minutes and is bound to the admin row and the requesting IP hash.
+model AdminChallenge {
+  id          String    @id @default(cuid())
+  adminUserId String
+  admin       AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  ipHash      String?
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([adminUserId, expiresAt])
   @@index([expiresAt])

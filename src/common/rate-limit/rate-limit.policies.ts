@@ -147,6 +147,7 @@ export function resolveRateLimitPolicy(
     return 'ai_assistant';
   }
 
+  if (path.startsWith('/admin-auth')) return 'auth';
   if (path.startsWith('/admin')) return 'admin';
 
   if (path.startsWith('/ai/') || path.endsWith('/assistant')) {
