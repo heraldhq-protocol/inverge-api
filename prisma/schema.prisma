@@ -159,6 +159,32 @@ enum UserRole {
   ADMIN
 }
 
+// Dedicated admin identity (docs/admin/admin-auth.md). Deliberately separate from
+// UserRole: an admin is staff, not a product account with a role flag.
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATOR
+  REVIEWER
+  READ_ONLY
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AdminAuthEventType {
+  LOGIN_SUCCEEDED
+  LOGIN_FAILED
+  MFA_FAILED
+  MFA_REPLAY_REJECTED
+  LOCKED_OUT
+  SESSION_REVOKED
+  PASSWORD_CHANGED
+  ROLE_CHANGED
+  RECOVERY_USED
+}
+
 enum FlatFeeChargePurpose {
   BOOST
   APPLICATION_FEE
@@ -2226,4 +2252,80 @@ model ProgrammeAuditEvent {
 
   @@index([programmeId, createdAt(sort: Desc)])
   @@index([actorId, createdAt(sort: Desc)])
+}
+
+// --- Dedicated admin identity (docs/admin/admin-auth.md) ---------------------
+// Admin rows are intentionally not User rows. The product account system can
+// self-register; staff access is created by an operator and revoked here.
+
+model AdminUser {
+  id                  String      @id @default(cuid())
+  // Stored trimmed and lower-cased; case-insensitive matching is done in the
+  // service before lookup rather than with a database-specific citext type.
+  email               String      @unique
+  displayName         String
+  passwordHash        String
+  passwordUpdatedAt   DateTime
+  // AES-256-GCM ciphertext (see docs §6). Never returned after enrolment.
+  totpSecret          String
+  totpEnabledAt       DateTime?
+  // Replay guard: the last accepted TOTP step. BigInt because a step is unix
+  // seconds / 30 and Prisma maps it cleanly without floating point.
+  lastTotpStep        BigInt?
+  role                AdminRole   @default(READ_ONLY)
+  status              AdminStatus @default(ACTIVE)
+  failedLoginAttempts Int         @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  sessions      AdminSession[]
+  recoveryCodes AdminRecoveryCode[]
+  authEvents    AdminAuthEvent[]
+
+  @@index([status])
+}
+
+model AdminSession {
+  id            String    @id @default(cuid())
+  adminUserId   String
+  admin         AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  // SHA-256 of the opaque bearer token. The token itself is never stored.
+  tokenHash     String    @unique
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  ipHash        String?
+  userAgentHash String?
+
+  @@index([adminUserId, expiresAt])
+  @@index([expiresAt])
+}
+
+model AdminRecoveryCode {
+  id          String    @id @default(cuid())
+  adminUserId String
+  admin       AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  codeHash    String    @unique
+  createdAt   DateTime  @default(now())
+  usedAt      DateTime?
+
+  @@index([adminUserId, usedAt])
+}
+
+model AdminAuthEvent {
+  id            String             @id @default(cuid())
+  adminUserId   String?
+  admin         AdminUser?         @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  type          AdminAuthEventType
+  createdAt     DateTime           @default(now())
+  ipHash        String?
+  userAgentHash String?
+  metadata      Json?
+
+  @@index([adminUserId, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
 }
